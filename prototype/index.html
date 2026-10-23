@@ -152,6 +152,12 @@ button.chip:hover{border-color:var(--accent);color:var(--accent)}
 .chart .bar-t{fill:var(--cherry)}
 .chart .grid{stroke:var(--line);stroke-width:1}
 
+/* Step guides */
+.steps{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(190px,100%),1fr));gap:12px;counter-reset:step}
+.steps li{counter-increment:step;display:flex;flex-direction:column;gap:4px;padding:12px 14px 14px;border-radius:var(--r);background:var(--bg);border:1px solid var(--line);font-size:.86rem;line-height:1.45;color:var(--muted)}
+.steps li::before{content:counter(step);width:22px;height:22px;border-radius:50%;background:var(--accent);color:var(--accent-fg);font-size:.75rem;font-weight:600;display:inline-flex;align-items:center;justify-content:center;margin-bottom:4px;font-variant-numeric:tabular-nums}
+.steps li b{color:var(--fg);font-weight:600;font-size:.9rem}
+
 /* Attendance register */
 input[type=date]{font:inherit;font-size:.92rem;color:var(--fg);background:var(--surface);border:1px solid var(--line-strong);border-radius:var(--r-sm);padding:0 10px;height:36px}
 .bulk{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:10px 12px;border-radius:var(--r);background:var(--accent-soft);border:1px solid transparent}
@@ -1064,42 +1070,113 @@ function dailyChart(rows){
     ${rows.map((r,i)=>`<rect class="${i===n-1?'bar-t':'bar-r'}" x="${L+i*bw+1.5}" y="${y(r.kg)}" width="${Math.max(1,bw-3)}" height="${(H-T-B)-(y(r.kg)-T)}" rx="2"><title>${fd(r.d)}: ${kg(r.kg)}</title></rect>${((i%3===0&&n-1-i>=2)||i===n-1)?`<text x="${L+i*bw+bw/2}" y="${H-6}" text-anchor="middle">${fds(r.d)}</text>`:''}`).join('')}
   </svg>`;
 }
+/* ===== Step guides shown at the top of each process screen ===== */
+const HOWTO = {
+  plucking:{title:'How plucking is recorded', steps:[
+    ['Morning','Workers are marked present on the attendance register with the job Plucking and a field.'],
+    ['Evening muster','Each worker brings their bags to the muster point. The supervisor on the phone, or the office here, picks the worker; the field comes from the morning’s attendance.'],
+    ['Variety','If the field has more than one variety, such as Super Kadu, pick the subdivision. Otherwise it is filled in.'],
+    ['Weigh','Enter the gross weight and the bag weight; net weight is calculated. A worker can be weighed more than once.'],
+    ['Submit','Submit the day’s muster. Submitted weigh-ins go to Washing. Changes after that are made as corrections with a reason.']]},
+  washing:{title:'How washing and sorting is recorded', steps:[
+    ['Waiting','Each day’s submitted muster appears under Waiting for washing, with its total net weight.'],
+    ['Create a lot','Create a washing lot. All of that day’s weigh-ins are included; untick any that were washed separately.'],
+    ['Floaters and rejects','Weigh the floaters removed in water and the rejects picked out by hand. Accepted weight is received minus both.'],
+    ['Check','The lot gets a code. The muster total and the received weight are compared, and a difference needs a reason.'],
+    ['Hand over','Accepted kilograms wait under Not yet in a batch until a processing batch takes them.']]},
+  processing:{title:'How processing is recorded', steps:[
+    ['New batch','Pick Route A (Pulping), B (Fermentation) or C (Natural), and the washing lots and kilograms to use. Lots from different days can be combined; each day’s share is kept for tracing.'],
+    ['Start a stage','Each stage starts with its equipment (pulper, tank and recipe, floor yard or trays) and a target time from Process settings.'],
+    ['Readings','Add pH and temperature during fermentation, and moisture daily during drying. The board flags stages past target and readings that are due.'],
+    ['Complete','Complete a stage with the weight out. After pulping, choose floor or tray drying.'],
+    ['Quality check','Approve only when moisture is in the release range, or send it back for more drying. Approved batches move to Ready to pack.']]},
+  packing:{title:'How packing is recorded', steps:[
+    ['Ready','Batches approved at the quality check appear under Ready to pack with their harvest dates.'],
+    ['Choose','Pick one process and the batches and kilograms to pack. Batches from different harvest dates can go into one lot.'],
+    ['Bags','Choose grade, bag type, weight per bag and number of bags, and whether to fill bags batch by batch or mix evenly.'],
+    ['Labels','Each bag gets a code and a QR label showing its own harvest dates, fields and varieties.']]}
+};
+function howTo(key){
+  const h = HOWTO[key]; const open = (S.ui.howOpen||{})[key]!==false;
+  return `<section class="howto panel"><div class="panel-h" style="margin-bottom:${open?'14px':'0'}"><h2>${h.title}</h2><button class="btn-link" data-act="howToggle" data-v="${key}" aria-expanded="${open}">${open?'Hide steps':'Show steps'}</button></div>
+    ${open?`<ol class="steps">${h.steps.map(([t,x])=>`<li><b>${t}</b><span>${x}</span></li>`).join('')}</ol>`:''}</section>`;
+}
+
+/* ===== Plucking: weigh-in register (portal) and daily view ===== */
+const plEstate = ()=>S.ui.estate==='ALL' ? (S.ui.plEstate||'GLZ') : S.ui.estate;
+const plDate = ()=>{ const d=S.ui.plDate||today(); return d>today()?today():d; };
+const pluckersOn = (e,d)=>{ const sh=sheetOf(e,d); return sh ? S.workers.filter(w=>w.estate===e && sh.rows[w.id] && working(sh.rows[w.id].st) && isHarvestJob(sh.rows[w.id].job)) : []; };
+const M_STATUS = m=>m.washLot ? '<span class="chip ok">Washed</span>' : m.status==='SUBMITTED' ? '<span class="chip info">Submitted</span>' : '<span class="chip">Recorded</span>';
 function pPlucking(){
-  const es = estList();
-  const ms = S.muster.filter(m=>es.includes(m.estate) && m.sync==='synced');
-  const dates = [...new Set(ms.map(m=>m.date))].sort().reverse();
-  let d = S.ui.pluckDate; if(!dates.includes(d)) d = dates[0];
-  const dm = ms.filter(m=>m.date===d);
-  const pluckers = new Set(dm.map(m=>m.worker)).size;
-  const bySub = {}; dm.forEach(m=>{ const k=m.sub; (bySub[k]=bySub[k]||{sub:k, kg:0, n:0, w:new Set()}); bySub[k].kg+=m.net; bySub[k].n++; bySub[k].w.add(m.worker); });
-  const recon = dates.slice(0,10).map(x=>{ const all=ms.filter(m=>m.date===x); const washed=all.filter(m=>m.washLot); return {d:x, mk:sum(all,m=>m.net), wk:sum(washed,m=>m.net), unwashed:all.length-washed.length}; });
-  const onPhone = S.muster.filter(m=>es.includes(m.estate)&&m.sync==='pending').length;
-  return `<div class="page-h"><div><h1>Plucking</h1><p>Evening muster by worker, division, subdivision and variety. Only entries that have reached the server are shown.</p></div>
-    <label class="row" for="pl-date"><span class="muted">Day</span><select id="pl-date" data-change="pluckDate">${dates.map(x=>`<option value="${x}" ${x===d?'selected':''}>${dow(x)} ${fd(x)}</option>`).join('')}</select></label></div>
-  ${onPhone?`<div class="alert warn"><div><b>${onPhone} entries are still on a supervisor phone.</b><br><small class="muted">They show here after the phone syncs.</small></div></div>`:''}
+  const e = plEstate(), d = plDate(); const sh = sheetOf(e,d);
+  const all = S.muster.filter(m=>m.estate===e && m.sync==='synced');
+  const dm = all.filter(m=>m.date===d);
+  const onPhone = S.muster.filter(m=>m.estate===e && m.date===d && m.sync==='pending').length;
+  const nPl = new Set(dm.map(m=>m.worker)).size;
+  const bySub = {}; dm.forEach(m=>{ const k=m.sub; (bySub[k]=bySub[k]||{sub:k, kg:0, w:new Set()}); bySub[k].kg+=m.net; bySub[k].w.add(m.worker); });
+  const days = [...new Set(all.map(m=>m.date))].sort().reverse().slice(0,10);
+  const recon = days.map(x=>{ const a=all.filter(m=>m.date===x); const w=a.filter(m=>m.washLot); return {d:x, mk:sum(a,m=>m.net), wk:sum(w,m=>m.net), open:a.filter(m=>m.status!=='SUBMITTED').length, unwashed:a.length-w.length}; });
+  const recorded = dm.filter(m=>m.status!=='SUBMITTED').length;
+  return `<div class="page-h"><div><h1>Plucking</h1><p>The evening muster: every weigh-in by worker, field, subdivision and variety.</p></div></div>
+  <div class="panel row" style="padding:12px 16px">
+    ${S.ui.estate==='ALL'?`<label class="row" for="pl-e"><span class="muted">Estate</span><select id="pl-e" data-change="plEstate">${['GLZ','BYV'].map(x=>`<option value="${x}" ${x===e?'selected':''}>${ESTATE[x].short}</option>`).join('')}</select></label>`:`<b>${ESTATE[e].name}</b>`}
+    <span class="spacer"></span>
+    <button class="btn" data-act="plDay" data-v="-1" ${d<=SEASON_START?'disabled':''} aria-label="Previous day">‹</button>
+    <label class="row" for="pl-d"><span class="muted">Day</span><input type="date" id="pl-d" value="${d}" min="${SEASON_START}" max="${today()}" data-change="plDate"></label>
+    <button class="btn" data-act="plDay" data-v="1" ${d>=today()?'disabled':''} aria-label="Next day">›</button>
+    <span class="muted num">${dow(d)}</span>
+  </div>
+  ${howTo('plucking')}
+  ${onPhone?`<div class="alert warn"><div><b>${onPhone} weigh-ins for this day are still on a supervisor phone.</b><br><small class="muted">They appear here after the phone syncs.</small></div></div>`:''}
   <div class="kpis">
     <div class="kpi"><span class="eyebrow">Net cherry</span><span class="v">${kg(sum(dm,m=>m.net))}</span></div>
     <div class="kpi"><span class="eyebrow">Weigh-ins</span><span class="v">${dm.length}</span></div>
-    <div class="kpi"><span class="eyebrow">Pluckers</span><span class="v">${pluckers}</span></div>
-    <div class="kpi"><span class="eyebrow">Per plucker</span><span class="v">${kg(pluckers?sum(dm,m=>m.net)/pluckers:0)}</span></div>
+    <div class="kpi"><span class="eyebrow">Pluckers weighed</span><span class="v">${nPl} <small class="muted">of ${pluckersOn(e,d).length}</small></span></div>
+    <div class="kpi"><span class="eyebrow">Per plucker</span><span class="v">${kg(nPl?sum(dm,m=>m.net)/nPl:0)}</span></div>
   </div>
+  ${weighInPanel(e,d,sh,dm)}
   <div class="two">
-  <section class="panel"><div class="panel-h"><h2>By subdivision</h2></div><div class="tbl-wrap"><table class="data"><thead><tr><th>Field</th><th>Subdivision</th><th>Variety</th><th class="r">Workers</th><th class="r">Net</th></tr></thead><tbody>
-    ${Object.values(bySub).sort((a,b)=>b.kg-a.kg).map(r=>`<tr><td>${esc(DIV[SUB[r.sub].div].name)} ${estTag(SUB[r.sub].div.slice(0,3))}</td><td class="mono">${r.sub}</td><td>${VARIETY[SUB[r.sub].variety]}</td><td class="r">${r.w.size}</td><td class="r">${kg(r.kg)}</td></tr>`).join('')}
-  </tbody></table></div></section>
+  <section class="panel"><div class="panel-h"><h2>By subdivision</h2><small class="muted">${fd(d)}</small></div>${Object.keys(bySub).length?`<div class="tbl-wrap"><table class="data"><thead><tr><th>Field</th><th>Subdivision</th><th>Variety</th><th class="r">Workers</th><th class="r">Net</th></tr></thead><tbody>
+    ${Object.values(bySub).sort((a,b)=>b.kg-a.kg).map(r=>`<tr><td>${esc(fieldName(SUB[r.sub].div))}</td><td class="mono">${r.sub}</td><td>${VARIETY[SUB[r.sub].variety]}</td><td class="r">${r.w.size}</td><td class="r">${kg(r.kg)}</td></tr>`).join('')}
+  </tbody></table></div>`:'<p class="muted">No weigh-ins yet.</p>'}</section>
   <section class="panel"><div class="panel-h"><h2>Muster and washing</h2><small class="muted">Last 10 days</small></div><div class="tbl-wrap"><table class="data"><thead><tr><th>Day</th><th class="r">Muster</th><th class="r">Washed</th><th>Status</th></tr></thead><tbody>
-    ${recon.map(r=>`<tr><td>${fds(r.d)}</td><td class="r">${kg(r.mk)}</td><td class="r">${kg(r.wk)}</td><td>${r.unwashed?`<span class="chip warn">${r.unwashed} not washed</span>`:'<span class="chip ok">All washed</span>'}</td></tr>`).join('')}
+    ${recon.map(r=>`<tr class="click" data-act="plGo" data-v="${r.d}"><td>${fds(r.d)}</td><td class="r">${kg(r.mk)}</td><td class="r">${kg(r.wk)}</td><td>${r.open?`<span class="chip">${r.open} not submitted</span>`:r.unwashed?`<span class="chip warn">${r.unwashed} not washed</span>`:'<span class="chip ok">All washed</span>'}</td></tr>`).join('')}
   </tbody></table></div></section></div>
-  <section class="panel"><div class="panel-h"><h2>Weigh-ins on ${fd(d)}</h2></div><div class="tbl-wrap"><table class="data"><thead><tr><th>Time</th><th>Worker</th><th>Field</th><th>Subdivision</th><th>Variety</th><th class="r">Gross</th><th class="r">Bag</th><th class="r">Net</th><th>Washing lot</th></tr></thead><tbody>
-    ${dm.sort((a,b)=>a.at<b.at?-1:1).map(m=>`<tr><td>${m.at.slice(11,16)}</td><td><span class="mono">${m.worker}</span> ${esc(workerBy(m.worker).name)}</td><td>${esc(DIV[m.div].name)}</td><td class="mono">${m.sub}</td><td>${VARIETY[m.variety]}</td><td class="r">${nf1.format(m.gross)}</td><td class="r">${nf1.format(m.tare)}</td><td class="r"><b>${nf1.format(m.net)}</b></td><td>${m.washLot?`<span class="mono">${m.washLot}</span>`:'<span class="chip warn">Waiting</span>'}</td></tr>`).join('')}
-  </tbody></table></div></section>`;
+  <section class="panel"><div class="panel-h"><h2>Weigh-ins on ${fd(d)}</h2>${recorded?`<button class="btn btn-primary" data-act="peSubmit">Submit ${recorded} weigh-in${recorded===1?'':'s'} for washing</button>`:''}</div>
+    ${dm.length?`<div class="tbl-wrap"><table class="data"><thead><tr><th>Time</th><th>Worker</th><th>Field</th><th>Subdivision</th><th>Variety</th><th class="r">Gross</th><th class="r">Bag</th><th class="r">Net</th><th>Status</th><th>Entered</th><th></th></tr></thead><tbody>
+    ${dm.slice().sort((a,b)=>a.at<b.at?1:-1).map(m=>`<tr><td>${m.at.slice(11,16)}</td><td><span class="mono">${m.worker}</span> ${esc(workerBy(m.worker).name)}</td><td>${esc(fieldName(m.div))}</td><td class="mono">${m.sub}</td><td>${VARIETY[m.variety]}</td><td class="r">${nf1.format(m.gross)}</td><td class="r">${nf1.format(m.tare)}</td><td class="r"><b>${nf1.format(m.net)}</b></td><td>${M_STATUS(m)}</td><td><small class="muted">${m.source==='portal'?'Portal':'Phone'}</small></td><td class="r">${m.status!=='SUBMITTED'&&!m.washLot?`<button class="btn-link" data-act="peRemove" data-v="${m.id}">Remove</button>`:''}</td></tr>`).join('')}
+    </tbody></table></div>`:'<p class="muted">No weigh-ins for this day.</p>'}</section>`;
 }
+function weighInPanel(e,d,sh,dm){
+  if(!sh) return `<section class="panel stack"><h2>Record weigh-ins</h2><p class="muted">There is no attendance for ${fd(d)} yet. Weigh-ins are recorded for workers marked present for plucking.</p><div class="row"><button class="btn" data-act="openSheet" data-v="${e}|${d}">Open attendance for this day</button></div></section>`;
+  const pl = pluckersOn(e,d);
+  if(!pl.length) return `<section class="panel stack"><h2>Record weigh-ins</h2><p class="muted">No one is marked present for plucking on ${fd(d)}.</p><div class="row"><button class="btn" data-act="openSheet" data-v="${e}|${d}">Open attendance for this day</button></div></section>`;
+  const pe = S.ui.pe = S.ui.pe || {};
+  if(pe.key!==e+'|'+d || !pl.find(w=>w.id===pe.worker)){ const w = pl.find(w=>!dm.some(m=>m.worker===w.id)) || pl[0]; Object.assign(pe, {key:e+'|'+d, worker:w.id, div:sh.rows[w.id].div, sub:'', msg:'', ok:false}); }
+  if(!bearingSubs(DIV[pe.div]).length){ const f0=bearingDivs(e)[0]; pe.div=f0?f0.code:''; }
+  const bs = bearingSubs(DIV[pe.div]); if(!bs.find(s=>s.code===pe.sub)) pe.sub = bs[0]?bs[0].code:'';
+  const weighed = new Set(dm.map(m=>m.worker));
+  return `<section class="panel stack"><div class="panel-h" style="margin-bottom:0"><h2>Record weigh-ins</h2><small class="muted">${weighed.size} of ${pl.length} pluckers weighed</small></div>
+    <div class="formgrid weigh">
+      <label class="f" for="pe-w">Worker<select id="pe-w" data-change="peWorker">${pl.map(w=>`<option value="${w.id}" ${pe.worker===w.id?'selected':''}>${w.id} · ${esc(w.name)}${weighed.has(w.id)?' ✓':''}</option>`).join('')}</select></label>
+      <label class="f" for="pe-d">Field<select id="pe-d" data-change="peDiv">${bearingDivs(e).map(x=>`<option value="${x.code}" ${pe.div===x.code?'selected':''}>${esc(x.name)}</option>`).join('')}</select></label>
+      ${bs.length>1?`<label class="f" for="pe-s">Subdivision<select id="pe-s" data-change="peSub">${bs.map(s=>`<option value="${s.code}" ${pe.sub===s.code?'selected':''}>${s.code.slice(-1)} · ${VARIETY[s.variety]}</option>`).join('')}</select></label>`
+        :`<div class="f">Subdivision<b>${pe.sub?pe.sub.slice(-1)+' · '+VARIETY[SUB[pe.sub].variety]:'–'}</b></div>`}
+      <label class="f" for="pe-g">Gross (kg)<input type="number" id="pe-g" step="0.1" min="0" inputmode="decimal" data-live="pe"></label>
+      <label class="f" for="pe-t">Bag (kg)<input type="number" id="pe-t" step="0.1" min="0" value="1.0" inputmode="decimal" data-live="pe"></label>
+      <div class="f">Net<b id="pe-net">–</b></div>
+    </div>
+    ${pe.msg?`<div class="msg ${pe.ok?'ok':''}" role="status">${esc(pe.msg)}</div>`:''}
+    <div class="row"><button class="btn btn-primary" data-act="peSave">Save and next worker</button><small class="muted">Field ${pe.div&&sh.rows[pe.worker]&&sh.rows[pe.worker].div===pe.div?'from this morning’s attendance':'changed from this morning’s attendance'}</small></div></section>`;
+}
+
 function pWashing(){
   const es = estList(); const wait = waitingWash(es);
   const lots = S.wash.filter(l=>es.includes(l.estate)).sort((a,b)=>a.at<b.at?1:-1).slice(0,20);
   return `<div class="page-h"><div><h1>Washing and sorting</h1><p>Submitted muster entries are washed and sorted into a washing lot. Floaters and rejects are weighed and removed; the accepted kilograms go on to processing.</p></div></div>
+  ${howTo('washing')}
   <section class="panel"><div class="panel-h"><h2>Waiting for washing</h2></div>
-    ${wait.length?`<div class="alerts">${wait.map(g=>`<div class="alert info"><div><b>${ESTATE[g.estate].short} · ${dow(g.date)} ${fd(g.date)}</b><br><small class="muted">${g.ids.length} muster entries · ${kg(sum(g.ids,id=>musterBy(id).net))} net cherry</small></div><button class="btn btn-primary" data-act="newWash" data-v="${g.estate}|${g.date}">Create washing lot</button></div>`).join('')}</div>`:'<p class="muted">All submitted muster is washed. Record and submit muster on the supervisor phone to add more.</p>'}</section>
+    ${wait.length?`<div class="alerts">${wait.map(g=>`<div class="alert info"><div><b>${ESTATE[g.estate].short} · ${dow(g.date)} ${fd(g.date)}</b><br><small class="muted">${g.ids.length} muster entries · ${kg(sum(g.ids,id=>musterBy(id).net))} net cherry</small></div><button class="btn btn-primary" data-act="newWash" data-v="${g.estate}|${g.date}">Create washing lot</button></div>`).join('')}</div>`:'<p class="muted">All submitted muster is washed. Submit weigh-ins on the Plucking screen or the supervisor phone to add more.</p>'}</section>
   <section class="panel"><div class="panel-h"><h2>Washing lots</h2></div><div class="tbl-wrap"><table class="data"><thead><tr><th>Lot</th><th>Harvest day</th><th class="r">Received</th><th class="r">Floaters</th><th class="r">Rejected</th><th class="r">Accepted</th><th class="r">Not yet in a batch</th></tr></thead><tbody>
   ${lots.map(l=>`<tr><td class="mono">${l.code}</td><td>${fd(l.date)} ${estTag(l.estate)}</td><td class="r">${kg(l.received)}</td><td class="r">${kg(l.floaters)}</td><td class="r">${kg(l.rejected)}</td><td class="r"><b>${kg(l.accepted)}</b></td><td class="r">${lotAvail(l)>0?`<span class="chip warn">${kg(lotAvail(l))}</span>`:'<span class="muted">0</span>'}</td></tr>`).join('')}
   </tbody></table></div></section>`;
@@ -1118,6 +1195,7 @@ function pProcessing(){
   const freeLots = S.wash.filter(l=>es.includes(l.estate) && lotAvail(l)>0).length;
   return `<div class="page-h"><div><h1>Processing</h1><p>Every batch follows one route. Drying targets come from Process settings and are copied onto each stage when it starts.</p></div>
     <button class="btn btn-primary" data-act="newBatch" ${freeLots?'':'disabled'} title="${freeLots?'':'No washed coffee is waiting for a batch'}">New batch${freeLots?` (${freeLots} lot${freeLots===1?'':'s'} waiting)`:''}</button></div>
+  ${howTo('processing')}
   <div class="board">${BOARD_COLS.map(col).join('')}</div>
   <p class="note">${packed} batch${packed===1?' is':'es are'} fully packed and no longer shown on the board.</p>`;
 }
@@ -1127,6 +1205,7 @@ function pPacking(){
   const packs = S.packs.filter(p=>es.includes(p.estate)).sort((a,b)=>a.at<b.at?1:-1);
   return `<div class="page-h"><div><h1>Packing</h1><p>Batches released by the quality check are packed into bags. Each bag records which batches it holds, so its label shows its own harvest dates.</p></div>
     <button class="btn btn-primary" data-act="newPack" ${ready.length?'':'disabled'}>New packed lot</button></div>
+  ${howTo('packing')}
   <section class="panel"><div class="panel-h"><h2>Ready to pack</h2></div><div class="tbl-wrap"><table class="data"><thead><tr><th>Batch</th><th>Process</th><th>Harvest dates</th><th class="r">Available</th><th></th></tr></thead><tbody>
     ${ready.map(b=>`<tr><td class="mono">${b.code} ${estTag(b.estate)}</td><td>${esc(procLabel(b))}</td><td>${esc(datesLabel(batchHarvestDates(b)).replace('Harvested ',''))}</td><td class="r">${kg(bAvail(b))}</td><td class="r"><button class="btn" data-act="newPack" data-v="${b.code}">Pack</button></td></tr>`).join('')||'<tr><td colspan="5" class="muted">Nothing is ready. Approve a batch in Processing first.</td></tr>'}
   </tbody></table></div></section>
@@ -1597,6 +1676,7 @@ const LIVE = {
     const ds = [...new Set(picks.flatMap(p=>lotBy(p.lot).entries.map(id=>musterBy(id).date)))];
     el.innerHTML = picks.length ? `<p><b>${kg(sum(picks,p=>p.kg))}</b> of washed cherry · ${esc(datesLabel(ds))}</p>` : '<p class="muted">Pick at least one washing lot.</p>';
   },
+  pe(){ const el=document.getElementById('pe-net'); if(!el) return; const n=r1(num('#pe-g')-num('#pe-t')); el.textContent = num('#pe-g')>0 ? (n>0?kg(n):'Check bag weight') : '–'; },
   fd(){ const el=document.getElementById('fd-prev'); if(!el||!S.ui.drawer||S.ui.drawer.type!=='field') return; const t=sum(S.ui.drawer.subs.map((s,i)=>parseFloat((document.getElementById('sd-ac-'+i)||{}).value)||0)); const a=num('#fd-acres'); el.textContent='Subdivisions: '+t+' of '+a+' acres'+(Math.abs(t-a)>0.001?' (should match)':''); },
   pk(){
     const el = document.getElementById('pk-prev'); if(!el) return;
@@ -1626,7 +1706,7 @@ function msg(t,ok){ S.field.msg=t; S.field.msgOk=!!ok; }
 const ACT = {
   mode(el){ S.ui.mode=el.dataset.v; S.ui.drawer=null; },
   page(el){ S.ui.page=el.dataset.v; S.ui.drawer=null; S.ui.flash=''; if(S.ui.mode!=='portal') S.ui.mode='portal'; },
-  advance(el){ S.now = addH(S.now, +el.dataset.h); S.ui.attDate=''; S.ui.attSel={}; },
+  advance(el){ S.now = addH(S.now, +el.dataset.h); S.ui.attDate=''; S.ui.attSel={}; S.ui.plDate=''; },
   reset(){ if(!S.ui.resetArmed){ S.ui.resetArmed=true; return; } try{ localStorage.removeItem(STORE_KEY); }catch(e){} seed(); },
   close(){ S.ui.drawer=null; },
   toggleNet(){ S.field.online=!S.field.online; if(S.field.online && S.queue.length) msg('Signal is back. Open Sync to send '+S.queue.length+' saved changes.', true); },
@@ -1670,6 +1750,29 @@ const ACT = {
   attSubmit(){ S.ui.attFlash=''; const sh=attSheet(); sh.status='SUBMITTED'; sh.submittedAt=S.now; },
   attApprove(){ S.ui.attFlash=''; const sh=attSheet(); sh.status='APPROVED'; sh.approvedAt=S.now; S.ui.attSel={}; },
   attReopen(){ S.ui.attFlash=''; const sh=attSheet(); sh.status='DRAFT'; sh.reopenedAt=S.now; },
+  /* ---- Plucking weigh-ins ---- */
+  howToggle(el){ S.ui.howOpen=S.ui.howOpen||{}; S.ui.howOpen[el.dataset.v]=(S.ui.howOpen[el.dataset.v]===false); },
+  plDay(el){ const d=addDays(plDate(), +el.dataset.v); if(d>=SEASON_START && d<=today()) S.ui.plDate=d; },
+  plGo(el){ S.ui.plDate=el.dataset.v; },
+  peSave(){
+    const e=plEstate(), d=plDate(), pe=S.ui.pe; const g=num('#pe-g'), t=num('#pe-t'), net=r1(g-t);
+    const fail=m=>{ pe.msg=m; pe.ok=false; };
+    if(!pe.worker) return fail('Pick a worker.');
+    if(g<=0) return fail('Enter the gross weight.');
+    if(t<0) return fail('Bag weight cannot be negative.');
+    if(net<=0) return fail('Net weight must be more than zero. Check the bag weight.');
+    if(g>80) return fail('Gross weight looks too high for one weigh-in. Check the scale.');
+    const sub=SUB[pe.sub]; if(!sub) return fail('Pick a subdivision.');
+    const at = d===today() ? S.now : d+'T18:00';
+    S.muster.push({id:'M'+(++S.seq.m), estate:e, date:d, worker:pe.worker, div:pe.div, sub:pe.sub, variety:sub.variety, gross:r1(g), tare:r1(t), net, status:'RECORDED', sync:'synced', source:'portal', at});
+    reindex();
+    const who=workerBy(pe.worker).name; const sh=sheetOf(e,d); const dm=S.muster.filter(m=>m.estate===e&&m.date===d);
+    const next=pluckersOn(e,d).find(w=>!dm.some(m=>m.worker===w.id));
+    if(next){ pe.worker=next.id; pe.div=sh.rows[next.id].div; pe.sub=''; }
+    pe.msg='Saved '+kg(net)+' for '+who+'.'; pe.ok=true;
+  },
+  peRemove(el){ const i=S.muster.findIndex(m=>m.id===el.dataset.v && m.status!=='SUBMITTED' && !m.washLot); if(i>=0){ S.muster.splice(i,1); reindex(); } },
+  peSubmit(){ const e=plEstate(), d=plDate(); let n=0; for(const m of S.muster) if(m.estate===e&&m.date===d&&m.sync==='synced'&&m.status!=='SUBMITTED'){ m.status='SUBMITTED'; n++; } if(S.ui.pe){ S.ui.pe.msg=n+' weigh-in'+(n===1?'':'s')+' submitted for washing.'; S.ui.pe.ok=true; } },
   /* ---- Masters ---- */
   mtab(el){ S.ui.mtab=el.dataset.v; },
   newField(){ const e=estList()[0]; S.ui.drawer={type:'field', estate:e, code:'', subs:[{land:'B', acres:'', variety:'CG'}]}; },
@@ -1742,6 +1845,11 @@ const CHANGE = {
   attJob(el){ attSheet().rows[el.dataset.w].job=el.value; S.ui.attFlash=''; },
   attRemark(el){ attSheet().rows[el.dataset.w].remark=el.value; },
   histWorker(el){ S.ui.histWorker=el.value; },
+  plEstate(el){ S.ui.plEstate=el.value; },
+  plDate(el){ if(el.value && el.value>=SEASON_START && el.value<=today()) S.ui.plDate=el.value; },
+  peWorker(el){ const pe=S.ui.pe; pe.worker=el.value; const sh=sheetOf(plEstate(),plDate()); pe.div=sh.rows[el.value].div; pe.sub=''; pe.msg=''; },
+  peDiv(el){ S.ui.pe.div=el.value; S.ui.pe.sub=''; S.ui.pe.msg=''; },
+  peSub(el){ S.ui.pe.sub=el.value; },
   fdEstate(el){ const d=S.ui.drawer; d.form=readFieldForm(); d.subs=readSubs(); d.estate=el.value; },
   publicView(el){ S.ui.publicView=el.checked; },
   nbRoute(el){ S.ui.drawer.route=el.value; },
