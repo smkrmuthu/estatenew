@@ -176,6 +176,13 @@ table.reg tr.sel td{background:var(--accent-soft)}
 .seg4 button.on-H{background:var(--warn-soft);color:var(--warn);box-shadow:inset 0 0 0 1px var(--warn)}
 .seg4 button.on-A,.seg4 button.on-L{background:var(--bad-soft);color:var(--bad);box-shadow:inset 0 0 0 1px var(--bad)}
 .seg4 button[disabled]{cursor:default}
+.seg4 button.wide{width:auto;padding:0 8px;font-size:.78rem}
+.seg4 button.on-O,.seg4 button.on-F{background:var(--info-soft);color:var(--info);box-shadow:inset 0 0 0 1px var(--info)}
+.copybox{width:100%;min-height:280px;font-family:var(--font-mono);font-size:.8rem;line-height:1.55;padding:12px;border:1px solid var(--line-strong);border-radius:var(--r-sm);background:var(--bg);color:var(--fg);resize:vertical}
+.copybox:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.sumtbl th{width:110px;color:var(--muted);font-weight:500;vertical-align:top}
+.sumtbl td small{display:block;color:var(--muted)}
+input.wt{width:6.5em}
 .cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
 .cal-h{font-size:.72rem;color:var(--muted);text-align:center;padding-bottom:2px}
 .cal-d{border:1px solid var(--line);border-radius:8px;padding:4px 5px;min-height:56px;display:flex;flex-direction:column;gap:1px;font-size:.72rem;min-width:0;background:var(--surface)}
@@ -187,6 +194,8 @@ table.reg tr.sel td{background:var(--accent-soft)}
 .cal-d.st-H b{color:var(--warn)}
 .cal-d.st-A,.cal-d.st-L{background:var(--bad-soft);border-color:transparent}
 .cal-d.st-A b,.cal-d.st-L b{color:var(--bad)}
+.cal-d.st-O,.cal-d.st-F{background:var(--info-soft);border-color:transparent}
+.cal-d.st-O b,.cal-d.st-F b{color:var(--info)}
 
 /* Processing board */
 .board{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(220px,1fr);gap:14px;overflow-x:auto;padding-bottom:8px}
@@ -303,7 +312,7 @@ table.reg tr.sel td{background:var(--accent-soft)}
 'use strict';
 
 /* ---------- Reference data: from the Division and Subdivision Import sheet ---------- */
-const VERSION = 6;
+const VERSION = 7;
 const STORE_KEY = 'cemms-prototype';
 const VARIETY = {CG:'Chandana Giri', S9:'Selection 9', YMG:'YMG', '':'Variety to confirm'};
 const LAND = {B:'Bearing', Y:'Young plants', R:'Rock', W:'Water', E:'Empty', O:'Other crop'};
@@ -317,6 +326,7 @@ const WTYPE = ['Permanent','Casual','Contract'];
 const RECIPE = {GBF1:{name:'Pineapple', hours:96}, GBF2:{name:'Avocado', hours:72}, GBT1:{name:'Apple', hours:120}};
 const TANKS = ['T1','T2','T3','T4','T5','T6'];
 const YARDS = ['FY1','FY2','FY3'];
+const TRAY_COUNT = 120;
 const GRADES = ['AA','AB','AAS'];
 const BAGS = {GUNNY:{label:'Gunny bag', sizes:[60,50,45,40,30,25]}, VACUUM:{label:'Vacuum pack', sizes:[1,0.5,0.25]}};
 const RAW = [
@@ -459,6 +469,7 @@ const ICON = {
   phone:'<rect x="6.5" y="2.5" width="11" height="19" rx="2.5"/><path d="M11 18.5h2"/>',
   monitor:'<rect x="2.5" y="4" width="19" height="13" rx="2"/><path d="M8.5 20.5h7"/><path d="M12 17v3.5"/>',
   clock:'<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+  chart:'<path d="M3.5 20.5h17"/><path d="M7 16.5v-5"/><path d="M12 16.5v-10"/><path d="M17 16.5v-7"/>',
   reset:'<path d="M4 12a8 8 0 1 0 2.3-5.7"/><path d="M4 4v4.5h4.5"/>'
 };
 const icon = n=>`<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">${ICON[n]||''}</svg>`;
@@ -531,6 +542,7 @@ const bAvail = b=>r3(bOutKg(b)-b.packedKg);
 function bStatus(b){
   const c = curStage(b);
   if(!c) return 'PLANNED';
+  if(b.hold && c.status==='IN_PROGRESS') return 'ON_HOLD';
   if(c.status==='IN_PROGRESS') return c.key==='QUALITY_CHECK' ? 'AWAITING_QC' : 'ACTIVE';
   if(c.key==='QUALITY_CHECK'){ if(b.packedKg<=0.001) return 'READY'; return bAvail(b)<=0.001 ? 'PACKED' : 'PART_PACKED'; }
   return 'ACTIVE';
@@ -551,9 +563,9 @@ const lotAvail = l=>r1(l.accepted-lotUsed(l.code));
 function batchHarvestDates(b){ const ds=new Set(); for(const i of b.inputs){ const l=lotBy(i.lot); for(const id of l.entries) ds.add(musterBy(id).date); } return [...ds].sort(); }
 function nextTray(kgIn){
   const n = Math.max(1, Math.ceil(kgIn/80));
-  const start = (S.seq.tray % 40) + 1; S.seq.tray += n;
-  const end = ((start-1+n-1) % 40) + 1;
-  return n===1 ? 'Tray '+start : (end>start ? 'Trays '+start+'–'+end : 'Trays '+start+'–40, 1–'+end);
+  const start = (S.seq.tray % TRAY_COUNT) + 1; S.seq.tray += n;
+  const end = ((start-1+n-1) % TRAY_COUNT) + 1;
+  return n===1 ? 'Tray '+start : (end>start ? 'Trays '+start+'–'+end : 'Trays '+start+'–'+TRAY_COUNT+', 1–'+end);
 }
 function resFor(key,kgIn){
   if(key==='PULPING') return 'Pulper P1';
@@ -562,6 +574,47 @@ function resFor(key,kgIn){
   if(STAGE[key].dry) return nextTray(kgIn);
   return '';
 }
+/* ---------- Drying places: trays are numbered 1 to TRAY_COUNT and picked by hand; a floor yard can hold several batches ---------- */
+function traysOf(res){ const out=[]; if(!/^Trays? /.test(res||'')) return out; for(const m of res.matchAll(/(\d+)(?:–(\d+))?/g)){ const a=+m[1], b=m[2]?+m[2]:a; for(let i=a;i<=b;i++) out.push(i); } return out; }
+function busyTrays(except){ const set=new Set(); for(const b of S.batches){ if(b.code===except) continue; const c=curStage(b); if(c && c.status==='IN_PROGRESS') traysOf(c.res).forEach(t=>set.add(t)); } return set; }
+const traysNeeded = kgIn=>Math.max(1, Math.ceil(kgIn/80));
+function freeRun(n, busy){ for(let a=1; a+n-1<=TRAY_COUNT; a++){ let ok=true; for(let i=a;i<a+n;i++) if(busy.has(i)){ ok=false; break; } if(ok) return [a,a+n-1]; } return [1,n]; }
+const trayRes = (a,b)=>a===b ? 'Tray '+a : 'Trays '+a+'–'+b;
+function trayPicker(p, kgIn, except){
+  const busy = busyTrays(except); const n = traysNeeded(kgIn); const [a,b] = freeRun(n, busy);
+  return `<div class="formgrid"><label class="f" for="${p}-t1">From tray<input type="number" id="${p}-t1" min="1" max="${TRAY_COUNT}" step="1" value="${a}"></label>
+    <label class="f" for="${p}-t2">To tray<input type="number" id="${p}-t2" min="1" max="${TRAY_COUNT}" step="1" value="${b}"></label></div>
+    <small class="muted">About ${n} tray${n===1?'':'s'} for ${kg(kgIn)} at 80 kg a tray. ${busy.size} of ${TRAY_COUNT} trays are in use; the first free run is suggested.</small>`;
+}
+function yardPicker(p){
+  const use = {}; for(const b of S.batches){ const c=curStage(b); if(c && c.status==='IN_PROGRESS' && c.key==='FLOOR_DRYING') add(use, c.res, 1); }
+  return `<label class="f" for="${p}-yd">Floor yard<select id="${p}-yd">${YARDS.map(y=>{ const n=use['Floor yard '+y]||0; return `<option value="${y}">${y}${n?' (already holds '+n+' batch'+(n===1?'':'es')+')':''}</option>`; }).join('')}</select></label>`;
+}
+const needsPicker = key=>key==='FLOOR_DRYING' || key==='TRAY_DRYING' || key==='NATURAL_TRAY_DRYING';
+const dryPicker = (p,key,kgIn,except)=>key==='FLOOR_DRYING' ? yardPicker(p) : trayPicker(p,kgIn,except);
+/* Reads a picker; returns {res} or {err} */
+function readDryRes(p, key, except){
+  if(key==='FLOOR_DRYING') return {res:'Floor yard '+document.getElementById(p+'-yd').value};
+  const a = Math.round(num('#'+p+'-t1')), b = Math.round(num('#'+p+'-t2'));
+  if(a<1 || b<a || b>TRAY_COUNT) return {err:`Enter trays from 1 to ${TRAY_COUNT}, with the first number no higher than the last.`};
+  const busy = busyTrays(except); const clash = []; for(let i=a;i<=b;i++) if(busy.has(i)) clash.push(i);
+  if(clash.length) return {err:`Tray${clash.length===1?'':'s'} ${clash.slice(0,6).join(', ')}${clash.length>6?' and others':''} ${clash.length===1?'is':'are'} in use by another batch. Pick free trays.`};
+  return {res:trayRes(a,b)};
+}
+function tankSelect(p){ const busy=busyTanks(); return `<label class="f" for="${p}-tank">Tank<select id="${p}-tank">${TANKS.map(t=>`<option value="${t}" ${busy.has(t)?'disabled':''}>Tank ${t}${busy.has(t)?' (in use)':''}</option>`).join('')}</select></label>`; }
+/* Drying log: turning, covering and rain, recorded against the stage */
+const LOGK = {TURNED:'Turned', COVERED:'Covered', UNCOVERED:'Uncovered', RAIN:'Rain', SPLIT:'Split'};
+function isCovered(st){ const l=(st.log||[]).filter(x=>x.kind==='COVERED'||x.kind==='UNCOVERED').pop(); return !!(l && l.kind==='COVERED'); }
+function logSummary(st){ const c={}; (st.log||[]).forEach(x=>add(c,x.kind,1)); const p=[]; if(c.TURNED) p.push('turned '+c.TURNED+' time'+(c.TURNED===1?'':'s')); if(c.RAIN) p.push(c.RAIN+' rain'); return p.join(' · '); }
+/* Packed bags are weighed after filling; more than 100 g under (5 g for vacuum packs) is flagged */
+const bagTol = lot=>lot.bagKg>=5 ? 0.1 : 0.005;
+function bagWtChip(bag, lot){
+  if(bag.weighed==null) return '<span class="chip">Not weighed</span>';
+  const d = r3(bag.weighed-bag.kg);
+  return d < -bagTol(lot)-1e-9 ? `<span class="chip bad">Under by ${kgx(-d)}</span>` : `<span class="chip ok">OK${d>0?' (+'+kgx(d)+')':''}</span>`;
+}
+function weighCount(p){ let n=0, under=0; for(const b of p.bags){ if(b.weighed==null) continue; n++; if(r3(b.weighed-b.kg) < -bagTol(p)-1e-9) under++; } return {n, under}; }
+function weighText(p){ const w=weighCount(p); return `${w.n} of ${p.bags.length} bags weighed${w.under?` · <span class="chip bad">${w.under} under weight</span>`:''}`; }
 function busyTanks(){ const set=new Set(); for(const b of S.batches){ const c=curStage(b); if(c && c.status==='IN_PROGRESS' && c.key==='FERMENTATION') set.add(c.res.replace('Tank ','')); } return set; }
 
 /* ---------- Traceability: proportional shares through every link ---------- */
@@ -574,7 +627,7 @@ function traceSources(sources){
       const lot = lotBy(inp.lot); const k1 = s.kg*inp.kg/tin;
       add(T.lots, lot.code, k1);
       for(const id of lot.entries){
-        const e = musterBy(id); const k = k1*e.net/lot.received;
+        const e = musterBy(id); const k = k1*e.net/lot.musterKg;
         add(T.dates, e.date, k); add(T.subs, e.sub, k); add(T.vars, e.variety, k); add(T.workers, e.worker, k); T.entries.add(id);
       }
     }
@@ -629,8 +682,8 @@ function seed(){
   const R = mulberry32(20261023);
   S = {v:VERSION, now:'2026-10-23T10:00',
     ui:{mode:'portal', page:'dashboard', estate:'ALL', pluckDate:'', traceQ:'BROOKAA14', publicView:false, drawer:null, resetArmed:false},
-    field:{tab:'today', online:true, lastSync:'2026-10-23T09:40', assign:null, msg:'', msgOk:false, draft:{worker:'', div:'', sub:'', gross:'', tare:'1.0', focus:'gross'}},
-    settings:{dry:{FLOOR_DRYING:14, TRAY_DRYING:14, NATURAL_TRAY_DRYING:14}, mMin:10.5, mMax:11.5},
+    field:{tab:'today', online:true, lastSync:'2026-10-23T09:40', assign:null, msg:'', msgOk:false, draft:{worker:'', div:'', sub:'', gross:'', tare:'0.5', bags:2, remark:'', focus:'gross'}},
+    settings:{dry:{FLOOR_DRYING:14, TRAY_DRYING:14, NATURAL_TRAY_DRYING:14}, mMin:10.5, mMax:11.5, bagWt:0.5, washTol:1, pluckRate:5},
     divs:JSON.parse(JSON.stringify(SEED_DIVS)), jobs:JSON.parse(JSON.stringify(SEED_JOBS)),
     workers:[], att:{}, muster:[], wash:[], batches:[], packs:[], queue:[], log:[],
     seq:{m:0, q:0, tank:0, yard:0, tray:0, wash:{GLZ:0,BYV:0}, batch:{GLZ:0,BYV:0}, pack:{GLZ:0,BYV:0}, bag:{}}};
@@ -657,8 +710,8 @@ function seed(){
       if(r.job!=='PLK') continue;
       const n = R()<.2?2:1; const total = r.st==='P' ? 14+R()*24 : 7+R()*10;
       for(let k=0;k<n;k++){
-        const net = r1(n===2 ? (k===0?total*.6:total*.4) : total); const tare = R()<.5?1:1.5;
-        S.muster.push({id:'M'+(++S.seq.m), estate:e, date:d, worker:wid, div:r.div, sub:r.sub, variety:SUB[r.sub].variety, gross:r1(net+tare), tare, net, status:'SUBMITTED', sync:'synced', at:d+(k?'T17:45':'T17:10')});
+        const net = r1(n===2 ? (k===0?total*.6:total*.4) : total); const bags = R()<.5?2:3; const tare = r1(bags*0.5); const sq = S.seq.m+1;
+        S.muster.push({id:'M'+(++S.seq.m), estate:e, date:d, worker:wid, div:r.div, sub:r.sub, variety:SUB[r.sub].variety, gross:r1(net+tare), bags, tare, net, remark:sq%41===0?'Wet cherries after rain':sq%53===0?'Some green cherries picked':'', status:'SUBMITTED', sync:'synced', at:d+(k?'T17:45':'T17:10')});
       }
     }
   }
@@ -709,17 +762,21 @@ function seed(){
   const b1 = S.batches.find(b=>b.code==='B-GLZ-2026-0001'), b3 = S.batches.find(b=>b.code==='B-GLZ-2026-0003');
   const total = bAvail(b1)+bAvail(b3);
   createPack({estate:'GLZ', at:'2026-10-21T15:00', grade:'AA', bagType:'GUNNY', bagKg:60, count:Math.min(6,Math.floor(total/60)), mode:'fill', batches:[{code:b1.code, kg:bAvail(b1)},{code:b3.code, kg:bAvail(b3)}]});
+  const adj = [0.05, 0.1, 0, -0.15, 0.05, 0.1]; S.packs[0].bags.forEach((b,i)=>{ b.weighed = r2(b.kg+adj[i%adj.length]); });
   const mixed = S.packs[0].bags.find(b=>b.sources.length>1) || S.packs[0].bags[0];
   S.ui.traceQ = mixed.code;
 }
-function makeWash(e, d, at, ids, R, fl, rj){
+function makeWash(e, d, at, ids, R, fl, rj, rc, why){
   const entries = ids.map(id=>S.muster.find(m=>m.id===id));
-  const received = r1(sum(entries,m=>m.net));
+  const musterKg = r1(sum(entries,m=>m.net)); const n = ++S.seq.wash[e];
+  /* Sample data: a small loss between the muster scale and the washing scale, and now and then a larger one with its reason */
+  const big = rc==null && n%9===4;
+  const received = rc!=null ? rc : r1(musterKg - (big ? musterKg*0.03 : musterKg*0.002*(n%3)));
   const floaters = fl!=null ? fl : r1(received*(0.025+R()*0.015));
   const rejected = rj!=null ? rj : r1(received*(0.01+R()*0.01));
-  const code = 'WL-'+e+'-2026-'+pad(++S.seq.wash[e],4);
+  const code = 'WL-'+e+'-2026-'+pad(n,4);
   entries.forEach(m=>{ m.washLot = code; });
-  const lot = {code, estate:e, date:d, at, entries:ids, received, floaters, rejected, accepted:r1(received-floaters-rejected), by:'Processing operator (sample)'};
+  const lot = {code, estate:e, date:d, at, entries:ids, musterKg, received, diffReason:why!=null?why:(big?'Cherries spilled in transport':''), floaters, rejected, accepted:r1(received-floaters-rejected), by:rc!=null?'Processing operator':'Processing operator (sample)'};
   S.wash.push(lot);
   return lot;
 }
@@ -734,9 +791,9 @@ function simBatch(e, p, R){
     let actual = tgt;
     if(STAGE[key].dry && p.dryH) actual = p.dryH;
     if(key==='QUALITY_CHECK') actual = 20;
-    const st = {key, start:t, plannedEnd:addH(t,tgt), end:'', inKg:r1(kgIn), outKg:0, res:resFor(key,kgIn), readings:[], status:'IN_PROGRESS', by:key==='QUALITY_CHECK'?'':'Processing operator (sample)'};
+    const st = {key, start:t, plannedEnd:addH(t,tgt), end:'', inKg:r1(kgIn), outKg:0, res:resFor(key,kgIn), readings:[], log:[], status:'IN_PROGRESS', by:key==='QUALITY_CHECK'?'':'Processing operator (sample)'};
     const end = addH(t,actual);
-    seedReadings(st, b, end, p.slow, R);
+    seedReadings(st, b, end, p.slow, R); seedLog(st, end);
     b.stages.push(st);
     if(key==='QUALITY_CHECK' && p.holdQC) break;
     if(toMs(end)>toMs(S.now)) break;
@@ -748,6 +805,17 @@ function simBatch(e, p, R){
   }
   S.batches.push(b); IDX.batch.set(b.code,b);
   return b;
+}
+function seedLog(st, endAt){
+  if(!STAGE[st.key].dry) return;
+  const until = Math.min(toMs(endAt), toMs(S.now));
+  for(let d=addDays(dOf(st.start),1); toMs(d+'T11:00')<=until; d=addDays(d,1)) st.log.push({at:d+'T11:00', kind:'TURNED', note:'', by:'sample'});
+  const rain = '2026-10-19T15:20';
+  if(toMs(st.start)<toMs(rain) && toMs(rain)<until){
+    st.log.push({at:rain, kind:'RAIN', note:'Heavy shower', by:'sample'}, {at:'2026-10-19T15:35', kind:'COVERED', note:'', by:'sample'});
+    if(toMs('2026-10-20T09:00')<=until) st.log.push({at:'2026-10-20T09:00', kind:'UNCOVERED', note:'', by:'sample'});
+  }
+  st.log.sort((a,b)=>a.at<b.at?-1:1);
 }
 function seedReadings(st, b, endAt, slow, R){
   const until = Math.min(toMs(endAt), toMs(S.now)); const H = hoursBetween(st.start, st.plannedEnd) || 1;
@@ -841,7 +909,7 @@ function renderField(){
       <h2>Try the supervisor flow</h2>
       <ol class="guide-list">
         <li>Attendance: mark the remaining workers, change a division if needed, then submit.</li>
-        <li>Muster: pick a worker, type gross weight on the keypad, save. Net weight is calculated.</li>
+        <li>Muster: pick a worker, type the gross weight on the keypad, set the number of bags, save. Net weight is calculated.</li>
         <li>Switch to <b>Offline</b> and save a few entries. They wait on the phone until you sync.</li>
         <li>Submit the muster, then open the Estate portal: the entries appear under Plucking and Washing.</li>
       </ol>
@@ -883,7 +951,7 @@ function fToday(e,d){
   const cnt = sh ? countSheet(sh) : null;
   return `
   <div class="fcard"><div class="row"><b>Attendance</b><span class="spacer"></span>${sh?statusChip(sh.status):'<span class="chip">Not started</span>'}</div>
-    ${sh?`<small class="muted">${cnt.P} present · ${cnt.H} half day · ${cnt.A} absent or leave · ${cnt.none} not marked</small>`:'<small class="muted">No sheet for today yet.</small>'}
+    ${sh?`<small class="muted">${cnt.P} present · ${cnt.H} half day · ${cnt.A} absent or leave${cnt.O?' · '+cnt.O+' off or holiday':''} · ${cnt.none} not marked</small>`:'<small class="muted">No sheet for today yet.</small>'}
     <button class="btn btn-primary" data-act="ftab" data-v="attendance">${sh?'Open attendance':'Start today’s attendance'}</button></div>
   <div class="fcard"><div class="row"><b>Evening muster</b><span class="spacer"></span><span class="chip">${ms.length} entries</span></div>
     <small class="muted">${kg(sum(ms,m=>m.net))} net recorded today</small>
@@ -891,7 +959,7 @@ function fToday(e,d){
   <div class="fcard"><div class="row"><b>Sync</b><span class="spacer"></span>${S.queue.length?`<span class="chip bad">${S.queue.length} waiting</span>`:'<span class="chip ok">Up to date</span>'}</div>
     <small class="muted">Last synced ${fdt(S.field.lastSync)}</small></div>`;
 }
-function countSheet(sh){ const c={P:0,H:0,A:0,none:0}; for(const r of Object.values(sh.rows)){ if(r.st==='P') c.P++; else if(r.st==='H') c.H++; else if(r.st) c.A++; else c.none++; } return c; }
+function countSheet(sh){ const c={P:0,H:0,A:0,O:0,none:0}; for(const r of Object.values(sh.rows)){ if(r.st==='P') c.P++; else if(r.st==='H') c.H++; else if(r.st==='O'||r.st==='F') c.O++; else if(r.st) c.A++; else c.none++; } return c; }
 function fAttendance(e,d){
   const sh = sheetOf(e,d);
   if(!sh) return `<p>Today’s sheet copies yesterday’s divisions and jobs, so you only change what is different.</p><button class="btn btn-primary" data-act="startSheet">Start today’s attendance</button>`;
@@ -907,7 +975,7 @@ function fAttendance(e,d){
       <div class="tri" role="group" aria-label="Attendance for ${esc(w.name)}" aria-disabled="${locked}">${tri}</div></div>
       ${editing?assignEditor(e,w.id,r):''}`;
   }).join('');
-  return `<div class="row"><small class="muted">${c.P} present · ${c.H} half · ${c.A} absent · ${c.none} not marked</small><span class="spacer"></span>${statusChip(sh.status)}</div>
+  return `<div class="row"><small class="muted">${c.P} present · ${c.H} half · ${c.A} absent${c.O?' · '+c.O+' off':''} · ${c.none} not marked</small><span class="spacer"></span>${statusChip(sh.status)}</div>
     ${locked?'':`<div class="row"><button class="btn" data-act="markRest">Mark the rest present</button></div>`}
     <div>${rows}</div>
     ${locked?`<p class="note">Submitted ${sh.submittedAt?fdt(sh.submittedAt):''}. The estate manager approves it in the portal.</p>`:
@@ -936,7 +1004,7 @@ function fMuster(e,d){
   const div = DIV[dr.div]; const bs = div ? bearingSubs(div) : [];
   if(!bs.find(s=>s.code===dr.sub)) dr.sub = bs.length ? bs[0].code : '';
   const sub = SUB[dr.sub];
-  const g = parseFloat(dr.gross)||0, t = parseFloat(dr.tare)||0, net = r1(g-t);
+  const g = parseFloat(dr.gross)||0, t = parseFloat(dr.tare)||0, nb = dr.bags||1, net = r1(g-nb*t);
   const tot = sum(ms,m=>m.net);
   const byVar = {}; ms.forEach(m=>add(byVar, VARIETY[m.variety], m.net));
   return `
@@ -949,16 +1017,18 @@ function fMuster(e,d){
     ${sub && !sub.variety?'<small class="chip warn">Variety for this subdivision is still to be confirmed by the owner</small>':''}
     <div class="wboxes">
       <button class="wbox ${dr.focus==='gross'?'focus':''}" data-act="focusW" data-v="gross"><small class="muted">Gross</small><b>${esc(dr.gross||'0')}</b></button>
-      <button class="wbox ${dr.focus==='tare'?'focus':''}" data-act="focusW" data-v="tare"><small class="muted">Bag</small><b>${esc(dr.tare||'0')}</b></button>
+      <button class="wbox ${dr.focus==='tare'?'focus':''}" data-act="focusW" data-v="tare"><small class="muted">Each bag</small><b>${esc(dr.tare||'0')}</b></button>
       <div class="wbox netbox"><small class="muted">Net kg</small><b>${net>0?nf1.format(net):'–'}</b></div>
     </div>
+    <div class="row"><span class="muted">Bags</span><button class="btn" data-act="bagStep" data-v="-1" aria-label="One bag fewer" ${nb<=1?'disabled':''}>−</button><b class="num" style="min-width:2ch;text-align:center">${nb}</b><button class="btn" data-act="bagStep" data-v="1" aria-label="One bag more" ${nb>=9?'disabled':''}>+</button><span class="spacer"></span><small class="muted">Less ${kg(nb*t)} for bags</small></div>
     <div class="keypad">${['1','2','3','4','5','6','7','8','9','.','0','⌫'].map(k=>`<button data-act="key" data-v="${k}" aria-label="${k==='⌫'?'Delete':k}">${k}</button>`).join('')}</div>
+    <label class="f" for="mu-rm">Remark (optional)<input type="text" id="mu-rm" maxlength="80" value="${esc(dr.remark||'')}" data-keep="muRemark" placeholder="For example, wet cherries"></label>
     ${f.msg?`<div class="msg ${f.msgOk?'ok':''}">${esc(f.msg)}</div>`:''}
     <button class="btn btn-primary" data-act="saveMuster">Save and next worker</button>
   </div>
   <div class="row"><b>Today</b><span class="spacer"></span><small class="muted">${ms.length} entries · ${kg(tot)}</small></div>
   <small class="muted">${Object.entries(byVar).map(([v,k])=>esc(v)+' '+kg(k)).join(' · ')||'No entries yet'}</small>
-  <div>${ms.slice(0,12).map(m=>`<div class="wrow"><div class="who"><span class="mono">${m.worker}</span> ${esc(workerBy(m.worker).name)}<small>${esc(DIV[m.div].name)} · ${m.sub} · ${VARIETY[m.variety]} · ${m.at.slice(11,16)}</small></div>
+  <div>${ms.slice(0,12).map(m=>`<div class="wrow"><div class="who"><span class="mono">${m.worker}</span> ${esc(workerBy(m.worker).name)}<small>${esc(DIV[m.div].name)} · ${m.sub} · ${VARIETY[m.variety]} · ${m.bags||1} bag${(m.bags||1)===1?'':'s'} · ${m.at.slice(11,16)}${m.remark?' · '+esc(m.remark):''}</small></div>
     <div class="r"><b class="num">${kg(m.net)}</b><br>${m.sync==='pending'?'<span class="chip bad">not synced</span>':m.status==='SUBMITTED'?'<span class="chip ok">submitted</span>':'<span class="chip">saved</span>'}</div></div>`).join('')}</div>
   ${ms.length?`<div class="stickybar"><button class="btn btn-primary" style="flex:1" data-act="submitMuster" ${ms.some(m=>m.status!=='SUBMITTED')?'':'disabled'}>Submit today’s muster</button></div>`:''}`;
 }
@@ -975,10 +1045,10 @@ function fSync(){
 }
 
 /* ===== Portal ===== */
-const PAGES = [['dashboard','Dashboard','grid'],['attendance','Attendance','users'],['plucking','Plucking','leaf'],['washing','Washing','drop'],['processing','Processing','layers'],['packing','Packing','box'],['trace','Trace a bag','search'],['masters','Masters','map'],['setup','Process settings','sliders']];
+const PAGES = [['dashboard','Dashboard','grid'],['attendance','Attendance','users'],['plucking','Plucking','leaf'],['washing','Washing','drop'],['processing','Processing','layers'],['packing','Packing','box'],['reports','Reports','chart'],['trace','Trace a bag','search'],['masters','Masters','map'],['setup','Process settings','sliders']];
 function renderPortal(){
   const counts = navCounts();
-  const page = {dashboard:pDashboard, attendance:pAttendance, plucking:pPlucking, washing:pWashing, processing:pProcessing, packing:pPacking, trace:pTrace, masters:pMasters, setup:pSetup}[S.ui.page] || pDashboard;
+  const page = {dashboard:pDashboard, attendance:pAttendance, plucking:pPlucking, washing:pWashing, processing:pProcessing, packing:pPacking, reports:pReports, trace:pTrace, masters:pMasters, setup:pSetup}[S.ui.page] || pDashboard;
   return `<div class="portal"><nav class="side" aria-label="Portal">${PAGES.map(([k,l,ic])=>`<button data-act="page" data-v="${k}" aria-current="${S.ui.page===k?'page':'false'}">${icon(ic)}<span class="label">${l}</span>${counts[k]?`<span class="count" aria-label="${counts[k]} need attention">${counts[k]}</span>`:''}</button>`).join('')}</nav>
     <main class="main">${page()}</main></div>`;
 }
@@ -991,7 +1061,7 @@ function navCounts(){
   return c;
 }
 function statusChip(s){
-  const m = {DRAFT:['Draft',''], SUBMITTED:['Submitted','warn'], APPROVED:['Approved','ok'], ACTIVE:['In progress','info'], AWAITING_QC:['Awaiting quality check','warn'], READY:['Ready to pack','ok'], PART_PACKED:['Partly packed','ok'], PACKED:['Packed',''], PLANNED:['Planned','']}[s] || [s,''];
+  const m = {DRAFT:['Draft',''], SUBMITTED:['Submitted','warn'], APPROVED:['Approved','ok'], ACTIVE:['In progress','info'], AWAITING_QC:['Awaiting quality check','warn'], READY:['Ready to pack','ok'], PART_PACKED:['Partly packed','ok'], PACKED:['Packed',''], PLANNED:['Planned',''], ON_HOLD:['On hold','bad']}[s] || [s,''];
   return `<span class="chip ${m[1]}">${m[0]}</span>`;
 }
 function estTag(e){ return S.ui.estate==='ALL' ? `<span class="chip">${ESTATE[e].short}</span>` : ''; }
@@ -1004,11 +1074,15 @@ function alerts(es){
   const out = [];
   for(const b of S.batches.filter(b=>es.includes(b.estate))){
     const c = curStage(b); if(!c) continue;
+    if(b.hold && c.status==='IN_PROGRESS'){ out.push({sev:'warn', t:`${b.code} is on hold`, d:`Since ${fdt(b.hold.at)}: ${b.hold.reason}`, act:'openBatch', v:b.code}); continue; }
+    const rain = (c.log||[]).filter(x=>x.kind==='RAIN').pop();
+    if(c.status==='IN_PROGRESS' && rain && hoursBetween(rain.at,S.now)<12 && !isCovered(c)) out.push({sev:'bad', t:`Rain logged on ${b.code} and it is not covered`, d:`${fdt(rain.at)} · ${c.res}`, act:'openBatch', v:b.code});
     if(isOverdue(c)){ const m=batchMoisture(b); out.push({sev:'bad', t:`${b.code} ${STAGE[c.key].label.toLowerCase()} is ${dur(hoursBetween(c.plannedEnd,S.now))} past its target`, d:`${procLabel(b)} · ${c.res}${m?` · last moisture ${m.value}%`:''}`, act:'openBatch', v:b.code}); }
     else if(readingDue(c)) out.push({sev:'warn', t:`${b.code} needs a moisture reading`, d:`Last reading more than 30 hours ago · ${c.res}`, act:'openBatch', v:b.code});
     if(bStatus(b)==='AWAITING_QC') out.push({sev:'warn', t:`${b.code} is waiting for the quality check`, d:procLabel(b), act:'openBatch', v:b.code});
     if(bStatus(b)==='READY') out.push({sev:'ok', t:`${b.code} is ready to pack`, d:`${kg(bAvail(b))} · ${datesLabel(batchHarvestDates(b))}`, act:'page', v:'packing'});
   }
+  for(const p of S.packs.filter(p=>es.includes(p.estate))){ const w=weighCount(p); if(w.under) out.push({sev:'warn', t:`${p.code}: ${w.under} bag${w.under===1?' is':'s are'} under weight`, d:`${w.n} of ${p.bags.length} bags weighed after filling`, act:'openPack', v:p.code}); }
   for(const g of waitingWash(es)) out.push({sev:'info', t:`${ESTATE[g.estate].short}: ${g.ids.length} muster entries from ${fd(g.date)} are waiting for washing`, d:kg(sum(g.ids,id=>musterBy(id).net)), act:'page', v:'washing'});
   for(const s of Object.values(S.att).filter(s=>es.includes(s.estate)&&s.status==='SUBMITTED')) out.push({sev:'info', t:`${ESTATE[s.estate].short} attendance for ${fd(s.date)} is waiting for approval`, d:'Submitted by '+s.supervisor, act:'openSheet', v:s.estate+'|'+s.date});
   const pendingPhone = S.muster.filter(m=>es.includes(m.estate)&&m.sync==='pending').length;
@@ -1026,7 +1100,7 @@ function pDashboard(){
   const prevDay = [...new Set(ms.map(m=>m.date).filter(x=>x<d))].sort().pop();
   const prevKg = sum(ms.filter(m=>m.date===prevDay),m=>m.net);
   const bs = S.batches.filter(b=>es.includes(b.estate));
-  const active = bs.filter(b=>['ACTIVE','AWAITING_QC'].includes(bStatus(b)));
+  const active = bs.filter(b=>['ACTIVE','AWAITING_QC','ON_HOLD'].includes(bStatus(b)));
   const ready = sum(bs,b=>['READY','PART_PACKED'].includes(bStatus(b))?bAvail(b):0);
   const packs = S.packs.filter(p=>es.includes(p.estate)); const packedKg = sum(packs,p=>sum(p.bags,b=>b.kg));
   const al = alerts(es);
@@ -1034,7 +1108,7 @@ function pDashboard(){
   const daily = days.map(x=>({d:x, kg:sum(ms.filter(m=>m.date===x),m=>m.net)}));
   const stageCounts = BOARD_COLS.map(k=>({k, n:bs.filter(b=>boardCol(b)===k).length}));
   const divRows = DIVS.filter(x=>es.includes(x.estate) && x.expected>0).map(x=>({x, got:sum(ms.filter(m=>m.div===x.code),m=>m.net)})).sort((a,b)=>b.got-a.got).slice(0,8);
-  return `<div class="page-h"><div><h1>${S.ui.estate==='ALL'?'Both estates':ESTATE[S.ui.estate].name}</h1><p>Season 2026-27 so far, as of ${dow(S.now)} ${fd(S.now)} ${S.now.slice(11,16)}.</p></div></div>
+  return `<div class="page-h"><div><h1>${S.ui.estate==='ALL'?'Both estates':ESTATE[S.ui.estate].name}</h1><p>Season 2026-27 so far, as of ${dow(S.now)} ${fd(S.now)} ${S.now.slice(11,16)}.</p></div><button class="btn" data-act="openReport" data-v="daily">${icon('chart')}Today’s summary</button></div>
   <div class="kpis">
     <div class="kpi"><span class="eyebrow">Workers today</span><span class="v">${present} <small class="muted">of ${total}</small></span><small class="muted">Present or half day on today’s sheets</small></div>
     <div class="kpi"><span class="eyebrow">Cherry plucked ${prevDay?fds(prevDay):''}</span><span class="v">${kg(prevKg)}</span><small class="muted">Last full day of muster</small></div>
@@ -1059,6 +1133,7 @@ function pDashboard(){
       <li>Processing: start a new batch from the lot, pick a route, then complete each stage.</li>
       <li>Packing: pack <span class="mono">B-GLZ-2026-0002</span>, which mixes two harvest dates, into bags.</li>
       <li>Trace a bag: scan or type a bag code to see every harvest date, division and worker behind it.</li>
+      <li>Reports: copy the day’s summary for WhatsApp, compare outturn by route and field, and see kilograms per plucker.</li>
     </ol></section>`;
 }
 function dailyChart(rows){
@@ -1077,25 +1152,27 @@ const HOWTO = {
     ['Morning','Workers are marked present on the attendance register with the job Plucking and a field.'],
     ['Evening muster','Each worker brings their bags to the muster point. The supervisor on the phone, or the office here, picks the worker; the field comes from the morning’s attendance.'],
     ['Variety','If the field has more than one variety, such as Super Kadu, pick the variety; its subdivision letter is shown in brackets. Otherwise it is filled in.'],
-    ['Weigh','Enter the gross weight and the bag weight; net weight is calculated. A worker can be weighed more than once.'],
+    ['Weigh','Enter the gross weight, the number of bags and the weight of one empty bag; net weight is gross less the bags. Add a remark for anything unusual, such as wet cherries. A worker can be weighed more than once.'],
     ['Submit','Submit the day’s muster. Submitted weigh-ins go to Washing. Changes after that are made as corrections with a reason.']]},
   washing:{title:'How washing and sorting is recorded', steps:[
     ['Waiting','Each day’s submitted muster appears under Waiting for washing, with its total net weight.'],
     ['Create a lot','Create a washing lot. All of that day’s weigh-ins are included; untick any that were washed separately.'],
-    ['Floaters and rejects','Weigh the floaters removed in water and the rejects picked out by hand. Accepted weight is received minus both.'],
-    ['Check','The lot gets a code. The muster total and the received weight are compared, and a difference needs a reason.'],
+    ['Weigh again','Weigh the cherries at washing. It is compared with the muster total; a difference above the allowed percentage needs a reason.'],
+    ['Floaters and rejects','Weigh the floaters removed in water and the rejects picked out by hand. Accepted weight is the weight at washing minus both.'],
     ['Hand over','Accepted kilograms wait under Not yet in a batch until a processing batch takes them.']]},
   processing:{title:'How processing is recorded', steps:[
     ['New batch','Pick Route A (Pulping), B (Fermentation) or C (Natural), and the washing lots and kilograms to use. Lots from different days can be combined; each day’s share is kept for tracing.'],
-    ['Start a stage','Each stage starts with its equipment (pulper, tank and recipe, floor yard or trays) and a target time from Process settings.'],
-    ['Readings','Add pH and temperature during fermentation, and moisture daily during drying. The board flags stages past target and readings that are due.'],
+    ['Start a stage','Each stage starts with its equipment and a target time from Process settings: the pulper, a tank and recipe, a floor yard, or tray numbers picked by hand (the first free trays are suggested).'],
+    ['Readings and log','Add pH and temperature during fermentation, and moisture daily during drying. Log turning, covering and rain on drying stages. The board flags stages past target, readings that are due and rain on uncovered coffee.'],
     ['Complete','Complete a stage with the weight out. After pulping, choose floor or tray drying.'],
-    ['Quality check','Approve only when moisture is in the release range, or send it back for more drying. Approved batches move to Ready to pack.']]},
+    ['Quality check','Approve only when moisture is in the release range, or send it back for more drying. Approved batches move to Ready to pack.'],
+    ['Hold or split','Put a batch on hold with a reason, or split part of it onto other trays or another tank. Both parts keep the same share of every washing lot, so tracing still works.']]},
   packing:{title:'How packing is recorded', steps:[
     ['Ready','Batches approved at the quality check appear under Ready to pack with their harvest dates.'],
     ['Choose','Pick one process and the batches and kilograms to pack. Batches from different harvest dates can go into one lot.'],
     ['Bags','Choose grade, bag type, weight per bag and number of bags, and whether to fill bags batch by batch or mix evenly.'],
-    ['Labels','Each bag gets a code and a QR label showing its own harvest dates, fields and varieties.']]}
+    ['Labels','Each bag gets a code and a QR label showing its own harvest dates, fields and varieties.'],
+    ['Weigh bags','Weigh each filled bag and enter its net weight in the packed lot. Bags under weight are flagged.']]}
 };
 function howTo(key){
   const h = HOWTO[key]; const open = (S.ui.howOpen||{})[key]!==false;
@@ -1144,8 +1221,8 @@ function pPlucking(){
     ${recon.map(r=>`<tr class="click" data-act="plGo" data-v="${r.d}"><td>${fds(r.d)}</td><td class="r">${kg(r.mk)}</td><td class="r">${kg(r.wk)}</td><td>${r.open?`<span class="chip">${r.open} not submitted</span>`:r.unwashed?`<span class="chip warn">${r.unwashed} not washed</span>`:'<span class="chip ok">All washed</span>'}</td></tr>`).join('')}
   </tbody></table></div></section></div>
   <section class="panel"><div class="panel-h"><h2>Weigh-ins on ${fd(d)}</h2>${recorded?`<button class="btn btn-primary" data-act="peSubmit">Submit ${recorded} weigh-in${recorded===1?'':'s'} for washing</button>`:''}</div>
-    ${dm.length?`<div class="tbl-wrap"><table class="data"><thead><tr><th>Time</th><th>Worker</th><th>Field</th><th>Subdivision</th><th>Variety</th><th class="r">Gross</th><th class="r">Bag</th><th class="r">Net</th><th>Status</th><th>Entered</th><th></th></tr></thead><tbody>
-    ${dm.slice().sort((a,b)=>a.at<b.at?1:-1).map(m=>`<tr><td>${m.at.slice(11,16)}</td><td><span class="mono">${m.worker}</span> ${esc(workerBy(m.worker).name)}</td><td>${esc(fieldName(m.div))}</td><td class="mono">${m.sub}</td><td>${VARIETY[m.variety]}</td><td class="r">${nf1.format(m.gross)}</td><td class="r">${nf1.format(m.tare)}</td><td class="r"><b>${nf1.format(m.net)}</b></td><td>${M_STATUS(m)}</td><td><small class="muted">${m.source==='portal'?'Portal':'Phone'}</small></td><td class="r">${m.status!=='SUBMITTED'&&!m.washLot?`<button class="btn-link" data-act="peRemove" data-v="${m.id}">Remove</button>`:''}</td></tr>`).join('')}
+    ${dm.length?`<div class="tbl-wrap"><table class="data"><thead><tr><th>Time</th><th>Worker</th><th>Field</th><th>Subdivision</th><th>Variety</th><th class="r">Gross</th><th class="r">Bags</th><th class="r">Less bags</th><th class="r">Net</th><th>Status</th><th>Entered</th><th></th></tr></thead><tbody>
+    ${dm.slice().sort((a,b)=>a.at<b.at?1:-1).map(m=>`<tr><td>${m.at.slice(11,16)}</td><td><span class="mono">${m.worker}</span> ${esc(workerBy(m.worker).name)}${m.remark?`<br><small class="muted">${esc(m.remark)}</small>`:''}</td><td>${esc(fieldName(m.div))}</td><td class="mono">${m.sub}</td><td>${VARIETY[m.variety]}</td><td class="r">${nf1.format(m.gross)}</td><td class="r">${m.bags||'–'}</td><td class="r">${nf1.format(m.tare)}</td><td class="r"><b>${nf1.format(m.net)}</b></td><td>${M_STATUS(m)}</td><td><small class="muted">${m.source==='portal'?'Portal':'Phone'}</small></td><td class="r">${m.status!=='SUBMITTED'&&!m.washLot?`<button class="btn-link" data-act="peRemove" data-v="${m.id}">Remove</button>`:''}</td></tr>`).join('')}
     </tbody></table></div>`:'<p class="muted">No weigh-ins for this day.</p>'}</section>`;
 }
 function weighInPanel(e,d,sh,dm){
@@ -1164,13 +1241,22 @@ function weighInPanel(e,d,sh,dm){
       ${bs.length>1?`<label class="f" for="pe-s">Variety<select id="pe-s" data-change="peSub">${bs.map(s=>`<option value="${s.code}" ${pe.sub===s.code?'selected':''}>${VARIETY[s.variety]} (${s.code.slice(-1)})</option>`).join('')}</select></label>`
         :`<div class="f">Variety<b>${pe.sub?VARIETY[SUB[pe.sub].variety]+' ('+pe.sub.slice(-1)+')':'–'}</b></div>`}
       <label class="f" for="pe-g">Gross (kg)<input type="number" id="pe-g" step="0.1" min="0" inputmode="decimal" data-live="pe"></label>
-      <label class="f" for="pe-t">Bag (kg)<input type="number" id="pe-t" step="0.1" min="0" value="1.0" inputmode="decimal" data-live="pe"></label>
+      <label class="f" for="pe-b">Bags<input type="number" id="pe-b" step="1" min="1" value="2" inputmode="numeric" data-live="pe"></label>
+      <label class="f" for="pe-t">Each bag (kg)<input type="number" id="pe-t" step="0.1" min="0" value="${S.settings.bagWt}" inputmode="decimal" data-live="pe"></label>
       <div class="f">Net<b id="pe-net">–</b></div>
+      <label class="f" for="pe-rm">Remark<input type="text" id="pe-rm" maxlength="80" placeholder="Optional"></label>
     </div>
     ${pe.msg?`<div class="msg ${pe.ok?'ok':''}" role="status">${esc(pe.msg)}</div>`:''}
     <div class="row"><button class="btn btn-primary" data-act="peSave">Save and next worker</button><small class="muted">Field ${pe.div&&sh.rows[pe.worker]&&sh.rows[pe.worker].div===pe.div?'from this morning’s attendance':'changed from this morning’s attendance'}</small></div></section>`;
 }
 
+const WASH_WHY = ['Cherries spilled in transport','Scale difference between muster and washing','Muster weight entered wrongly','Cherries dried out while waiting'];
+const washDiff = l=>({kg:r1(l.received-l.musterKg), pct:l.musterKg>0 ? (l.received-l.musterKg)/l.musterKg*100 : 0});
+function diffCell(l){
+  const x = washDiff(l); const sign = x.kg>0?'+':x.kg<0?'−':'';
+  if(Math.abs(x.pct) > S.settings.washTol) return `<span class="chip warn">${sign}${kg(Math.abs(x.kg))} (${sign}${Math.abs(x.pct).toFixed(1)}%)</span>${l.diffReason?`<br><small class="muted">${esc(l.diffReason)}</small>`:''}`;
+  return `<span class="muted num">${x.kg?sign+kg(Math.abs(x.kg)):'None'}</span>`;
+}
 function pWashing(){
   const es = estList(); const wait = waitingWash(es);
   const lots = S.wash.filter(l=>es.includes(l.estate)).sort((a,b)=>a.at<b.at?1:-1).slice(0,20);
@@ -1178,8 +1264,8 @@ function pWashing(){
   ${howTo('washing')}
   <section class="panel"><div class="panel-h"><h2>Waiting for washing</h2></div>
     ${wait.length?`<div class="alerts">${wait.map(g=>`<div class="alert info"><div><b>${ESTATE[g.estate].short} · ${dow(g.date)} ${fd(g.date)}</b><br><small class="muted">${g.ids.length} muster entries · ${kg(sum(g.ids,id=>musterBy(id).net))} net cherry</small></div><button class="btn btn-primary" data-act="newWash" data-v="${g.estate}|${g.date}">Create washing lot</button></div>`).join('')}</div>`:'<p class="muted">All submitted muster is washed. Submit weigh-ins on the Plucking screen or the supervisor phone to add more.</p>'}</section>
-  <section class="panel"><div class="panel-h"><h2>Washing lots</h2></div><div class="tbl-wrap"><table class="data"><thead><tr><th>Lot</th><th>Harvest day</th><th class="r">Received</th><th class="r">Floaters</th><th class="r">Rejected</th><th class="r">Accepted</th><th class="r">Not yet in a batch</th></tr></thead><tbody>
-  ${lots.map(l=>`<tr><td class="mono">${l.code}</td><td>${fd(l.date)} ${estTag(l.estate)}</td><td class="r">${kg(l.received)}</td><td class="r">${kg(l.floaters)}</td><td class="r">${kg(l.rejected)}</td><td class="r"><b>${kg(l.accepted)}</b></td><td class="r">${lotAvail(l)>0?`<span class="chip warn">${kg(lotAvail(l))}</span>`:'<span class="muted">0</span>'}</td></tr>`).join('')}
+  <section class="panel"><div class="panel-h"><h2>Washing lots</h2><small class="muted">A difference of more than ${S.settings.washTol}% between muster and washing needs a reason</small></div><div class="tbl-wrap"><table class="data"><thead><tr><th>Lot</th><th>Harvest day</th><th class="r">Muster</th><th class="r">Weighed at washing</th><th>Difference</th><th class="r">Floaters</th><th class="r">Rejected</th><th class="r">Accepted</th><th class="r">Not yet in a batch</th></tr></thead><tbody>
+  ${lots.map(l=>`<tr><td class="mono">${l.code}</td><td>${fd(l.date)} ${estTag(l.estate)}</td><td class="r">${kg(l.musterKg)}</td><td class="r">${kg(l.received)}</td><td>${diffCell(l)}</td><td class="r">${kg(l.floaters)}</td><td class="r">${kg(l.rejected)}</td><td class="r"><b>${kg(l.accepted)}</b></td><td class="r">${lotAvail(l)>0?`<span class="chip warn">${kg(lotAvail(l))}</span>`:'<span class="muted">0</span>'}</td></tr>`).join('')}
   </tbody></table></div></section>`;
 }
 function pProcessing(){
@@ -1192,7 +1278,7 @@ function pProcessing(){
       <small>${ROUTE[b.route].short}${b.recipe?' · '+b.recipe+' '+RECIPE[b.recipe].name:''} ${estTag(b.estate)}</small>
       ${st==='READY'||st==='PART_PACKED'?`<small>${kg(bAvail(b))} to pack</small>`:`<small>${kg(c.inKg)} in · ${esc(c.res||'')}</small>`}
       ${st==='ACTIVE'?`<div class="barrow"><div class="bar"><i style="width:${Math.min(100,pct(el,tg))}%;${isOverdue(c)?'background:var(--bad)':''}"></i></div><small class="num">${dur(el)} of ${dur(tg)}</small></div>`:''}
-      <div class="row">${isOverdue(c)?'<span class="chip bad">Past target</span>':''}${readingDue(c)?'<span class="chip warn">Reading due</span>':''}${st==='AWAITING_QC'?'<span class="chip warn">Check moisture</span>':''}${m&&st!=='READY'?`<span class="chip">${m.value}% moisture</span>`:''}</div></button>`; };
+      <div class="row">${b.hold?'<span class="chip bad">On hold</span>':''}${c&&c.status==='IN_PROGRESS'&&isCovered(c)?'<span class="chip info">Covered</span>':''}${!b.hold&&isOverdue(c)?'<span class="chip bad">Past target</span>':''}${readingDue(c)?'<span class="chip warn">Reading due</span>':''}${st==='AWAITING_QC'?'<span class="chip warn">Check moisture</span>':''}${m&&st!=='READY'?`<span class="chip">${m.value}% moisture</span>`:''}</div></button>`; };
   const freeLots = S.wash.filter(l=>es.includes(l.estate) && lotAvail(l)>0).length;
   return `<div class="page-h"><div><h1>Processing</h1><p>Every batch follows one route. Drying targets come from Process settings and are copied onto each stage when it starts.</p></div>
     <button class="btn btn-primary" data-act="newBatch" ${freeLots?'':'disabled'} title="${freeLots?'':'No washed coffee is waiting for a batch'}">New batch${freeLots?` (${freeLots} lot${freeLots===1?'':'s'} waiting)`:''}</button></div>
@@ -1210,8 +1296,8 @@ function pPacking(){
   <section class="panel"><div class="panel-h"><h2>Ready to pack</h2></div><div class="tbl-wrap"><table class="data"><thead><tr><th>Batch</th><th>Process</th><th>Harvest dates</th><th class="r">Available</th><th></th></tr></thead><tbody>
     ${ready.map(b=>`<tr><td class="mono">${b.code} ${estTag(b.estate)}</td><td>${esc(procLabel(b))}</td><td>${esc(datesLabel(batchHarvestDates(b)).replace('Harvested ',''))}</td><td class="r">${kg(bAvail(b))}</td><td class="r"><button class="btn" data-act="newPack" data-v="${b.code}">Pack</button></td></tr>`).join('')||'<tr><td colspan="5" class="muted">Nothing is ready. Approve a batch in Processing first.</td></tr>'}
   </tbody></table></div></section>
-  <section class="panel"><div class="panel-h"><h2>Packed lots</h2></div><div class="tbl-wrap"><table class="data"><thead><tr><th>Lot</th><th>Packed</th><th>Process</th><th class="r">Bags</th><th class="r">Net</th><th>Harvest dates</th></tr></thead><tbody>
-    ${packs.map(p=>{ const T=traceSources(p.bags.flatMap(b=>b.sources)); return `<tr class="click" data-act="openPack" data-v="${p.code}"><td class="mono">${p.code}</td><td>${fd(p.at)} ${estTag(p.estate)}</td><td>${esc(p.process)}</td><td class="r">${p.bags.length} × ${BAGS[p.bagType].label.toLowerCase()} ${nf3.format(p.bagKg)} kg</td><td class="r">${kg(sum(p.bags,b=>b.kg))}</td><td>${esc(datesLabel(Object.keys(T.dates)).replace('Harvested ',''))}</td></tr>`; }).join('')||'<tr><td colspan="6" class="muted">No packed lots yet.</td></tr>'}
+  <section class="panel"><div class="panel-h"><h2>Packed lots</h2></div><div class="tbl-wrap"><table class="data"><thead><tr><th>Lot</th><th>Packed</th><th>Process</th><th class="r">Bags</th><th class="r">Net</th><th>Harvest dates</th><th>Weighed after filling</th></tr></thead><tbody>
+    ${packs.map(p=>{ const T=traceSources(p.bags.flatMap(b=>b.sources)); return `<tr class="click" data-act="openPack" data-v="${p.code}"><td class="mono">${p.code}</td><td>${fd(p.at)} ${estTag(p.estate)}</td><td>${esc(p.process)}</td><td class="r">${p.bags.length} × ${BAGS[p.bagType].label.toLowerCase()} ${nf3.format(p.bagKg)} kg</td><td class="r">${kg(sum(p.bags,b=>b.kg))}</td><td>${esc(datesLabel(Object.keys(T.dates)).replace('Harvested ',''))}</td><td>${weighText(p)}</td></tr>`; }).join('')||'<tr><td colspan="7" class="muted">No packed lots yet.</td></tr>'}
   </tbody></table></div></section>`;
 }
 function pTrace(){
@@ -1277,13 +1363,171 @@ function labelCard(bag, lot){
     <span>${esc(listLabel(L.divs,'fields'))} · ${esc(L.vars.join(', '))}</span>
     <span style="grid-column:1 / -1">Packed ${fd(lot.at)} · Lot ${lot.code}</span></div>`;
 }
+/* ===== Reports: daily summary, outturn and plucker productivity ===== */
+const rDate = ()=>{ const d=S.ui.rDate||today(); return d>today()?today():d; };
+const inr = n=>'₹'+new Intl.NumberFormat('en-IN',{maximumFractionDigits:0}).format(Math.round(n));
+function pReports(){
+  const tab = S.ui.rtab||'daily';
+  const tabs = `<div class="seg" role="group" aria-label="Reports">${[['daily','Daily summary'],['outturn','Outturn'],['pluckers','Pluckers']].map(([k,l])=>`<button data-act="rtab" data-v="${k}" aria-pressed="${tab===k}">${l}</button>`).join('')}</div>`;
+  const intro = {daily:'One screen per estate for the end of the day, with a message ready to paste into WhatsApp.',
+    outturn:'How many kilograms of cherry it takes to make one kilogram of dried coffee, from batches that have passed the quality check.',
+    pluckers:'Kilograms plucked by each worker and per plucking day, with a pay preview at a rate you set.'}[tab];
+  const body = tab==='outturn' ? rOutturn() : tab==='pluckers' ? rPluckers() : rDaily();
+  return `<div class="page-h"><div><h1>Reports</h1><p>${intro}</p></div>${tabs}</div>${body}`;
+}
+/* --- Daily summary --- */
+function summaryRows(e,d){
+  const sh = sheetOf(e,d); const c = sh ? countSheet(sh) : null; const rows = [];
+  const fields = {}; if(sh) for(const r of Object.values(sh.rows)) if(working(r.st) && r.div) add(fields, fieldName(r.div), 1);
+  const tf = Object.entries(fields).sort((a,b)=>b[1]-a[1]);
+  rows.push({k:'Attendance', v:sh ? `${c.P} present, ${c.H} half day, ${c.A} absent or leave${c.O?', '+c.O+' off or holiday':''}${c.none?', '+c.none+' not marked':''}` : 'Not started',
+    sub:sh ? [statusChip(sh.status).replace(/<[^>]+>/g,'')+(tf.length?' · '+tf.slice(0,4).map(([f,n])=>f+' '+n).join(', ')+(tf.length>4?', and '+(tf.length-4)+' more field'+(tf.length===5?'':'s'):''):'')] : []});
+  const dm = S.muster.filter(m=>m.estate===e && m.date===d && m.sync==='synced');
+  const onPhone = S.muster.filter(m=>m.estate===e && m.date===d && m.sync==='pending').length;
+  const net = sum(dm,m=>m.net); const pl = new Set(dm.map(m=>m.worker)).size;
+  const byVar = {}; dm.forEach(m=>add(byVar, VARIETY[m.variety], m.net));
+  const notes = dm.filter(m=>m.remark).length;
+  rows.push({k:'Plucking', v:dm.length ? `${kg(net)} net cherry, ${dm.length} weigh-ins, ${pl} pluckers (${kg(net/pl)} each)` : 'No weigh-ins',
+    sub:[Object.keys(byVar).length ? Object.entries(byVar).map(([v,k])=>v+' '+kg(k)).join(' · ') : '', onPhone?onPhone+' weigh-ins still on a phone':'', notes?notes+' with a remark':''].filter(Boolean)});
+  const lots = S.wash.filter(l=>l.estate===e && dOf(l.at)===d);
+  rows.push({k:'Washing', v:lots.length ? `${lots.length} lot${lots.length===1?'':'s'}, ${kg(sum(lots,l=>l.received))} weighed (muster ${kg(sum(lots,l=>l.musterKg))}), ${kg(sum(lots,l=>l.accepted))} accepted` : 'No lots',
+    sub:lots.filter(l=>Math.abs(washDiff(l).pct)>S.settings.washTol).map(l=>`${l.code}: ${washDiff(l).kg>0?'+':'−'}${kg(Math.abs(washDiff(l).kg))}, ${l.diffReason||'no reason given'}`)});
+  const bs = S.batches.filter(b=>b.estate===e);
+  const started = bs.filter(b=>dOf(b.createdAt||'0000-00-00')===d).length;
+  const done = []; const rain = []; const holds = [];
+  bs.forEach(b=>b.stages.forEach(st=>{ if(st.status==='COMPLETED' && st.end && dOf(st.end)===d) done.push(b.code.slice(-4)+' '+STAGE[st.key].label.toLowerCase()); (st.log||[]).forEach(x=>{ if(x.kind==='RAIN' && dOf(x.at)===d) rain.push(x.at.slice(11,16)+' on '+b.code.slice(-4)); }); }));
+  const isToday = d===today(); const pp = [];
+  if(started) pp.push(started+' batch'+(started===1?'':'es')+' started');
+  if(done.length) pp.push(done.length+' stage'+(done.length===1?'':'s')+' completed');
+  if(isToday){ const live = bs.filter(b=>['ACTIVE','AWAITING_QC','ON_HOLD'].includes(bStatus(b))); pp.push(live.length+' batches in progress'); const od = live.filter(b=>!b.hold && isOverdue(curStage(b))).length; if(od) pp.push(od+' past target'); live.filter(b=>b.hold).forEach(b=>holds.push(b.code.slice(-4)+' on hold: '+b.hold.reason)); }
+  rows.push({k:'Processing', v:pp.join(', ')||'No changes', sub:[done.length?'Completed: '+done.slice(0,6).join(', ')+(done.length>6?' and '+(done.length-6)+' more':''):'', rain.length?'Rain logged at '+rain.join(', '):'', ...holds].filter(Boolean)});
+  const packs = S.packs.filter(p=>p.estate===e && dOf(p.at)===d);
+  rows.push({k:'Packing', v:packs.length ? `${sum(packs,p=>p.bags.length)} bags, ${kg(sum(packs,p=>sum(p.bags,b=>b.kg)))}` : 'Nothing packed',
+    sub:packs.map(p=>{ const w=weighCount(p); return p.code+' · '+w.n+' of '+p.bags.length+' weighed'+(w.under?', '+w.under+' under weight':''); })});
+  if(isToday){ const al = alerts([e]).filter(a=>a.sev!=='ok'); if(al.length) rows.push({k:'Needs attention', v:al.length+' item'+(al.length===1?'':'s'), sub:al.slice(0,5).map(a=>a.t).concat(al.length>5?['and '+(al.length-5)+' more']:[])}); }
+  return {rows, sh, c, net, lots, packs};
+}
+function summaryText(es, d){
+  const out = [];
+  for(const e of es){
+    const R = summaryRows(e,d);
+    out.push(`*${ESTATE[e].name} · ${dow(d)} ${fd(d)}*`);
+    for(const r of R.rows){ out.push(`*${r.k}:* ${r.v}`); r.sub.forEach(x=>out.push('  - '+x)); }
+    out.push('');
+  }
+  return out.join('\n').trim();
+}
+function rDaily(){
+  const es = estList(); const d = rDate();
+  const text = summaryText(es, d);
+  const panels = es.map(e=>{ const R = summaryRows(e,d); const c = R.c;
+    return `<section class="panel"><div class="panel-h"><h2>${ESTATE[e].short}</h2>${R.sh?statusChip(R.sh.status):'<span class="chip">No attendance</span>'}</div>
+    <div class="kpis" style="margin-bottom:14px">
+      <div class="kpi"><span class="eyebrow">Working</span><span class="v">${c?c.P+c.H:0}</span></div>
+      <div class="kpi"><span class="eyebrow">Net cherry</span><span class="v">${kg(R.net)}</span></div>
+      <div class="kpi"><span class="eyebrow">Accepted at washing</span><span class="v">${kg(sum(R.lots,l=>l.accepted))}</span></div>
+      <div class="kpi"><span class="eyebrow">Bags packed</span><span class="v">${sum(R.packs,p=>p.bags.length)}</span></div></div>
+    <div class="tbl-wrap"><table class="data sumtbl"><tbody>${R.rows.map(r=>`<tr><th scope="row">${r.k}</th><td>${esc(r.v)}${r.sub.map(x=>`<small>${esc(x)}</small>`).join('')}</td></tr>`).join('')}</tbody></table></div></section>`; }).join('');
+  return `<div class="panel row" style="padding:12px 16px"><b>${S.ui.estate==='ALL'?'Both estates':ESTATE[S.ui.estate].name}</b><span class="spacer"></span>
+    <button class="btn" data-act="rDay" data-v="-1" ${d<=SEASON_START?'disabled':''} aria-label="Previous day">‹</button>
+    <label class="row" for="r-d"><span class="muted">Day</span><input type="date" id="r-d" value="${d}" min="${SEASON_START}" max="${today()}" data-change="rDate"></label>
+    <button class="btn" data-act="rDay" data-v="1" ${d>=today()?'disabled':''} aria-label="Next day">›</button><span class="muted num">${dow(d)}</span></div>
+  <div class="two"><div class="stack">${panels}</div>
+    <section class="panel stack"><div class="panel-h" style="margin-bottom:0"><h2>Message to send</h2><button class="btn btn-primary" data-act="copySummary">Copy for WhatsApp</button></div>
+      ${S.ui.copied?`<div class="msg ok" role="status">${esc(S.ui.copied)}</div>`:''}
+      <textarea class="copybox" id="sum-text" readonly aria-label="Daily summary text">${esc(text)}</textarea>
+      <p class="note">Words between asterisks show in bold in WhatsApp. ${d===today()?'Batches in progress and items needing attention are as of now.':'For a past day, only that day’s events are listed.'}</p></section></div>`;
+}
+/* --- Outturn --- */
+/* Cherry behind a batch: each washing lot's accepted kilograms trace back to its muster weigh-ins. Dried kilograms are shared out the same way as on a bag trace. */
+function batchCherry(b){
+  const o = {cherry:0, dried:bOutKg(b), subs:{}, driedSubs:{}}; const tin = bInKg(b);
+  for(const inp of b.inputs){ const lot = lotBy(inp.lot);
+    for(const id of lot.entries){ const m = musterBy(id); const ch = inp.kg*m.net/lot.accepted; const dr = o.dried*(inp.kg/tin)*(m.net/lot.musterKg);
+      o.cherry += ch; add(o.subs, m.sub, ch); add(o.driedSubs, m.sub, dr); } }
+  return o;
+}
+function rOutturn(){
+  const es = estList();
+  const done = S.batches.filter(b=>es.includes(b.estate) && bOutKg(b)>0);
+  if(!done.length) return `<section class="panel"><p class="muted">No batch has passed the quality check yet. Outturn appears once dried coffee is approved for packing.</p></section>`;
+  const G = {route:{}, variety:{}, field:{}}; const rows = [];
+  const put = (g,k,ch,dr,code)=>{ const x=(G[g][k]=G[g][k]||{ch:0, dr:0, b:new Set()}); x.ch+=ch; x.dr+=dr; x.b.add(code); };
+  for(const b of done){ const o = batchCherry(b); rows.push({b, o});
+    put('route', ROUTE[b.route].label, o.cherry, o.dried, b.code);
+    for(const [s,ch] of Object.entries(o.subs)){ const dv = DIV[SUB[s].div];
+      put('variety', VARIETY[SUB[s].variety], ch, o.driedSubs[s], b.code);
+      put('field', dv.name+(S.ui.estate==='ALL'?' · '+ESTATE[dv.estate].short:''), ch, o.driedSubs[s], b.code); } }
+  const tch = sum(rows,r=>r.o.cherry), tdr = sum(rows,r=>r.o.dried);
+  const ratio = (ch,dr)=>dr>0 ? (ch/dr).toFixed(2) : '–';
+  const tbl = (title, g, first, limit)=>{ const xs = Object.entries(G[g]).sort((a,b)=>g==='route'?(a[0]<b[0]?-1:1):b[1].ch-a[1].ch); const best = Math.max(...xs.map(([,x])=>x.dr/x.ch));
+    return `<section class="panel"><div class="panel-h"><h2>${title}</h2>${limit&&xs.length>limit?`<small class="muted">Top ${limit} of ${xs.length} by cherry</small>`:''}</div><div class="tbl-wrap"><table class="data"><thead><tr><th>${first}</th><th class="r">Batches</th><th class="r">Cherry</th><th class="r">Dried coffee</th><th class="r">Cherry per kg dried</th><th>Dried as share of cherry</th></tr></thead><tbody>
+    ${xs.slice(0,limit||99).map(([k,x])=>`<tr><td>${esc(k)}</td><td class="r">${x.b.size}</td><td class="r">${kg(x.ch)}</td><td class="r">${kg(x.dr)}</td><td class="r"><b class="num">${ratio(x.ch,x.dr)}</b></td><td><div class="barrow"><div class="bar"><i style="width:${pct(x.dr/x.ch,best)}%"></i></div><small class="num">${r1(x.dr/x.ch*100)}%</small></div></td></tr>`).join('')}
+    </tbody></table></div></section>`; };
+  /* Where the weight goes: kept share at washing and at each completed stage */
+  const lotsUsed = [...new Set(done.flatMap(b=>b.inputs.map(i=>i.lot)))].map(lotBy);
+  const step = {}; for(const b of done) for(const st of b.stages) if(st.status==='COMPLETED' && st.key!=='QUALITY_CHECK'){ const x=(step[st.key]=step[st.key]||{i:0,o:0}); x.i+=st.inKg; x.o+=st.outKg; }
+  const steps = [['Washing and sorting', sum(lotsUsed,l=>l.received), sum(lotsUsed,l=>l.accepted)], ...Object.keys(STAGE).filter(k=>step[k]).map(k=>[STAGE[k].label, step[k].i, step[k].o])];
+  return `<div class="kpis">
+    <div class="kpi"><span class="eyebrow">Batches through quality check</span><span class="v">${done.length}</span></div>
+    <div class="kpi"><span class="eyebrow">Cherry behind them</span><span class="v">${kg(tch)}</span></div>
+    <div class="kpi"><span class="eyebrow">Dried coffee</span><span class="v">${kg(tdr)}</span></div>
+    <div class="kpi"><span class="eyebrow">Outturn</span><span class="v">${ratio(tch,tdr)} <small class="muted">kg cherry per kg</small></span><small class="muted">${r1(tdr/tch*100)}% of the cherry weight</small></div></div>
+  <p class="note">This prototype uses sample conversion rates at each stage, so the figures show how the report works rather than real outturn. In use, every figure comes from the weights entered at muster, washing and each stage.</p>
+  <div class="two">${tbl('By route','route','Route')}${tbl('By variety','variety','Variety')}</div>
+  <div class="two">${tbl('By field','field','Field',12)}
+    <section class="panel"><div class="panel-h"><h2>Where the weight goes</h2><small class="muted">These batches only</small></div><div class="tbl-wrap"><table class="data"><thead><tr><th>Step</th><th class="r">Kg in</th><th class="r">Kg out</th><th>Kept</th></tr></thead><tbody>
+    ${steps.map(([l,i,o])=>`<tr><td>${l}</td><td class="r">${kg(i)}</td><td class="r">${kg(o)}</td><td><div class="barrow"><div class="bar"><i style="width:${pct(o,i)}%"></i></div><small class="num">${pct(o,i)}%</small></div></td></tr>`).join('')}
+    </tbody></table></div></section></div>
+  <section class="panel"><div class="panel-h"><h2>Batches</h2><small class="muted">${rows.length} through the quality check</small></div><div class="tbl-wrap"><table class="data"><thead><tr><th>Batch</th><th>Process</th><th>Harvest dates</th><th class="r">Cherry</th><th class="r">Washed in</th><th class="r">Dried out</th><th class="r">Cherry per kg dried</th></tr></thead><tbody>
+    ${rows.sort((a,b)=>a.b.code<b.b.code?-1:1).map(({b,o})=>`<tr class="click" data-act="openBatch" data-v="${b.code}"><td class="mono">${b.code} ${estTag(b.estate)}</td><td>${esc(procLabel(b))}</td><td>${esc(datesLabel(batchHarvestDates(b)).replace('Harvested ',''))}</td><td class="r">${kg(o.cherry)}</td><td class="r">${kg(bInKg(b))}</td><td class="r">${kg(o.dried)}</td><td class="r"><b class="num">${ratio(o.cherry,o.dried)}</b></td></tr>`).join('')}
+    </tbody></table></div></section>`;
+}
+/* --- Plucker productivity --- */
+function rPluckers(){
+  const es = estList(); const range = S.ui.rRange||'season'; const to = today();
+  const from = range==='7' ? addDays(to,-6) : range==='month' ? to.slice(0,8)+'01' : SEASON_START;
+  const rate = S.settings.pluckRate;
+  const W = {}, F = {}; const wk = id=>W[id]=W[id]||{days:0, kg:0, n:0, byDay:{}};
+  for(const sh of Object.values(S.att)){ if(!es.includes(sh.estate) || sh.date<from || sh.date>to) continue;
+    for(const [wid,r] of Object.entries(sh.rows)) if(working(r.st) && isHarvestJob(r.job)) wk(wid).days += r.st==='H' ? 0.5 : 1; }
+  for(const m of S.muster){ if(!es.includes(m.estate) || m.sync!=='synced' || m.date<from || m.date>to) continue;
+    const x = wk(m.worker); x.kg += m.net; x.n++; add(x.byDay, m.date, m.net);
+    const f = (F[m.div]=F[m.div]||{kg:0, pd:new Set()}); f.kg += m.net; f.pd.add(m.worker+'|'+m.date); }
+  const rows = Object.entries(W).map(([id,x])=>({w:workerBy(id), ...x, best:Math.max(0,...Object.values(x.byDay)), per:x.days?x.kg/x.days:0})).filter(r=>r.w).sort((a,b)=>b.kg-a.kg);
+  const top = rows.length ? rows[0].kg : 0;
+  const tkg = sum(rows,r=>r.kg), tdays = sum(rows,r=>r.days);
+  const fr = Object.entries(F).map(([dc,f])=>({dc, kg:f.kg, pd:f.pd.size, per:f.kg/f.pd.size})).sort((a,b)=>b.per-a.per).slice(0,10);
+  const label = {7:'Last 7 days', month:'This month', season:'Season to date'};
+  return `<div class="panel row" style="padding:12px 16px">
+    <div class="seg" role="group" aria-label="Period">${Object.entries(label).map(([k,l])=>`<button data-act="rRange" data-v="${k}" aria-pressed="${range===k}">${l}</button>`).join('')}</div>
+    <small class="muted">${fd(from)} to ${fd(to)}</small><span class="spacer"></span>
+    <label class="row" for="r-rate"><span class="muted">Sample rate per kg (₹)</span><input type="number" id="r-rate" step="0.25" min="0" value="${rate}" data-change="pluckRate"></label></div>
+  <div class="kpis">
+    <div class="kpi"><span class="eyebrow">Pluckers</span><span class="v">${rows.length}</span></div>
+    <div class="kpi"><span class="eyebrow">Plucking days</span><span class="v">${nf1.format(tdays)}</span><small class="muted">Half days count as ½</small></div>
+    <div class="kpi"><span class="eyebrow">Net cherry</span><span class="v">${kg(tkg)}</span></div>
+    <div class="kpi"><span class="eyebrow">Per plucking day</span><span class="v">${kg(tdays?tkg/tdays:0)}</span></div>
+    <div class="kpi"><span class="eyebrow">Pay preview</span><span class="v">${inr(tkg*rate)}</span><small class="muted">At ${inr(rate)} per kg</small></div></div>
+  <p class="note">The pay preview multiplies net kilograms by the rate above. It is not payroll: rates by variety or season, the daily minimum and any deductions are still to be confirmed with the owner.</p>
+  <div class="two" style="grid-template-columns:minmax(0,2fr) minmax(min(320px,100%),1fr)">
+  <section class="panel"><div class="panel-h"><h2>By worker</h2><small class="muted">Sorted by net cherry</small></div><div class="tbl-wrap"><table class="data"><thead><tr><th class="r">#</th><th>Worker</th><th class="r">Plucking days</th><th class="r">Weigh-ins</th><th class="r">Net cherry</th><th>Compared with the top plucker</th><th class="r">Per plucking day</th><th class="r">Best day</th><th class="r">Pay preview</th></tr></thead><tbody>
+    ${rows.map((r,i)=>`<tr><td class="r muted">${i+1}</td><td><span class="mono">${r.w.id}</span> ${esc(r.w.name)} ${estTag(r.w.estate)}</td><td class="r">${nf1.format(r.days)}</td><td class="r">${r.n}</td><td class="r"><b>${kg(r.kg)}</b></td><td><div class="barrow"><div class="bar"><i style="width:${pct(r.kg,top)}%"></i></div></div></td><td class="r">${r.days?kg(r.per):'–'}</td><td class="r">${r.best?kg(r.best):'–'}</td><td class="r">${inr(r.kg*rate)}</td></tr>`).join('')||'<tr><td colspan="9" class="muted">No plucking in this period.</td></tr>'}
+    </tbody></table></div></section>
+  <section class="panel"><div class="panel-h"><h2>By field</h2><small class="muted">Kilograms per plucker per day</small></div><div class="tbl-wrap"><table class="data"><thead><tr><th>Field</th><th class="r">Plucker-days</th><th class="r">Net</th><th class="r">Per plucker-day</th></tr></thead><tbody>
+    ${fr.map(f=>`<tr><td>${esc(fieldName(f.dc))} ${estTag(DIV[f.dc].estate)}</td><td class="r">${f.pd}</td><td class="r">${kg(f.kg)}</td><td class="r"><b>${kg(f.per)}</b></td></tr>`).join('')||'<tr><td colspan="4" class="muted">No plucking in this period.</td></tr>'}
+    </tbody></table></div><p class="note" style="margin-top:8px">A worker weighed in two fields on one day counts once in each.</p></section></div>`;
+}
+
 /* ===== Attendance register (portal) ===== */
 const SEASON_START = '2026-10-01';
 const attEstate = ()=>S.ui.estate==='ALL' ? (S.ui.attEstate||'GLZ') : S.ui.estate;
 const attDate = ()=>{ const d=S.ui.attDate||today(); return d>today()?today():d; };
 const attSheet = ()=>sheetOf(attEstate(), attDate());
 const selectedIds = ()=>{ const sh=attSheet(); return Object.keys(S.ui.attSel||{}).filter(w=>S.ui.attSel[w] && sh && sh.rows[w]); };
-const ST_LABEL = {P:'Present', H:'Half day', A:'Absent', L:'Leave'};
+const ST_LABEL = {P:'Present', H:'Half day', A:'Absent', L:'Leave', O:'Off day', F:'Holiday'};
+const ST_SHORT = {P:'P', H:'½', A:'A', L:'L', O:'Off', F:'Hol'};
+function audit(sh, what, reason){ sh.audit = (sh.audit||[]).concat({at:S.now, what, reason:reason||''}); }
 function pAttendance(){
   const e = attEstate(), d = attDate(); const sh = sheetOf(e,d); if(sh) syncRows(sh);
   const head = `<div class="page-h"><div><h1>Attendance</h1><p>One register per estate per day. Each worker gets a status, a field from the Fields master and a job. Supervisors can fill the same register on their phone; it starts with the previous day’s fields and jobs, so only changes need entering.</p></div></div>
@@ -1303,12 +1547,12 @@ function pAttendance(){
   const sel = S.ui.attSel||{}; const nSel = ws.filter(w=>sel[w.id]).length;
   const actions = sh.status==='DRAFT' ? `<button class="btn" data-act="attRest" ${c.none?'':'disabled'}>Mark the rest present</button><button class="btn btn-primary" data-act="attSubmit" ${c.none?'disabled':''} title="${c.none?'Mark every worker first':''}">${c.none?`Mark ${c.none} more to submit`:'Submit for approval'}</button>`
     : sh.status==='SUBMITTED' ? `<button class="btn btn-primary" data-act="attApprove" ${c.none?'disabled':''}>Approve attendance</button>`
-    : `<button class="btn" data-act="attReopen">Reopen for correction</button>`;
+    : `<input type="text" id="at-why" placeholder="Reason for the correction" aria-label="Reason for the correction" style="min-width:230px"><button class="btn" data-act="attReopen">Reopen for correction</button>`;
   const rows = ws.map(w=>{ const r=sh.rows[w.id]; const on=working(r.st); const noPluck = on && isHarvestJob(r.job) && !bearingSubs(DIV[r.div]).length;
     return `<tr class="${sel[w.id]?'sel':''}">
       <td><input type="checkbox" data-change="attSel" data-w="${w.id}" ${sel[w.id]?'checked':''} ${locked?'disabled':''} aria-label="Select ${esc(w.name)}"></td>
       <td><span class="mono">${w.id}</span> ${esc(w.name)}<br><small class="muted">${esc(w.type||'Permanent')}${w.active===false?' · inactive':''}</small></td>
-      <td><div class="seg4" role="group" aria-label="Status for ${esc(w.name)}">${['P','H','A','L'].map(s=>`<button data-act="attMark" data-w="${w.id}" data-v="${s}" class="${r.st===s?'on-'+s:''}" aria-pressed="${r.st===s}" ${locked?'disabled':''} title="${ST_LABEL[s]}">${{P:'P',H:'½',A:'A',L:'L'}[s]}</button>`).join('')}</div></td>
+      <td><div class="seg4" role="group" aria-label="Status for ${esc(w.name)}">${Object.keys(ST_LABEL).map(s=>`<button data-act="attMark" data-w="${w.id}" data-v="${s}" class="${r.st===s?'on-'+s:''}${s==='O'||s==='F'?' wide':''}" aria-pressed="${r.st===s}" ${locked?'disabled':''} title="${ST_LABEL[s]}">${ST_SHORT[s]}</button>`).join('')}</div></td>
       <td>${on||!r.st?`<select data-change="attField" data-w="${w.id}" aria-label="Field for ${esc(w.name)}" ${locked?'disabled':''}>${fieldOptions(e, r.div)}</select>${noPluck?'<br><small class="chip bad">No coffee to pluck here</small>':''}`:'<span class="muted">–</span>'}</td>
       <td>${on||!r.st?`<select data-change="attJob" data-w="${w.id}" aria-label="Job for ${esc(w.name)}" ${locked?'disabled':''}>${jobOptions(r.job)}</select>`:'<span class="muted">–</span>'}</td>
       <td><input type="text" data-change="attRemark" data-w="${w.id}" value="${esc(r.remark||'')}" placeholder="Remark" aria-label="Remark for ${esc(w.name)}" ${locked?'disabled':''} style="width:100%;min-width:110px"></td>
@@ -1316,8 +1560,10 @@ function pAttendance(){
   return head + `
   <section class="panel stack">
     <div class="row">${statusChip(sh.status)}<span class="chip">${sh.source==='portal'?'Started in portal':'Started on phone'}</span>
-      <small class="muted">${c.P} present · ${c.H} half day · ${c.A} absent or leave${c.none?` · <b>${c.none} not marked</b>`:''}</small><span class="spacer"></span>${actions}</div>
-    ${locked?`<p class="note">Approved${sh.approvedAt?' '+fdt(sh.approvedAt):''}. Reopen it to correct a mistake; the change is kept in the audit trail.</p>`:`
+      <small class="muted">${c.P} present · ${c.H} half day · ${c.A} absent or leave${c.O?` · ${c.O} off or holiday`:''}${c.none?` · <b>${c.none} not marked</b>`:''}</small><span class="spacer"></span>${actions}</div>
+    ${S.ui.attErr?`<div class="msg" role="alert">${esc(S.ui.attErr)}</div>`:''}
+    ${(sh.audit||[]).length?`<p class="note">History: ${sh.audit.map(a=>esc(a.what+' '+fdt(a.at)+(a.reason?' (reason: '+a.reason+')':''))).join(' · ')}</p>`:''}
+    ${locked?`<p class="note">Approved${sh.approvedAt?' '+fdt(sh.approvedAt):''}. To correct a mistake, give the reason and reopen it; the reason is kept in the history.</p>`:`
     <div class="bulk ${nSel?'':'idle'}" role="group" aria-label="Change selected workers">
       <b>${nSel?nSel+' selected':'Select workers to change them together'}</b>
       <label class="row" for="bk-field"><span class="muted">Field</span><select id="bk-field" ${nSel?'':'disabled'}>${fieldOptions(e,'')}</select></label>
@@ -1349,13 +1595,13 @@ function historyPanel(e){
   const wid = ws.find(w=>w.id===S.ui.histWorker) ? S.ui.histWorker : ws[0].id;
   const days = daysBetween(SEASON_START, today());
   const first = new Date(toMs(days[0])).getUTCDay(); const pre = (first+6)%7;
-  let P=0,H=0,A=0;
+  let P=0,H=0,A=0,O=0;
   const cells = days.map(d=>{ const sh=sheetOf(e,d); const r=sh&&sh.rows[wid]; const st=r&&r.st;
-    if(st==='P') P++; else if(st==='H') H++; else if(st==='A'||st==='L') A++;
-    return `<div class="cal-d ${st?'st-'+st:''}" title="${fd(d)}${st?': '+ST_LABEL[st]+(working(st)?' · '+fieldName(r.div)+' · '+(JOB[r.job]||''):''):''}"><span class="num">${new Date(toMs(d)).getUTCDate()}</span><b>${st?{P:'P',H:'½',A:'A',L:'L'}[st]:''}</b><small>${working(st)?esc(fieldName(r.div)):''}</small></div>`; }).join('');
+    if(st==='P') P++; else if(st==='H') H++; else if(st==='A'||st==='L') A++; else if(st==='O'||st==='F') O++;
+    return `<div class="cal-d ${st?'st-'+st:''}" title="${fd(d)}${st?': '+ST_LABEL[st]+(working(st)?' · '+fieldName(r.div)+' · '+(JOB[r.job]||''):''):''}"><span class="num">${new Date(toMs(d)).getUTCDate()}</span><b>${st?ST_SHORT[st]:''}</b><small>${working(st)?esc(fieldName(r.div)):''}</small></div>`; }).join('');
   return `<section class="panel"><div class="panel-h"><h2>Worker history</h2>
       <label class="row" for="hw"><span class="muted">Worker</span><select id="hw" data-change="histWorker">${ws.map(w=>`<option value="${w.id}" ${w.id===wid?'selected':''}>${w.id} · ${esc(w.name)}</option>`).join('')}</select></label></div>
-    <p class="muted" style="margin-bottom:10px">October 2026: ${P} full days, ${H} half days, ${A} absent or leave · ${r1(P+H/2)} days worked</p>
+    <p class="muted" style="margin-bottom:10px">October 2026: ${P} full days, ${H} half days, ${A} absent or leave${O?`, ${O} off or holiday`:''} · ${r1(P+H/2)} days worked</p>
     <div class="cal">${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(x=>`<div class="cal-h">${x}</div>`).join('')}${'<div></div>'.repeat(pre)}${cells}</div></section>`;
 }
 
@@ -1488,6 +1734,11 @@ function pSetup(){
       <label class="f" for="set-mmin">Lowest moisture (%)<input type="number" id="set-mmin" step="0.1" value="${st.mMin}"></label>
       <label class="f" for="set-mmax">Highest moisture to approve for packing (%)<input type="number" id="set-mmax" step="0.1" value="${st.mMax}"></label>
     </div>
+    <h2>Weights and checks</h2>
+    <div class="formgrid">
+      <label class="f" for="set-bagwt">Weight of one empty plucking bag (kg)<input type="number" id="set-bagwt" step="0.1" min="0" value="${st.bagWt}"></label>
+      <label class="f" for="set-wtol">Allowed difference between muster and washing (%)<input type="number" id="set-wtol" step="0.5" min="0" value="${st.washTol}"></label>
+    </div>
     <div class="row"><button class="btn btn-primary" data-act="saveSettings">Save settings</button>${S.ui.flash?`<span class="chip ok">${esc(S.ui.flash)}</span>`:''}</div></section>
   <section class="panel"><div class="panel-h"><h2>Fermentation recipes</h2><small class="muted">Codes from the example flow sheet; meanings to confirm</small></div>
     <div class="tbl-wrap"><table class="data"><thead><tr><th>Code</th><th>Flavour</th><th class="r">Target duration</th></tr></thead><tbody>
@@ -1513,25 +1764,30 @@ const dHead = (eyebrow,title)=>`<div class="drawer-h"><div><span class="eyebrow"
 function dSheet(d){
   const s = S.att[d.key]; const c = countSheet(s);
   return dHead('Attendance', ESTATE[s.estate].short+' · '+dow(s.date)+' '+fd(s.date)) + `
-  <div class="row">${statusChip(s.status)}<small class="muted">${esc(s.supervisor)} · ${c.P} present · ${c.H} half day · ${c.A} absent or leave${c.none?' · '+c.none+' not marked':''}</small></div>
+  <div class="row">${statusChip(s.status)}<small class="muted">${esc(s.supervisor)} · ${c.P} present · ${c.H} half day · ${c.A} absent or leave${c.O?' · '+c.O+' off or holiday':''}${c.none?' · '+c.none+' not marked':''}</small></div>
   ${s.status==='SUBMITTED'?`<div class="row"><button class="btn btn-primary" data-act="approveSheet" data-v="${d.key}">Approve attendance</button></div>`:''}
   ${s.status==='DRAFT'?`<p class="note">This sheet is still being filled in on the supervisor’s phone.</p>`:''}
   <div class="tbl-wrap"><table class="data"><thead><tr><th>Worker</th><th>Status</th><th>Job</th><th>Field</th></tr></thead><tbody>
-  ${S.workers.filter(w=>w.estate===s.estate).map(w=>{ const r=s.rows[w.id]; return `<tr><td><span class="mono">${w.id}</span> ${esc(w.name)}</td><td>${r.st?{P:'Present',H:'Half day',A:'Absent',L:'Leave'}[r.st]:'<span class="muted">Not marked</span>'} ${r.sync==='pending'?'<span class="chip bad">on phone</span>':''}</td><td>${r.st&&r.st!=='A'&&r.st!=='L'?JOB[r.job]||'':''}</td><td>${r.st&&r.st!=='A'&&r.st!=='L'&&DIV[r.div]?esc(DIV[r.div].name)+(r.sub&&r.job==='PLK'?' <span class="mono">('+r.sub.slice(-1)+')</span>':''):''}</td></tr>`; }).join('')}
+  ${S.workers.filter(w=>w.estate===s.estate).map(w=>{ const r=s.rows[w.id]; return `<tr><td><span class="mono">${w.id}</span> ${esc(w.name)}</td><td>${r.st?ST_LABEL[r.st]:'<span class="muted">Not marked</span>'} ${r.sync==='pending'?'<span class="chip bad">on phone</span>':''}</td><td>${working(r.st)?JOB[r.job]||'':''}</td><td>${working(r.st)&&DIV[r.div]?esc(DIV[r.div].name)+(r.sub&&r.job==='PLK'?' <span class="mono">('+r.sub.slice(-1)+')</span>':''):''}</td></tr>`; }).join('')}
   </tbody></table></div>`;
 }
 function dWash(d){
-  const ids = d.ids;
+  const ids = d.ids; const F = d.f || {}; const sel = F.ids || ids;
+  const mk = r1(sum(sel,id=>musterBy(id).net)); const v = (k,def)=>F[k]!=null ? F[k] : def;
   return dHead('New washing lot', ESTATE[d.estate].short+' · harvest '+fd(d.date)) + `
   <p class="note">All submitted entries for the day are selected. Untick any that were washed separately.</p>
   <div class="tbl-wrap" style="max-height:260px;overflow-y:auto"><table class="data"><thead><tr><th></th><th>Worker</th><th>Subdivision</th><th class="r">Net</th></tr></thead><tbody>
-  ${ids.map(id=>{ const m=musterBy(id); return `<tr><td><input type="checkbox" name="wentry" value="${id}" checked data-live="wash" aria-label="Include ${m.worker}"></td><td><span class="mono">${m.worker}</span> ${esc(workerBy(m.worker).name)}</td><td class="mono">${m.sub}</td><td class="r">${kg(m.net)}</td></tr>`; }).join('')}
+  ${ids.map(id=>{ const m=musterBy(id); return `<tr><td><input type="checkbox" name="wentry" value="${id}" ${sel.includes(id)?'checked':''} data-live="wash" aria-label="Include ${m.worker}"></td><td><span class="mono">${m.worker}</span> ${esc(workerBy(m.worker).name)}</td><td class="mono">${m.sub}</td><td class="r">${kg(m.net)}</td></tr>`; }).join('')}
   </tbody></table></div>
   <div class="formgrid">
-    <label class="f" for="w-fl">Floaters removed (kg)<input type="number" id="w-fl" step="0.1" min="0" value="${r1(sum(ids,id=>musterBy(id).net)*0.03)}" data-live="wash"></label>
-    <label class="f" for="w-rj">Rejected in sorting (kg)<input type="number" id="w-rj" step="0.1" min="0" value="${r1(sum(ids,id=>musterBy(id).net)*0.015)}" data-live="wash"></label>
+    <div class="f">Muster total<b id="w-mk">${kg(mk)}</b></div>
+    <label class="f" for="w-rc">Weighed at washing (kg)<input type="number" id="w-rc" step="0.1" min="0" value="${v('rc',mk)}" data-live="wash" data-auto="${F.rc!=null?'0':'1'}"></label>
+    <label class="f" for="w-fl">Floaters removed (kg)<input type="number" id="w-fl" step="0.1" min="0" value="${v('fl',r1(mk*0.03))}" data-live="wash"></label>
+    <label class="f" for="w-rj">Rejected in sorting (kg)<input type="number" id="w-rj" step="0.1" min="0" value="${v('rj',r1(mk*0.015))}" data-live="wash"></label>
   </div>
+  <label class="f" for="w-why">Reason for a difference<input type="text" id="w-why" list="w-whys" maxlength="120" value="${esc(v('why',''))}" placeholder="Needed when washing differs from the muster by more than ${S.settings.washTol}%"><datalist id="w-whys">${WASH_WHY.map(x=>`<option value="${esc(x)}">`).join('')}</datalist></label>
   <div id="w-prev"></div>
+  ${d.err?`<div class="msg" role="alert">${esc(d.err)}</div>`:''}
   <div class="row"><button class="btn btn-primary" data-act="saveWash">Create washing lot</button><button class="btn" data-act="close">Cancel</button></div>`;
 }
 function stageLine(b, st, compact){
@@ -1540,7 +1796,7 @@ function stageLine(b, st, compact){
   const m = lastReading(st,'MOISTURE'), ph = lastReading(st,'PH');
   return `<div class="tl ${done?'done':'live'}"><div class="row"><b>${STAGE[st.key].label}</b>${st.key==='FERMENTATION'?`<span class="chip">${b.recipe} ${RECIPE[b.recipe].name}</span>`:''}${!done&&isOverdue(st)?'<span class="chip bad">Past target</span>':''}${!done?'<span class="chip warn">In progress</span>':''}${st.decision?`<span class="chip ok">${st.decision==='APPROVED'?'Approved for packing':esc(st.decision)}</span>`:''}</div>
     <small class="muted">${fdt(st.start)} to ${done?fdt(st.end):'now'} · ${dur(h)}${st.key!=='QUALITY_CHECK'?' (target '+dur(tgt)+')':''}${st.res?' · '+esc(st.res):''}</small>
-    <small class="muted" style="display:block">${kg(st.inKg)} in${done?' · '+kg(st.outKg)+' out':''}${m?' · moisture '+m.value+'%':''}${ph?' · pH '+ph.value:''}${st.by&&!compact?' · '+esc(st.by):''}</small></div>`;
+    <small class="muted" style="display:block">${kg(st.inKg)} in${done?' · '+kg(st.outKg)+' out':''}${m?' · moisture '+m.value+'%':''}${ph?' · pH '+ph.value:''}${logSummary(st)?' · '+logSummary(st):''}${st.by&&!compact?' · '+esc(st.by):''}</small></div>`;
 }
 function moistureSpark(st){
   const rs = st.readings.filter(r=>r.metric==='MOISTURE'); if(rs.length<2) return '';
@@ -1559,7 +1815,12 @@ function dBatch(d){
   const b = batchBy(d.code); const c = curStage(b); const st = bStatus(b);
   const dates = batchHarvestDates(b);
   let action = '';
-  if(c && c.status==='IN_PROGRESS'){
+  if(c && c.status==='IN_PROGRESS' && b.hold){
+    action = `<section class="panel stack"><h3>On hold</h3>
+      <p>Since ${fdt(b.hold.at)}: <b>${esc(b.hold.reason)}</b></p>
+      <p class="note">While on hold nothing can be completed. When it resumes, the stage target moves on by the time it was held.</p>
+      <div class="row"><button class="btn btn-primary" data-act="resumeBatch" data-v="${b.code}">Resume</button></div></section>`;
+  } else if(c && c.status==='IN_PROGRESS'){
     if(c.key==='QUALITY_CHECK'){
       const m = batchMoisture(b); const okM = m && m.value<=S.settings.mMax && m.value>=S.settings.mMin;
       action = `<section class="panel stack"><h3>Quality check</h3>
@@ -1571,29 +1832,51 @@ function dBatch(d){
       const nx = ROUTE[b.route].next[c.key];
       const sugg = r1(c.inKg*stageYield(b,c.key));
       const m = lastReading(c,'MOISTURE');
+      const next = nx.includes(d.next) ? d.next : nx[0];
+      const outV = d.out!=null ? d.out : sugg;
       action = `<section class="panel stack"><h3>${STAGE[c.key].label}: in progress</h3>
         ${STAGE[c.key].dry?moistureSpark(c):''}
         ${readingForm(c)}
+        ${STAGE[c.key].dry?dryLogForm(c):''}
         <h3>Complete this stage</h3>
         <div class="formgrid">
-          <label class="f" for="cs-out">Weight out (kg)<input type="number" id="cs-out" step="0.1" min="0" value="${sugg}"></label>
-          ${nx.length>1?`<label class="f" for="cs-next">Next stage<select id="cs-next">${nx.map(k=>`<option value="${k}">${STAGE[k].label}</option>`).join('')}</select></label>`:`<div class="f">Next stage<b>${STAGE[nx[0]].label}</b></div>`}
+          <label class="f" for="cs-out">Weight out (kg)<input type="number" id="cs-out" step="0.1" min="0" value="${outV}"></label>
+          ${nx.length>1?`<label class="f" for="cs-next">Next stage<select id="cs-next" data-change="csNext">${nx.map(k=>`<option value="${k}" ${k===next?'selected':''}>${STAGE[k].label}</option>`).join('')}</select></label>`:`<div class="f">Next stage<b>${STAGE[nx[0]].label}</b></div>`}
         </div>
+        ${needsPicker(next)?dryPicker('cs', next, +outV||sugg, b.code):''}
         ${STAGE[c.key].dry&&(!m||m.value>S.settings.mMax)?`<div class="msg">${m?`Moisture is ${m.value}%, above the ${S.settings.mMax}% release limit. The quality check will not approve it until it is lower.`:'No moisture reading yet.'}</div>`:''}
         <p class="note">Suggested weight uses a sample conversion rate (${Math.round(stageYield(b,c.key)*100)}% of weight in). Enter the weighed figure.</p>
         <div class="row"><button class="btn btn-primary" data-act="completeStage" data-v="${b.code}">Complete and start next stage</button></div></section>`;
     }
+    action += `<section class="panel stack"><h3>Hold or split</h3>
+      <div class="row" style="align-items:flex-end"><label class="f" for="hd-why" style="flex:1 1 220px">Reason for a hold<input type="text" id="hd-why" maxlength="120" placeholder="For example, waiting for the buyer’s sample result"></label><button class="btn" data-act="holdBatch" data-v="${b.code}">Put on hold</button></div>
+      ${c.key!=='QUALITY_CHECK'?`<h3>Split part of this batch</h3>
+      <div class="formgrid"><label class="f" for="sp-kg">Kilograms to move (kg)<input type="number" id="sp-kg" step="0.1" min="0" max="${c.inKg}" value="${r1(c.inKg/2)}"></label>${c.key==='FERMENTATION'?tankSelect('sp'):''}</div>
+      ${needsPicker(c.key)?dryPicker('sp', c.key, c.inKg/2):''}
+      <p class="note">The part moved becomes a new batch with the same share of every washing lot, so its harvest dates, fields and varieties stay the same.</p>
+      <div class="row"><button class="btn" data-act="splitBatch" data-v="${b.code}">Split into a new batch</button></div>`:''}</section>`;
   }
   return dHead('Batch', `<span class="mono">${b.code}</span>`) + `
   <div class="row">${statusChip(st)}<span class="chip">${ROUTE[b.route].label}</span>${b.recipe?`<span class="chip cherry">${b.recipe} ${RECIPE[b.recipe].name}</span>`:''}<span class="chip">${ESTATE[b.estate].short}</span></div>
+  ${d.err?`<div class="msg" role="alert">${esc(d.err)}</div>`:''}${d.flash?`<div class="msg ok" role="status">${esc(d.flash)}</div>`:''}
   <section class="panel stack"><h3>What went in</h3>
     <p>${kg(bInKg(b))} of washed cherry · <b>${esc(datesLabel(dates))}</b></p>
+    ${b.splitFrom?`<p class="note">Split from <button class="btn-link mono" data-act="openBatch" data-v="${b.splitFrom}">${b.splitFrom}</button> on ${fdt(b.createdAt)}.</p>`:''}
+    ${(b.splits||[]).length?`<p class="note">Split into ${b.splits.map(x=>`<button class="btn-link mono" data-act="openBatch" data-v="${x.code}">${x.code}</button> (${kg(x.kg)}, ${fdt(x.at)})`).join(', ')}.</p>`:''}
+    ${(b.holds||[]).length?`<p class="note">Held ${b.holds.map(h=>esc(fdt(h.at)+' to '+fdt(h.until)+': '+h.reason)).join('; ')}.</p>`:''}
     <div class="tbl-wrap"><table class="data"><thead><tr><th>Washing lot</th><th>Harvest day</th><th class="r">Kilograms</th></tr></thead><tbody>
     ${b.inputs.map(i=>`<tr><td class="mono">${i.lot}</td><td>${fd(lotBy(i.lot).date)}</td><td class="r">${kg(i.kg)}</td></tr>`).join('')}</tbody></table></div></section>
   ${action}
   <section class="panel"><h3 style="margin-bottom:10px">Stages</h3><div class="timeline">${b.stages.map(s=>stageLine(b,s,false)).join('')}</div></section>
   ${['READY','PART_PACKED'].includes(st)?`<div class="row"><button class="btn btn-primary" data-act="newPack" data-v="${b.code}">Pack this batch (${kg(bAvail(b))})</button></div>`:''}
   ${b.packedKg>0?`<p class="note">${kg(b.packedKg)} packed so far.</p>`:''}`;
+}
+function dryLogForm(st){
+  const log = st.log||[];
+  return `<h3>Drying log</h3>
+    <div class="row" style="align-items:flex-end">${['TURNED','COVERED','UNCOVERED','RAIN'].map(k=>`<button class="btn" data-act="dryLog" data-v="${k}">${LOGK[k]}</button>`).join('')}
+      <label class="f" for="dl-note" style="flex:1 1 150px">Note<input type="text" id="dl-note" maxlength="80" placeholder="Optional"></label></div>
+    <small class="muted">${isCovered(st)?'<span class="chip info">Covered now</span> ':''}${log.length?log.slice(-6).reverse().map(x=>esc(LOGK[x.kind]+' '+fdt(x.at)+(x.note?' ('+x.note+')':''))).join(' · '):'Nothing logged yet.'}</small>`;
 }
 function readingForm(st){
   const metrics = st.key==='FERMENTATION' ? ['PH','BRIX','TEMP'] : ['MOISTURE'];
@@ -1617,6 +1900,8 @@ function dNewBatch(d){
   ${lots.map((l,i)=>`<tr><td><input type="checkbox" name="nb-lot" value="${l.code}" ${i===lots.length-1?'checked':''} data-live="nb" aria-label="Use ${l.code}"></td><td class="mono">${l.code}</td><td>${fd(l.date)}</td><td class="r">${kg(lotAvail(l))}</td><td class="r"><input type="number" id="nb-kg-${l.code}" value="${lotAvail(l)}" step="0.1" min="0" max="${lotAvail(l)}" data-live="nb"></td></tr>`).join('')}
   </tbody></table></div>`:'<p class="muted">No washed coffee is waiting for this estate.</p>'}
   <div id="nb-prev"></div>
+  ${d.route==='C'&&lots.length?`<h3>Trays</h3>${trayPicker('nb', lotAvail(lots[lots.length-1]))}`:''}
+  ${d.err?`<div class="msg" role="alert">${esc(d.err)}</div>`:''}
   <div class="row"><button class="btn btn-primary" data-act="saveBatch" ${lots.length&&d.route?'':'disabled'}>Start batch</button><button class="btn" data-act="close">Cancel</button></div>`;
 }
 function dPack(d){
@@ -1654,8 +1939,9 @@ function dPackLot(d){
   const p = packBy(d.code); const kgT = sum(p.bags,b=>b.kg);
   return dHead('Packed lot', `<span class="mono">${p.code}</span>`) + `
   <div class="row"><span class="chip">${esc(p.process)}</span><span class="chip">${p.bags.length} × ${BAGS[p.bagType].label.toLowerCase()} ${nf3.format(p.bagKg)} kg</span><span class="chip">${kg(kgT)}</span><small class="muted">Packed ${fdt(p.at)} · ${esc(p.by)}</small></div>
-  <div class="tbl-wrap"><table class="data"><thead><tr><th>Bag</th><th class="r">Net</th><th>From batches</th><th>Harvest dates on label</th><th></th></tr></thead><tbody>
-  ${p.bags.slice(0,60).map(b=>{ const L=bagLabel(b); return `<tr><td class="mono">${b.code}</td><td class="r">${kgx(b.kg)}</td><td>${b.sources.map(s=>`<span class="mono">${s.batch.slice(-4)}</span> ${kgx(s.kg)}`).join(', ')}</td><td>${esc(datesLabel(L.dates).replace('Harvested ',''))}${L.dates.length>1?' <span class="chip cherry">'+L.dates.length+' dates</span>':''}</td><td><button class="btn-link" data-act="trace" data-v="${b.code}">Trace</button></td></tr>`; }).join('')}
+  <p class="note">Weigh each filled bag and enter its net weight. Bags more than ${p.bagKg>=5?'100 g':'5 g'} under the label weight are flagged. <span id="bw-sum">${weighText(p)}</span></p>
+  <div class="tbl-wrap"><table class="data"><thead><tr><th>Bag</th><th class="r">Label net</th><th class="r">Weighed net (kg)</th><th>Check</th><th>From batches</th><th>Harvest dates on label</th><th></th></tr></thead><tbody>
+  ${p.bags.slice(0,60).map(b=>{ const L=bagLabel(b); return `<tr><td class="mono">${b.code}</td><td class="r">${kgx(b.kg)}</td><td class="r"><input type="number" class="wt" step="${p.bagKg>=5?'0.01':'0.001'}" min="0" value="${b.weighed!=null?b.weighed:''}" data-change="bagWt" data-v="${b.code}" aria-label="Weighed net for ${b.code}"></td><td id="bw-${b.code}">${bagWtChip(b,p)}</td><td>${b.sources.map(s=>`<span class="mono">${s.batch.slice(-4)}</span> ${kgx(s.kg)}`).join(', ')}</td><td>${esc(datesLabel(L.dates).replace('Harvested ',''))}${L.dates.length>1?' <span class="chip cherry">'+L.dates.length+' dates</span>':''}</td><td><button class="btn-link" data-act="trace" data-v="${b.code}">Trace</button></td></tr>`; }).join('')}
   </tbody></table></div>
   ${p.bags.length>60?`<p class="note">Showing the first 60 of ${p.bags.length} bags.</p>`:''}
   <h3>Labels</h3><div class="labels">${p.bags.slice(0,8).map(b=>labelCard(b,p)).join('')}</div>
@@ -1667,9 +1953,13 @@ const num = sel=>{ const el=document.querySelector(sel); return el ? (parseFloat
 const LIVE = {
   wash(){
     const ids = [...document.querySelectorAll('input[name=wentry]:checked')].map(x=>x.value);
-    const rec = r1(sum(ids,id=>musterBy(id).net)); const fl = num('#w-fl'), rj = num('#w-rj'); const acc = r1(rec-fl-rj);
+    const mk = r1(sum(ids,id=>musterBy(id).net)); const rcEl = document.getElementById('w-rc');
+    if(rcEl && rcEl.dataset.auto==='1') rcEl.value = mk;
+    const mkEl = document.getElementById('w-mk'); if(mkEl) mkEl.textContent = kg(mk);
+    const rec = num('#w-rc'); const fl = num('#w-fl'), rj = num('#w-rj'); const acc = r1(rec-fl-rj);
+    const x = washDiff({received:rec, musterKg:mk}); const big = Math.abs(x.pct) > S.settings.washTol;
     const el = document.getElementById('w-prev'); if(!el) return;
-    el.innerHTML = `<div class="kpis"><div class="kpi"><span class="eyebrow">Received</span><span class="v">${kg(rec)}</span><small class="muted">${ids.length} entries</small></div><div class="kpi"><span class="eyebrow">Accepted</span><span class="v">${kg(acc)}</span><small class="muted">${pct(acc,rec)}% of received</small></div></div>${acc<0?'<div class="msg">Floaters and rejects are more than the cherry received.</div>':''}`;
+    el.innerHTML = `<div class="kpis"><div class="kpi"><span class="eyebrow">Muster</span><span class="v">${kg(mk)}</span><small class="muted">${ids.length} entries</small></div><div class="kpi"><span class="eyebrow">Weighed at washing</span><span class="v">${kg(rec)}</span><small class="muted">${x.kg?(x.kg>0?'+':'−')+kg(Math.abs(x.kg))+' ('+(x.kg>0?'+':'−')+Math.abs(x.pct).toFixed(1)+'%)':'Same as muster'}</small></div><div class="kpi"><span class="eyebrow">Accepted</span><span class="v">${kg(acc)}</span><small class="muted">${pct(acc,rec)}% of weighed</small></div></div>${big?`<p class="note">The difference is more than ${S.settings.washTol}%, so a reason is needed.</p>`:''}${acc<0?'<div class="msg">Floaters and rejects are more than the cherry weighed.</div>':''}`;
   },
   nb(){
     const picks = [...document.querySelectorAll('input[name=nb-lot]:checked')].map(x=>({lot:x.value, kg:num('#nb-kg-'+x.value)}));
@@ -1677,7 +1967,7 @@ const LIVE = {
     const ds = [...new Set(picks.flatMap(p=>lotBy(p.lot).entries.map(id=>musterBy(id).date)))];
     el.innerHTML = picks.length ? `<p><b>${kg(sum(picks,p=>p.kg))}</b> of washed cherry · ${esc(datesLabel(ds))}</p>` : '<p class="muted">Pick at least one washing lot.</p>';
   },
-  pe(){ const el=document.getElementById('pe-net'); if(!el) return; const n=r1(num('#pe-g')-num('#pe-t')); el.textContent = num('#pe-g')>0 ? (n>0?kg(n):'Check bag weight') : '–'; },
+  pe(){ const el=document.getElementById('pe-net'); if(!el) return; const less=Math.max(1,Math.round(num('#pe-b')))*num('#pe-t'); const n=r1(num('#pe-g')-less); el.textContent = num('#pe-g')>0 ? (n>0?kg(n)+' (less '+kg(less)+')':'Check the bags') : '–'; },
   fd(){ const el=document.getElementById('fd-prev'); if(!el||!S.ui.drawer||S.ui.drawer.type!=='field') return; const t=sum(S.ui.drawer.subs.map((s,i)=>parseFloat((document.getElementById('sd-ac-'+i)||{}).value)||0)); const a=num('#fd-acres'); el.textContent='Subdivisions: '+t+' of '+a+' acres'+(Math.abs(t-a)>0.001?' (should match)':''); },
   pk(){
     const el = document.getElementById('pk-prev'); if(!el) return;
@@ -1707,7 +1997,7 @@ function msg(t,ok){ S.field.msg=t; S.field.msgOk=!!ok; }
 const ACT = {
   mode(el){ S.ui.mode=el.dataset.v; S.ui.drawer=null; },
   page(el){ S.ui.page=el.dataset.v; S.ui.drawer=null; S.ui.flash=''; if(S.ui.mode!=='portal') S.ui.mode='portal'; },
-  advance(el){ S.now = addH(S.now, +el.dataset.h); S.ui.attDate=''; S.ui.attSel={}; S.ui.plDate=''; },
+  advance(el){ S.now = addH(S.now, +el.dataset.h); S.ui.attDate=''; S.ui.attSel={}; S.ui.plDate=''; S.ui.rDate=''; },
   reset(){ if(!S.ui.resetArmed){ S.ui.resetArmed=true; return; } try{ localStorage.removeItem(STORE_KEY); }catch(e){} seed(); },
   close(){ S.ui.drawer=null; },
   toggleNet(){ S.field.online=!S.field.online; if(S.field.online && S.queue.length) msg('Signal is back. Open Sync to send '+S.queue.length+' saved changes.', true); },
@@ -1718,26 +2008,27 @@ const ACT = {
   markRest(){ const sh=sheetOf(fEst(),today()); let n=0; for(const r of Object.values(sh.rows)) if(!r.st){ r.st='P'; n++; } if(n){ const s=fieldWrite(n+' workers marked present'); for(const r of Object.values(sh.rows)) if(r.sync!=='pending') r.sync=s; } },
   assign(el){ S.field.assign = el.dataset.w || null; },
   saveAssign(el){ const sh=sheetOf(fEst(),today()); const r=sh.rows[el.dataset.w]; r.job=document.getElementById('as-job').value; r.div=document.getElementById('as-div').value; r.sub=''; S.field.assign=null; r.sync=fieldWrite(workerBy(el.dataset.w).name+' assigned to '+fieldName(r.div)+' · '+JOB[r.job]); },
-  submitSheet(){ const sh=sheetOf(fEst(),today()); sh.status='SUBMITTED'; sh.submittedAt=S.now; sh.sync=fieldWrite('Attendance submitted'); },
+  submitSheet(){ const sh=sheetOf(fEst(),today()); sh.status='SUBMITTED'; sh.submittedAt=S.now; audit(sh,'Submitted on the phone'); sh.sync=fieldWrite('Attendance submitted'); },
   focusW(el){ S.field.draft.focus=el.dataset.v; },
   key(el){ const dr=S.field.draft; const k=el.dataset.v; let v=dr[dr.focus]||''; if(k==='⌫') v=v.slice(0,-1); else if(k==='.'){ if(!v.includes('.')) v=(v||'0')+'.'; } else { if(v==='0') v=''; if(v.length<5 && !(v.includes('.') && v.split('.')[1].length>=1)) v+=k; } dr[dr.focus]=v; S.field.msg=''; },
   saveMuster(){
-    const e=fEst(), d=today(), dr=S.field.draft; const g=parseFloat(dr.gross)||0, t=parseFloat(dr.tare)||0; const net=r1(g-t);
+    const e=fEst(), d=today(), dr=S.field.draft; const g=parseFloat(dr.gross)||0, t=parseFloat(dr.tare)||0, nb=dr.bags||1; const net=r1(g-nb*t);
     if(!dr.worker){ msg('Pick a worker.'); return; }
     if(g<=0){ msg('Type the gross weight on the keypad.'); return; }
     if(net<=0){ msg('Net weight must be more than zero. Check the bag weight.'); return; }
     if(g>80){ msg('Gross weight looks too high for one weigh-in. Check the scale.'); return; }
     const sub=SUB[dr.sub]; if(!sub){ msg('Pick the variety.'); return; }
     const sync = S.field.online ? 'synced' : 'pending';
-    S.muster.push({id:'M'+(++S.seq.m), estate:e, date:d, worker:dr.worker, div:dr.div, sub:dr.sub, variety:sub.variety, gross:r1(g), tare:t, net, status:'RECORDED', sync, at:S.now});
+    S.muster.push({id:'M'+(++S.seq.m), estate:e, date:d, worker:dr.worker, div:dr.div, sub:dr.sub, variety:sub.variety, gross:r1(g), bags:nb, tare:r1(nb*t), net, remark:(dr.remark||'').trim(), status:'RECORDED', sync, at:S.now});
     reindex(); fieldWrite('Muster '+workerBy(dr.worker).name+' '+kg(net));
     msg('Saved '+kg(net)+' for '+workerBy(dr.worker).name+(sync==='pending'?'. It will sync when there is signal.':'.'), true);
     const sh=sheetOf(e,d); const ms=S.muster.filter(m=>m.estate===e&&m.date===d);
     const pl=S.workers.filter(w=>w.estate===e && sh && sh.rows[w.id] && working(sh.rows[w.id].st) && isHarvestJob(sh.rows[w.id].job));
     const next=pl.find(w=>!ms.some(m=>m.worker===w.id));
     if(next){ dr.worker=next.id; dr.div=sh.rows[next.id].div; dr.sub=sh.rows[next.id].sub; }
-    dr.gross=''; dr.focus='gross';
+    dr.gross=''; dr.remark=''; dr.focus='gross';
   },
+  bagStep(el){ const dr=S.field.draft; dr.bags=Math.max(1, Math.min(9, (dr.bags||1)+(+el.dataset.v))); S.field.msg=''; },
   submitMuster(){ const e=fEst(), d=today(); let n=0; for(const m of S.muster) if(m.estate===e&&m.date===d&&m.status!=='SUBMITTED'){ m.status='SUBMITTED'; n++; } fieldWrite('Muster submitted ('+n+' entries)'); msg(n+' entries submitted'+(S.field.online?'. They are now in the portal for washing.':'. They will reach the portal when the phone syncs.'), true); },
   openSheet(el){ const [e,d]=el.dataset.v.split('|'); S.ui.mode='portal'; S.ui.page='attendance'; S.ui.attEstate=e; S.ui.attDate=d; S.ui.attSel={}; S.ui.drawer=null; window.scrollTo(0,0); },
   /* ---- Portal attendance register ---- */
@@ -1748,24 +2039,25 @@ const ACT = {
   bulkStatus(){ S.ui.attFlash=''; const v=document.getElementById('bk-st').value; const sh=attSheet(); for(const w of selectedIds()) sh.rows[w].st=v; },
   bulkAssign(){ const f=document.getElementById('bk-field').value, j=document.getElementById('bk-job').value; const sh=attSheet(); let n=0; for(const w of selectedIds()){ const r=sh.rows[w]; if(f) r.div=f; if(j) r.job=j; r.sub=''; n++; } S.ui.attFlash=n+' worker'+(n===1?'':'s')+' assigned to '+fieldName(f)+(j?' · '+JOB[j]:''); S.ui.attSel={}; },
   attClearSel(){ S.ui.attSel={}; },
-  attSubmit(){ S.ui.attFlash=''; const sh=attSheet(); sh.status='SUBMITTED'; sh.submittedAt=S.now; },
-  attApprove(){ S.ui.attFlash=''; const sh=attSheet(); sh.status='APPROVED'; sh.approvedAt=S.now; S.ui.attSel={}; },
-  attReopen(){ S.ui.attFlash=''; const sh=attSheet(); sh.status='DRAFT'; sh.reopenedAt=S.now; },
+  attSubmit(){ S.ui.attFlash=''; const sh=attSheet(); sh.status='SUBMITTED'; sh.submittedAt=S.now; audit(sh,'Submitted'); },
+  attApprove(){ S.ui.attFlash=''; const sh=attSheet(); sh.status='APPROVED'; sh.approvedAt=S.now; audit(sh,'Approved'); S.ui.attSel={}; },
+  attReopen(){ S.ui.attFlash=''; const why=((document.getElementById('at-why')||{}).value||'').trim(); if(!why){ S.ui.attErr='Give the reason for the correction before reopening.'; return; } const sh=attSheet(); sh.status='DRAFT'; sh.reopenedAt=S.now; audit(sh,'Reopened',why); },
   /* ---- Plucking weigh-ins ---- */
   howToggle(el){ S.ui.howOpen=S.ui.howOpen||{}; S.ui.howOpen[el.dataset.v]=(S.ui.howOpen[el.dataset.v]===false); },
   plDay(el){ const d=addDays(plDate(), +el.dataset.v); if(d>=SEASON_START && d<=today()) S.ui.plDate=d; },
   plGo(el){ S.ui.plDate=el.dataset.v; },
   peSave(){
-    const e=plEstate(), d=plDate(), pe=S.ui.pe; const g=num('#pe-g'), t=num('#pe-t'), net=r1(g-t);
+    const e=plEstate(), d=plDate(), pe=S.ui.pe; const g=num('#pe-g'), t=num('#pe-t'), nb=Math.round(num('#pe-b')), net=r1(g-nb*t);
     const fail=m=>{ pe.msg=m; pe.ok=false; };
     if(!pe.worker) return fail('Pick a worker.');
     if(g<=0) return fail('Enter the gross weight.');
+    if(nb<1) return fail('Enter the number of bags, at least 1.');
     if(t<0) return fail('Bag weight cannot be negative.');
     if(net<=0) return fail('Net weight must be more than zero. Check the bag weight.');
     if(g>80) return fail('Gross weight looks too high for one weigh-in. Check the scale.');
     const sub=SUB[pe.sub]; if(!sub) return fail('Pick the variety.');
     const at = d===today() ? S.now : d+'T18:00';
-    S.muster.push({id:'M'+(++S.seq.m), estate:e, date:d, worker:pe.worker, div:pe.div, sub:pe.sub, variety:sub.variety, gross:r1(g), tare:r1(t), net, status:'RECORDED', sync:'synced', source:'portal', at});
+    S.muster.push({id:'M'+(++S.seq.m), estate:e, date:d, worker:pe.worker, div:pe.div, sub:pe.sub, variety:sub.variety, gross:r1(g), bags:nb, tare:r1(nb*t), net, remark:((document.getElementById('pe-rm')||{}).value||'').trim(), status:'RECORDED', sync:'synced', source:'portal', at});
     reindex();
     const who=workerBy(pe.worker).name; const sh=sheetOf(e,d); const dm=S.muster.filter(m=>m.estate===e&&m.date===d);
     const next=pluckersOn(e,d).find(w=>!dm.some(m=>m.worker===w.id));
@@ -1786,9 +2078,19 @@ const ACT = {
   newJob(){ S.ui.drawer={type:'job', code:''}; },
   editJob(el){ S.ui.drawer={type:'job', code:el.dataset.v}; },
   saveJob(){ saveJobForm(); },
-  approveSheet(el){ S.att[el.dataset.v].status='APPROVED'; },
+  approveSheet(el){ const sh=S.att[el.dataset.v]; sh.status='APPROVED'; sh.approvedAt=S.now; audit(sh,'Approved'); },
   newWash(el){ const [e,d]=el.dataset.v.split('|'); const g=waitingWash([e]).find(x=>x.date===d); S.ui.drawer={type:'wash', estate:e, date:d, ids:g?g.ids:[]}; },
-  saveWash(){ const dr=S.ui.drawer; const ids=[...document.querySelectorAll('input[name=wentry]:checked')].map(x=>x.value); if(!ids.length) return; const fl=r1(num('#w-fl')), rj=r1(num('#w-rj')); const rec=sum(ids,id=>musterBy(id).net); if(fl+rj>=rec) return; makeWash(dr.estate, dr.date, S.now, ids, null, fl, rj); reindex(); S.ui.drawer=null; },
+  saveWash(){
+    const dr=S.ui.drawer; const ids=[...document.querySelectorAll('input[name=wentry]:checked')].map(x=>x.value);
+    const rc=r1(num('#w-rc')), fl=r1(num('#w-fl')), rj=r1(num('#w-rj')); const why=document.getElementById('w-why').value.trim();
+    const rcEl=document.getElementById('w-rc'); dr.f={ids, rc:rcEl.dataset.auto==='1'?null:rc, fl, rj, why}; dr.err='';
+    const mk=r1(sum(ids,id=>musterBy(id).net));
+    if(!ids.length){ dr.err='Pick at least one weigh-in.'; return; }
+    if(rc<=0){ dr.err='Enter the weight at washing.'; return; }
+    if(fl+rj>=rc){ dr.err='Floaters and rejects are more than the cherry weighed.'; return; }
+    if(Math.abs(washDiff({received:rc, musterKg:mk}).pct)>S.settings.washTol && !why){ dr.err=`Washing differs from the muster by more than ${S.settings.washTol}%. Give the reason.`; return; }
+    makeWash(dr.estate, dr.date, S.now, ids, null, fl, rj, rc, why); reindex(); S.ui.drawer=null;
+  },
   openBatch(el){ S.ui.drawer={type:'batch', code:el.dataset.v}; if(S.ui.mode!=='portal') S.ui.mode='portal'; },
   newBatch(){ S.ui.drawer={type:'newBatch', route:'A', estate:fEst()}; },
   saveBatch(){
@@ -1799,8 +2101,10 @@ const ACT = {
     const recipe = d.route==='B' ? document.getElementById('nb-rec').value : '';
     const b={code, estate:e, route:d.route, recipe, inputs:picks, stages:[], packedKg:0, createdAt:S.now};
     const key=ROUTE[d.route].first; const kin=bInKg(b);
-    const res = key==='FERMENTATION' ? 'Tank '+document.getElementById('nb-tank').value : resFor(key,kin);
-    b.stages.push({key, start:S.now, plannedEnd:addH(S.now, stageTargetH(b,key)), end:'', inKg:r1(kin), outKg:0, res, readings:[], status:'IN_PROGRESS', by:'Processing operator'});
+    let res;
+    if(needsPicker(key)){ const r=readDryRes('nb', key); if(r.err){ --S.seq.batch[e]; d.err=r.err; return; } res=r.res; }
+    else res = key==='FERMENTATION' ? 'Tank '+document.getElementById('nb-tank').value : resFor(key,kin);
+    b.stages.push({key, start:S.now, plannedEnd:addH(S.now, stageTargetH(b,key)), end:'', inKg:r1(kin), outKg:0, res, readings:[], log:[], status:'IN_PROGRESS', by:'Processing operator'});
     S.batches.push(b); reindex(); S.ui.drawer={type:'batch', code}; S.ui.page='processing';
   },
   addReading(){
@@ -1808,16 +2112,47 @@ const ACT = {
     if(isNaN(v)) return; c.readings.push({at:S.now, metric, value:metric==='PH'?r2(v):r1(v), by:'Processing operator'});
   },
   completeStage(el){
-    const b=batchBy(el.dataset.v); const c=curStage(b); const out=r1(num('#cs-out')); if(out<=0) return;
-    c.status='COMPLETED'; c.end=S.now; c.outKg=out;
+    const b=batchBy(el.dataset.v); const c=curStage(b); const d=S.ui.drawer; d.err=''; d.flash='';
+    const out=r1(num('#cs-out')); d.out=out; if(out<=0){ d.err='Enter the weight out.'; return; }
     const nx=ROUTE[b.route].next[c.key]; const sel=document.getElementById('cs-next'); const key=sel?sel.value:nx[0];
-    const st={key, start:S.now, plannedEnd:addH(S.now, stageTargetH(b,key)), end:'', inKg:out, outKg:0, res:resFor(key,out), readings:[], status:'IN_PROGRESS', by:key==='QUALITY_CHECK'?'':'Processing operator'};
+    let res; if(needsPicker(key)){ const r=readDryRes('cs', key, b.code); if(r.err){ d.err=r.err; return; } res=r.res; } else res=resFor(key,out);
+    c.status='COMPLETED'; c.end=S.now; c.outKg=out; d.out=null; d.next=null;
+    const st={key, start:S.now, plannedEnd:addH(S.now, stageTargetH(b,key)), end:'', inKg:out, outKg:0, res, readings:[], log:[], status:'IN_PROGRESS', by:key==='QUALITY_CHECK'?'':'Processing operator'};
     if(key==='QUALITY_CHECK'){ const m=batchMoisture(b); if(m) st.readings.push({at:S.now, metric:'MOISTURE', value:m.value, by:'carried from drying'}); }
     b.stages.push(st);
   },
   qcApprove(el){ const b=batchBy(el.dataset.v); const c=curStage(b); c.status='COMPLETED'; c.end=S.now; c.outKg=c.inKg; c.decision='APPROVED'; c.by='Quality officer'; },
   qcRework(el){ const b=batchBy(el.dataset.v); const c=curStage(b); const prevDry=[...b.stages].reverse().find(s=>STAGE[s.key].dry); c.status='COMPLETED'; c.end=S.now; c.outKg=c.inKg; c.decision='Sent back for more drying'; c.by='Quality officer';
-    b.stages.push({key:prevDry.key, start:S.now, plannedEnd:addH(S.now,48), end:'', inKg:c.inKg, outKg:0, res:prevDry.res, readings:[], status:'IN_PROGRESS', by:'Processing operator'}); },
+    b.stages.push({key:prevDry.key, start:S.now, plannedEnd:addH(S.now,48), end:'', inKg:c.inKg, outKg:0, res:prevDry.res, readings:[], log:[], status:'IN_PROGRESS', by:'Processing operator'}); },
+  dryLog(el){ const d=S.ui.drawer; const c=curStage(batchBy(d.code)); d.err=''; d.flash=''; c.log=(c.log||[]).concat({at:S.now, kind:el.dataset.v, note:((document.getElementById('dl-note')||{}).value||'').trim(), by:'Processing operator'}); },
+  holdBatch(el){ const b=batchBy(el.dataset.v); const d=S.ui.drawer; d.err=''; d.flash=''; const why=((document.getElementById('hd-why')||{}).value||'').trim(); if(!why){ d.err='Give the reason for the hold.'; return; } b.hold={at:S.now, reason:why}; },
+  resumeBatch(el){ const b=batchBy(el.dataset.v); const c=curStage(b); const h=b.hold; const d=S.ui.drawer; d.err=''; d.flash=''; if(!h) return; c.plannedEnd=addH(c.plannedEnd, hoursBetween(h.at,S.now)); b.holds=(b.holds||[]).concat({at:h.at, until:S.now, reason:h.reason, stage:c.key}); b.hold=null; },
+  splitBatch(el){
+    const b=batchBy(el.dataset.v); const c=curStage(b); const d=S.ui.drawer; d.err=''; d.flash='';
+    const k=r1(num('#sp-kg')); if(!(k>0 && k<c.inKg)){ d.err=`Enter the kilograms to move: more than 0 and less than ${kg(c.inKg)}.`; return; }
+    let res=c.res;
+    if(needsPicker(c.key)){ const r=readDryRes('sp', c.key); if(r.err){ d.err=r.err; return; } res=r.res; }
+    else if(c.key==='FERMENTATION'){ const t=document.getElementById('sp-tank').value; if(busyTanks().has(t)){ d.err='That tank is in use.'; return; } res='Tank '+t; }
+    const f=k/c.inKg, cur=c.inKg, e=b.estate;
+    const code='B-'+e+'-2026-'+pad(++S.seq.batch[e],4);
+    const nb={code, estate:e, route:b.route, recipe:b.recipe, inputs:b.inputs.map(i=>({lot:i.lot, kg:r3(i.kg*f)})), stages:JSON.parse(JSON.stringify(b.stages)), packedKg:0, createdAt:S.now, splitFrom:b.code};
+    b.inputs.forEach(i=>{ i.kg=r3(i.kg*(1-f)); });
+    nb.stages.forEach(x=>{ x.inKg=r1(x.inKg*f); x.outKg=r1(x.outKg*f); }); b.stages.forEach(x=>{ x.inKg=r1(x.inKg*(1-f)); x.outKg=r1(x.outKg*(1-f)); });
+    const nc=curStage(nb); nc.inKg=k; nc.res=res; nc.log=(nc.log||[]).concat({at:S.now, kind:'SPLIT', note:'Split from '+b.code, by:'Processing operator'});
+    c.inKg=r1(cur-k); c.log=(c.log||[]).concat({at:S.now, kind:'SPLIT', note:kg(k)+' moved to '+code, by:'Processing operator'});
+    b.splits=(b.splits||[]).concat({code, kg:k, at:S.now});
+    S.batches.push(nb); reindex(); d.flash=`${kg(k)} moved to the new batch ${code} (${res}).`;
+  },
+  openReport(el){ S.ui.page='reports'; S.ui.rtab=el.dataset.v; S.ui.rDate=''; S.ui.drawer=null; S.ui.mode='portal'; },
+  rtab(el){ S.ui.rtab=el.dataset.v; },
+  rDay(el){ const d=addDays(rDate(), +el.dataset.v); if(d>=SEASON_START && d<=today()) S.ui.rDate=d; },
+  rRange(el){ S.ui.rRange=el.dataset.v; },
+  copySummary(){
+    const done=m=>{ S.ui.copied=m; render(); };
+    const fallback=()=>{ const ta=document.getElementById('sum-text'); let ok=false; if(ta){ ta.focus(); ta.select(); try{ ok=document.execCommand('copy'); }catch(e){} } done(ok?'Copied. Paste it into WhatsApp.':'Select the text above and copy it.'); };
+    const t=(document.getElementById('sum-text')||{}).value||'';
+    try{ navigator.clipboard.writeText(t).then(()=>done('Copied. Paste it into WhatsApp.'), fallback); }catch(e){ fallback(); }
+  },
   newPack(el){ S.ui.drawer={type:'pack', batch:el.dataset.v||''}; if(S.ui.mode!=='portal') S.ui.mode='portal'; },
   savePack(){
     const picks=[...document.querySelectorAll('input[name=pk-b]:checked')].map(x=>({code:x.value, kg:Math.min(num('#pk-kg-'+x.value), bAvail(batchBy(x.value)))})).filter(p=>p.kg>0);
@@ -1829,7 +2164,7 @@ const ACT = {
   },
   openPack(el){ S.ui.drawer={type:'packLot', code:el.dataset.v}; },
   trace(el){ S.ui.traceQ=el.dataset.v; S.ui.page='trace'; S.ui.drawer=null; S.ui.mode='portal'; },
-  saveSettings(){ for(const k of ['FLOOR_DRYING','TRAY_DRYING','NATURAL_TRAY_DRYING']) S.settings.dry[k]=+document.getElementById('set-'+k).value; S.settings.mMin=num('#set-mmin'); S.settings.mMax=num('#set-mmax'); S.ui.flash='Saved. New drying stages use these targets.'; }
+  saveSettings(){ for(const k of ['FLOOR_DRYING','TRAY_DRYING','NATURAL_TRAY_DRYING']) S.settings.dry[k]=+document.getElementById('set-'+k).value; S.settings.mMin=num('#set-mmin'); S.settings.mMax=num('#set-mmax'); S.settings.bagWt=num('#set-bagwt'); S.settings.washTol=num('#set-wtol'); S.ui.flash='Saved. New drying stages and weigh-ins use these settings.'; }
 };
 const CHANGE = {
   estate(el){ S.ui.estate=el.value; S.ui.drawer=null; S.field.draft.worker=''; S.field.assign=null; S.field.msg=''; },
@@ -1857,24 +2192,37 @@ const CHANGE = {
   nbEstate(el){ S.ui.drawer.estate=el.value; },
   pkEstate(el){ const d=S.ui.drawer; d.estate=el.value; d.route=''; d.batch=''; },
   pkRoute(el){ const d=S.ui.drawer; d.route=el.value; d.batch=''; },
-  pkType(el){ S.ui.drawer.bagType=el.value; }
+  pkType(el){ S.ui.drawer.bagType=el.value; },
+  csNext(el){ const d=S.ui.drawer; d.next=el.value; const o=document.getElementById('cs-out'); if(o) d.out=o.value; },
+  bagWt(el){
+    const bag=bagBy(el.dataset.v); const lot=packBy(bag.lot); const v=parseFloat(el.value); bag.weighed = isNaN(v) ? null : r3(v);
+    const c=document.getElementById('bw-'+bag.code); if(c) c.innerHTML=bagWtChip(bag,lot);
+    const t=document.getElementById('bw-sum'); if(t) t.innerHTML=weighText(lot);
+    return false;
+  },
+  rDate(el){ if(el.value && el.value>=SEASON_START && el.value<=today()) S.ui.rDate=el.value; },
+  pluckRate(el){ S.settings.pluckRate=Math.max(0, parseFloat(el.value)||0); }
 };
+/* Text typed into these fields is kept without redrawing the screen */
+const KEEP = {muRemark(v){ S.field.draft.remark=v; }};
 
 document.addEventListener('click', ev=>{
   const el = ev.target.closest('[data-act]'); if(!el || el.disabled) return;
   const fn = ACT[el.dataset.act]; if(!fn) return;
   ev.preventDefault();
   if(el.dataset.act!=='reset') S.ui.resetArmed=false;
+  S.ui.attErr=''; if(el.dataset.act!=='copySummary') S.ui.copied='';
   fn(el); render(); runLive();
 });
 document.addEventListener('change', ev=>{
   const el = ev.target.closest('[data-change]');
-  if(el && CHANGE[el.dataset.change]){ CHANGE[el.dataset.change](el); render(); runLive(); return; }
+  if(el && CHANGE[el.dataset.change]){ if(CHANGE[el.dataset.change](el)!==false){ render(); runLive(); } else save(); return; }
   const lv = ev.target.closest('[data-live]'); if(lv && LIVE[lv.dataset.live]) LIVE[lv.dataset.live]();
 });
 document.addEventListener('input', ev=>{
+  const kp = ev.target.closest('[data-keep]'); if(kp && KEEP[kp.dataset.keep]){ KEEP[kp.dataset.keep](kp.value); save(); return; }
   const lv = ev.target.closest('[data-live]'); if(!lv) return;
-  if(lv.id==='pk-count') lv.dataset.auto='0';
+  if(lv.id==='pk-count' || lv.id==='w-rc') lv.dataset.auto='0';
   if(lv.id && lv.id.startsWith('pk-kg-')){ const c=document.getElementById('pk-count'); if(c) c.dataset.auto='1'; }
   if(LIVE[lv.dataset.live]) LIVE[lv.dataset.live]();
 });
