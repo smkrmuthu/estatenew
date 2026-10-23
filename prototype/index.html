@@ -119,6 +119,7 @@ table.data{width:100%;border-collapse:collapse;font-size:.9rem}
 table.data th{text-align:left;font-weight:500;font-size:.78rem;color:var(--muted);border-bottom:1px solid var(--line);padding:8px 10px;white-space:nowrap}
 table.data td{border-bottom:1px solid var(--line);padding:10px;vertical-align:top}
 table.data tr:last-child td{border-bottom:0}
+table.data td.mono,table.data td.r{white-space:nowrap}
 .r{text-align:right!important}
 tr.click{cursor:pointer}
 tr.click td{transition:background-color .12s var(--ease)}
@@ -150,6 +151,35 @@ button.chip:hover{border-color:var(--accent);color:var(--accent)}
 .chart .bar-r{fill:var(--accent);opacity:.85}
 .chart .bar-t{fill:var(--cherry)}
 .chart .grid{stroke:var(--line);stroke-width:1}
+
+/* Attendance register */
+input[type=date]{font:inherit;font-size:.92rem;color:var(--fg);background:var(--surface);border:1px solid var(--line-strong);border-radius:var(--r-sm);padding:0 10px;height:36px}
+.bulk{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:10px 12px;border-radius:var(--r);background:var(--accent-soft);border:1px solid transparent}
+.bulk.idle{background:var(--surface-2)}
+.bulk.idle b{color:var(--muted);font-weight:500}
+.bulk b{font-weight:600}
+.bulk .sep{width:1px;align-self:stretch;background:var(--line-strong)}
+table.reg td{vertical-align:middle;padding-block:8px}
+table.reg select{max-width:200px}
+table.reg tr.sel td{background:var(--accent-soft)}
+.seg4{display:inline-flex;gap:2px;padding:2px;border-radius:9px;background:var(--surface-2)}
+.seg4 button{width:34px;height:32px;border:0;border-radius:7px;background:transparent;color:var(--muted);font:inherit;font-weight:600;cursor:pointer}
+.seg4 button:hover{color:var(--fg)}
+.seg4 button.on-P{background:var(--accent);color:var(--accent-fg)}
+.seg4 button.on-H{background:var(--warn-soft);color:var(--warn);box-shadow:inset 0 0 0 1px var(--warn)}
+.seg4 button.on-A,.seg4 button.on-L{background:var(--bad-soft);color:var(--bad);box-shadow:inset 0 0 0 1px var(--bad)}
+.seg4 button[disabled]{cursor:default}
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.cal-h{font-size:.72rem;color:var(--muted);text-align:center;padding-bottom:2px}
+.cal-d{border:1px solid var(--line);border-radius:8px;padding:4px 5px;min-height:56px;display:flex;flex-direction:column;gap:1px;font-size:.72rem;min-width:0;background:var(--surface)}
+.cal-d b{font-size:.85rem;line-height:1.1}
+.cal-d small{font-size:.64rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cal-d.st-P{background:var(--accent-soft);border-color:transparent}
+.cal-d.st-P b{color:var(--ok)}
+.cal-d.st-H{background:var(--warn-soft);border-color:transparent}
+.cal-d.st-H b{color:var(--warn)}
+.cal-d.st-A,.cal-d.st-L{background:var(--bad-soft);border-color:transparent}
+.cal-d.st-A b,.cal-d.st-L b{color:var(--bad)}
 
 /* Processing board */
 .board{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(220px,1fr);gap:14px;overflow-x:auto;padding-bottom:8px}
@@ -266,7 +296,7 @@ button.chip:hover{border-color:var(--accent);color:var(--accent)}
 'use strict';
 
 /* ---------- Reference data: from the Division and Subdivision Import sheet ---------- */
-const VERSION = 5;
+const VERSION = 6;
 const STORE_KEY = 'cemms-prototype';
 const VARIETY = {CG:'Chandana Giri', S9:'Selection 9', YMG:'YMG', '':'Variety to confirm'};
 const LAND = {B:'Bearing', Y:'Young plants', R:'Rock', W:'Water', E:'Empty', O:'Other crop'};
@@ -274,7 +304,9 @@ const ESTATE = {
   GLZ:{name:'Glazebrooke Estate', short:'Glazebrooke', prefix:'BROOK', sup:'R. Velmurugan'},
   BYV:{name:'Byson Valley Estate', short:'Byson Valley', prefix:'BYSON', sup:'P. Anand'}
 };
-const JOB = {PLK:'Plucking', PRN:'Pruning', WED:'Weeding', MNT:'Maintenance'};
+const SEED_JOBS = [{code:'PLK', name:'Plucking', harvest:true, active:true},{code:'PRN', name:'Pruning', active:true},{code:'WED', name:'Weeding', active:true},{code:'MNT', name:'Maintenance', active:true}];
+let JOB = {};
+const WTYPE = ['Permanent','Casual','Contract'];
 const RECIPE = {GBF1:{name:'Pineapple', hours:96}, GBF2:{name:'Avocado', hours:72}, GBT1:{name:'Apple', hours:120}};
 const TANKS = ['T1','T2','T3','T4','T5','T6'];
 const YARDS = ['FY1','FY2','FY3'];
@@ -334,15 +366,23 @@ const RAW = [
  ['BYV',16,'New Field',17.5,0,[['A','Y',2,'CG'],['B','E',15.5,'']]],
  ['BYV',17,'Triangle Field',0.5,0,[['A','E',0.5,'']]]
 ];
-const DIVS = RAW.map(([e,n,name,acres,expected,subs])=>{
+const SEED_DIVS = RAW.map(([e,n,name,acres,expected,subs])=>{
   const code = e+'-'+String(n).padStart(2,'0');
-  return {code, estate:e, name, acres, expected, subs:subs.map(([l,land,a,v,c])=>({code:code+'-'+l, div:code, land, acres:a, variety:v||'', confirm:!!c}))};
+  return {code, estate:e, name, acres, expected, elevation:'', active:true, subs:subs.map(([l,land,a,v,c])=>({code:code+'-'+l, div:code, land, acres:a, variety:v||'', confirm:!!c}))};
 });
-const DIV = Object.fromEntries(DIVS.map(d=>[d.code,d]));
-const SUB = {}; DIVS.forEach(d=>d.subs.forEach(s=>{SUB[s.code]=s;}));
-const bearingSubs = d=>d.subs.filter(s=>s.land==='B');
+/* Masters live in the saved state (S.divs, S.workers, S.jobs) so they can be edited; these lookups are rebuilt from it. */
+let DIVS = [], DIV = {}, SUB = {};
+function buildMasters(){
+  DIVS = S.divs; DIV = Object.fromEntries(DIVS.map(d=>[d.code,d]));
+  SUB = {}; DIVS.forEach(d=>d.subs.forEach(s=>{SUB[s.code]=s;}));
+  JOB = Object.fromEntries(S.jobs.map(j=>[j.code,j.name]));
+}
+const bearingSubs = d=>d ? d.subs.filter(s=>s.land==='B') : [];
 const bearingAcres = d=>sum(bearingSubs(d),s=>s.acres);
-const bearingDivs = e=>DIVS.filter(d=>d.estate===e && bearingSubs(d).length);
+const activeDivs = e=>DIVS.filter(d=>d.estate===e && d.active!==false);
+const bearingDivs = e=>activeDivs(e).filter(d=>bearingSubs(d).length);
+const activeWorkers = e=>S.workers.filter(w=>w.estate===e && w.active!==false);
+const activeJobs = ()=>S.jobs.filter(j=>j.active!==false);
 const NAMES = {
   GLZ:['Muthu Selvan','Lakshmi','Selvi','Ravi Kumar','Meena','Ganesan','Parvathi','Arun','Devi','Murugan','Kavitha','Suresh','Anitha','Rajesh','Valli','Prakash','Saroja','Mani','Shanthi','Senthil'],
   BYV:['Revathi','Babu','Jaya','Karthik','Malar','Siva','Thangam','Vijay','Pushpa','Raja','Chitra','Kannan']
@@ -439,6 +479,7 @@ function listLabel(names, word){
 let S = null;
 const IDX = {muster:new Map(), wash:new Map(), batch:new Map()};
 function reindex(){
+  buildMasters();
   IDX.muster = new Map(S.muster.map(m=>[m.id,m]));
   IDX.wash = new Map(S.wash.map(w=>[w.code,w]));
   IDX.batch = new Map(S.batches.map(b=>[b.code,b]));
@@ -583,10 +624,12 @@ function seed(){
     ui:{mode:'portal', page:'dashboard', estate:'ALL', pluckDate:'', traceQ:'BROOKAA14', publicView:false, drawer:null, resetArmed:false},
     field:{tab:'today', online:true, lastSync:'2026-10-23T09:40', assign:null, msg:'', msgOk:false, draft:{worker:'', div:'', sub:'', gross:'', tare:'1.0', focus:'gross'}},
     settings:{dry:{FLOOR_DRYING:14, TRAY_DRYING:14, NATURAL_TRAY_DRYING:14}, mMin:10.5, mMax:11.5},
+    divs:JSON.parse(JSON.stringify(SEED_DIVS)), jobs:JSON.parse(JSON.stringify(SEED_JOBS)),
     workers:[], att:{}, muster:[], wash:[], batches:[], packs:[], queue:[], log:[],
     seq:{m:0, q:0, tank:0, yard:0, tray:0, wash:{GLZ:0,BYV:0}, batch:{GLZ:0,BYV:0}, pack:{GLZ:0,BYV:0}, bag:{}}};
-  NAMES.GLZ.forEach((n,i)=>S.workers.push({id:'G'+pad(i+1,2), estate:'GLZ', name:n}));
-  NAMES.BYV.forEach((n,i)=>S.workers.push({id:'B'+pad(i+1,2), estate:'BYV', name:n}));
+  buildMasters();
+  NAMES.GLZ.forEach((n,i)=>S.workers.push({id:'G'+pad(i+1,2), estate:'GLZ', name:n, type:i%5===4?'Casual':'Permanent', active:true}));
+  NAMES.BYV.forEach((n,i)=>S.workers.push({id:'B'+pad(i+1,2), estate:'BYV', name:n, type:i%4===3?'Casual':'Permanent', active:true}));
   const pickSub = e=>{
     const subs = []; for(const d of bearingDivs(e)) for(const s of bearingSubs(d)) subs.push({s, w:d.expected*s.acres/bearingAcres(d)});
     let x = R()*sum(subs,o=>o.w); for(const o of subs){ x -= o.w; if(x<=0) return o.s; } return subs[0].s;
@@ -799,18 +842,35 @@ function renderField(){
     </aside>
   </div>`;
 }
-function ensureSheet(e,d){
-  if(sheetOf(e,d)) return sheetOf(e,d);
-  const prev = Object.values(S.att).filter(s=>s.estate===e && s.date<d).sort((a,b)=>a.date<b.date?1:-1)[0];
+/* One attendance sheet per estate per day, shared by the supervisor phone and the portal register.
+   A new day copies each worker's field and job from the most recent earlier sheet; status starts blank. */
+function prevAssignment(e,d,wid){
+  const prev = Object.values(S.att).filter(s=>s.estate===e && s.date<d && s.rows[wid] && s.rows[wid].job).sort((a,b)=>a.date<b.date?1:-1)[0];
+  return prev ? prev.rows[wid] : null;
+}
+function newRow(e,d,wid){
+  const r = prevAssignment(e,d,wid);
+  const f0 = bearingDivs(e)[0];
+  const div = r && DIV[r.div] && DIV[r.div].active!==false ? r.div : (f0?f0.code:'');
+  return {st:null, job:r?r.job:'PLK', div, sub:'', remark:'', sync:'synced'};
+}
+function ensureSheet(e,d,source){
+  if(sheetOf(e,d)) return syncRows(sheetOf(e,d));
   const rows = {};
-  for(const w of S.workers.filter(w=>w.estate===e)){
-    const r = prev && prev.rows[w.id] && prev.rows[w.id].job ? prev.rows[w.id] : null;
-    const s0 = bearingSubs(bearingDivs(e)[0])[0];
-    rows[w.id] = r ? {st:null, job:r.job, div:r.div, sub:r.sub||'', sync:'synced'} : {st:null, job:'PLK', div:s0.div, sub:s0.code, sync:'synced'};
-  }
-  S.att[e+'|'+d] = {estate:e, date:d, status:'DRAFT', supervisor:ESTATE[e].sup, rows, submittedAt:''};
+  for(const w of activeWorkers(e)) rows[w.id] = newRow(e,d,w.id);
+  S.att[e+'|'+d] = {estate:e, date:d, status:'DRAFT', supervisor:ESTATE[e].sup, source:source||'phone', rows, submittedAt:''};
   return S.att[e+'|'+d];
 }
+/* Keep a sheet in step with the workers master: add newly active workers, drop inactive ones that were never marked. */
+function syncRows(sh){
+  if(sh.status==='APPROVED') return sh;
+  for(const w of activeWorkers(sh.estate)) if(!sh.rows[w.id]) sh.rows[w.id] = newRow(sh.estate, sh.date, w.id);
+  for(const wid of Object.keys(sh.rows)){ const w=workerBy(wid); if(w && w.active===false && !sh.rows[wid].st) delete sh.rows[wid]; }
+  return sh;
+}
+const fieldName = c=>DIV[c] ? DIV[c].name : '';
+const isHarvestJob = c=>{ const j=S.jobs.find(x=>x.code===c); return !!(j && j.harvest); };
+const working = st=>st==='P' || st==='H';
 function fToday(e,d){
   const sh = sheetOf(e,d); const ms = S.muster.filter(m=>m.estate===e && m.date===d);
   const cnt = sh ? countSheet(sh) : null;
@@ -828,10 +888,11 @@ function countSheet(sh){ const c={P:0,H:0,A:0,none:0}; for(const r of Object.val
 function fAttendance(e,d){
   const sh = sheetOf(e,d);
   if(!sh) return `<p>Today’s sheet copies yesterday’s divisions and jobs, so you only change what is different.</p><button class="btn btn-primary" data-act="startSheet">Start today’s attendance</button>`;
+  syncRows(sh);
   const locked = sh.status!=='DRAFT'; const c = countSheet(sh); const f = S.field;
-  const rows = S.workers.filter(w=>w.estate===e).map(w=>{
+  const rows = S.workers.filter(w=>w.estate===e && sh.rows[w.id]).map(w=>{
     const r = sh.rows[w.id];
-    const where = r.job ? (DIV[r.div]?DIV[r.div].name:'')+(r.sub&&r.job==='PLK'?' ('+r.sub.slice(-1)+')':'')+' · '+JOB[r.job] : 'No assignment';
+    const where = r.job ? fieldName(r.div)+' · '+(JOB[r.job]||r.job) : 'No field yet';
     const tri = ['P','H','A'].map(s=>`<button data-act="mark" data-w="${w.id}" data-v="${s}" class="${r.st===s?'on-'+s:''}" aria-pressed="${r.st===s}" ${locked?'disabled':''} title="${{P:'Present, full day',H:'Half day',A:'Absent'}[s]}">${{P:'P',H:'½',A:'A'}[s]}</button>`).join('');
     const editing = f.assign===w.id && !locked;
     return `<div class="wrow"><div class="who"><span class="mono">${w.id}</span> ${esc(w.name)}
@@ -845,24 +906,26 @@ function fAttendance(e,d){
     ${locked?`<p class="note">Submitted ${sh.submittedAt?fdt(sh.submittedAt):''}. The estate manager approves it in the portal.</p>`:
       `<div class="stickybar"><button class="btn btn-primary" style="flex:1" data-act="submitSheet" ${c.none?'disabled':''}>${c.none?`Mark ${c.none} more to submit`:'Submit attendance'}</button></div>`}`;
 }
+function fieldOptions(e, cur){
+  return activeDivs(e).map(d=>`<option value="${d.code}" ${cur===d.code?'selected':''}>${esc(d.name)}${bearingSubs(d).length?'':' (no coffee to pluck)'}</option>`).join('');
+}
+function jobOptions(cur){ return activeJobs().map(j=>`<option value="${j.code}" ${cur===j.code?'selected':''}>${esc(j.name)}</option>`).join(''); }
 function assignEditor(e,wid,r){
-  const divs = DIVS.filter(d=>d.estate===e && d.subs.some(s=>s.land==='B'||s.land==='Y'));
-  const div = DIV[r.div] || divs[0];
-  const bs = bearingSubs(div);
   return `<div class="fcard" style="margin-block:6px">
-    <label class="f" for="as-job">Job<select id="as-job">${Object.entries(JOB).map(([k,l])=>`<option value="${k}" ${r.job===k?'selected':''}>${l}</option>`).join('')}</select></label>
-    <label class="f" for="as-div">Division<select id="as-div" data-change="asDiv" data-w="${wid}">${divs.map(d=>`<option value="${d.code}" ${div.code===d.code?'selected':''}>${esc(d.name)}${bearingSubs(d).length?'':' (no bearing coffee)'}</option>`).join('')}</select></label>
-    ${bs.length>1?`<label class="f" for="as-sub">Subdivision<select id="as-sub">${bs.map(s=>`<option value="${s.code}" ${r.sub===s.code?'selected':''}>${s.code} · ${VARIETY[s.variety]} · ${s.acres} ac</option>`).join('')}</select></label>`:''}
+    <label class="f" for="as-div">Field<select id="as-div">${fieldOptions(e, r.div)}</select></label>
+    <label class="f" for="as-job">Job<select id="as-job">${jobOptions(r.job)}</select></label>
+    <small class="muted">For plucking, the variety is chosen at the evening muster when a field has more than one.</small>
     <div class="row"><button class="btn btn-primary" data-act="saveAssign" data-w="${wid}">Save</button><button class="btn" data-act="assign" data-w="">Cancel</button></div></div>`;
 }
 function fMuster(e,d){
   const f = S.field; const dr = f.draft; const sh = sheetOf(e,d);
-  const pluckers = S.workers.filter(w=>w.estate===e && sh && (sh.rows[w.id].st==='P'||sh.rows[w.id].st==='H') && sh.rows[w.id].job==='PLK');
+  const pluckers = S.workers.filter(w=>w.estate===e && sh && sh.rows[w.id] && working(sh.rows[w.id].st) && isHarvestJob(sh.rows[w.id].job));
   const ms = S.muster.filter(m=>m.estate===e && m.date===d).sort((a,b)=>a.id<b.id?1:-1);
   const submitted = ms.length && ms.every(m=>m.status==='SUBMITTED');
   if(!sh) return `<p>Start today’s attendance first. Muster entries are linked to the workers marked present for plucking.</p><button class="btn btn-primary" data-act="ftab" data-v="attendance">Go to attendance</button>`;
   if(!pluckers.length) return `<p>No workers are marked present for plucking yet.</p><button class="btn btn-primary" data-act="ftab" data-v="attendance">Go to attendance</button>`;
   if(!dr.worker || !pluckers.find(w=>w.id===dr.worker)){ const w = pluckers.find(w=>!ms.some(m=>m.worker===w.id)) || pluckers[0]; dr.worker=w.id; dr.div=sh.rows[w.id].div; dr.sub=sh.rows[w.id].sub; }
+  if(!bearingSubs(DIV[dr.div]).length){ const f0=bearingDivs(e)[0]; dr.div=f0?f0.code:''; }
   const div = DIV[dr.div]; const bs = div ? bearingSubs(div) : [];
   if(!bs.find(s=>s.code===dr.sub)) dr.sub = bs.length ? bs[0].code : '';
   const sub = SUB[dr.sub];
@@ -873,7 +936,7 @@ function fMuster(e,d){
   ${submitted?`<div class="msg ok">Today’s muster is submitted. New entries can still be added and submitted again.</div>`:''}
   <div class="fcard">
     <label class="f" for="mu-w">Worker<select id="mu-w" data-change="muWorker">${pluckers.map(w=>`<option value="${w.id}" ${dr.worker===w.id?'selected':''}>${w.id} · ${esc(w.name)}${ms.some(m=>m.worker===w.id)?' ✓':''}</option>`).join('')}</select></label>
-    <label class="f" for="mu-d">Division<select id="mu-d" data-change="muDiv">${bearingDivs(e).map(d=>`<option value="${d.code}" ${dr.div===d.code?'selected':''}>${esc(d.name)}</option>`).join('')}</select></label>
+    <label class="f" for="mu-d">Field<select id="mu-d" data-change="muDiv">${bearingDivs(e).map(d=>`<option value="${d.code}" ${dr.div===d.code?'selected':''}>${esc(d.name)}</option>`).join('')}</select></label>
     ${bs.length>1?`<label class="f" for="mu-s">Subdivision<select id="mu-s" data-change="muSub">${bs.map(s=>`<option value="${s.code}" ${dr.sub===s.code?'selected':''}>${s.code} · ${VARIETY[s.variety]}</option>`).join('')}</select></label>`
       :`<small class="muted">Subdivision ${sub?sub.code:''} · ${sub?VARIETY[sub.variety]:''}</small>`}
     ${sub && !sub.variety?'<small class="chip warn">Variety for this subdivision is still to be confirmed by the owner</small>':''}
@@ -905,10 +968,10 @@ function fSync(){
 }
 
 /* ===== Portal ===== */
-const PAGES = [['dashboard','Dashboard','grid'],['attendance','Attendance','users'],['plucking','Plucking','leaf'],['washing','Washing','drop'],['processing','Processing','layers'],['packing','Packing','box'],['trace','Trace a bag','search'],['divisions','Divisions','map'],['setup','Process settings','sliders']];
+const PAGES = [['dashboard','Dashboard','grid'],['attendance','Attendance','users'],['plucking','Plucking','leaf'],['washing','Washing','drop'],['processing','Processing','layers'],['packing','Packing','box'],['trace','Trace a bag','search'],['masters','Masters','map'],['setup','Process settings','sliders']];
 function renderPortal(){
   const counts = navCounts();
-  const page = {dashboard:pDashboard, attendance:pAttendance, plucking:pPlucking, washing:pWashing, processing:pProcessing, packing:pPacking, trace:pTrace, divisions:pDivisions, setup:pSetup}[S.ui.page] || pDashboard;
+  const page = {dashboard:pDashboard, attendance:pAttendance, plucking:pPlucking, washing:pWashing, processing:pProcessing, packing:pPacking, trace:pTrace, masters:pMasters, setup:pSetup}[S.ui.page] || pDashboard;
   return `<div class="portal"><nav class="side" aria-label="Portal">${PAGES.map(([k,l,ic])=>`<button data-act="page" data-v="${k}" aria-current="${S.ui.page===k?'page':'false'}">${icon(ic)}<span class="label">${l}</span>${counts[k]?`<span class="count" aria-label="${counts[k]} need attention">${counts[k]}</span>`:''}</button>`).join('')}</nav>
     <main class="main">${page()}</main></div>`;
 }
@@ -921,7 +984,7 @@ function navCounts(){
   return c;
 }
 function statusChip(s){
-  const m = {DRAFT:['Draft on phone',''], SUBMITTED:['Submitted','warn'], APPROVED:['Approved','ok'], ACTIVE:['In progress','info'], AWAITING_QC:['Awaiting quality check','warn'], READY:['Ready to pack','ok'], PART_PACKED:['Partly packed','ok'], PACKED:['Packed',''], PLANNED:['Planned','']}[s] || [s,''];
+  const m = {DRAFT:['Draft',''], SUBMITTED:['Submitted','warn'], APPROVED:['Approved','ok'], ACTIVE:['In progress','info'], AWAITING_QC:['Awaiting quality check','warn'], READY:['Ready to pack','ok'], PART_PACKED:['Partly packed','ok'], PACKED:['Packed',''], PLANNED:['Planned','']}[s] || [s,''];
   return `<span class="chip ${m[1]}">${m[0]}</span>`;
 }
 function estTag(e){ return S.ui.estate==='ALL' ? `<span class="chip">${ESTATE[e].short}</span>` : ''; }
@@ -949,7 +1012,7 @@ function alerts(es){
 function pDashboard(){
   const es = estList(); const d = today();
   let present=0, total=0;
-  for(const e of es){ const sh=sheetOf(e,d); total += S.workers.filter(w=>w.estate===e).length; if(sh){ const c=countSheet(sh); present += c.P+c.H; } }
+  for(const e of es){ const sh=sheetOf(e,d); total += activeWorkers(e).length; if(sh){ const c=countSheet(sh); present += c.P+c.H; } }
   const ms = S.muster.filter(m=>es.includes(m.estate) && m.sync==='synced');
   const season = sum(ms,m=>m.net);
   const expected = sum(DIVS.filter(x=>es.includes(x.estate)),x=>x.expected);
@@ -978,8 +1041,8 @@ function pDashboard(){
     <section class="panel"><div class="panel-h"><h2>Cherry plucked per day</h2><small class="muted">Net kg from muster</small></div>${dailyChart(daily)}
       <div class="row" style="margin-top:10px">${stageCounts.map(s=>`<span class="chip ${s.n?'info':'zero'}">${s.k==='READY'?'Ready to pack':STAGE[s.k].label} ${s.n}</span>`).join('')}</div></section>
   </div>
-  <section class="panel"><div class="panel-h"><h2>Plucked against expected crop</h2><button class="btn-link" data-act="page" data-v="divisions">All divisions</button></div>
-    <div class="tbl-wrap"><table class="data"><thead><tr><th>Division</th><th class="r">Expected (season)</th><th class="r">Plucked so far</th><th>Progress</th></tr></thead><tbody>
+  <section class="panel"><div class="panel-h"><h2>Plucked against expected crop</h2><button class="btn-link" data-act="page" data-v="masters">All fields</button></div>
+    <div class="tbl-wrap"><table class="data"><thead><tr><th>Field</th><th class="r">Expected (season)</th><th class="r">Plucked so far</th><th>Progress</th></tr></thead><tbody>
     ${divRows.map(({x,got})=>`<tr><td>${esc(x.name)} ${estTag(x.estate)}</td><td class="r">${kg(x.expected)}</td><td class="r">${kg(got)}</td><td><div class="barrow"><div class="bar"><i style="width:${Math.min(100,pct(got,x.expected))}%"></i></div><small>${pct(got,x.expected)}%</small></div></td></tr>`).join('')}
     </tbody></table></div></section>
   <section class="panel"><h2>Walk through the whole flow</h2>
@@ -1001,14 +1064,6 @@ function dailyChart(rows){
     ${rows.map((r,i)=>`<rect class="${i===n-1?'bar-t':'bar-r'}" x="${L+i*bw+1.5}" y="${y(r.kg)}" width="${Math.max(1,bw-3)}" height="${(H-T-B)-(y(r.kg)-T)}" rx="2"><title>${fd(r.d)}: ${kg(r.kg)}</title></rect>${((i%3===0&&n-1-i>=2)||i===n-1)?`<text x="${L+i*bw+bw/2}" y="${H-6}" text-anchor="middle">${fds(r.d)}</text>`:''}`).join('')}
   </svg>`;
 }
-function pAttendance(){
-  const es = estList();
-  const sheets = Object.values(S.att).filter(s=>es.includes(s.estate)).sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:a.estate<b.estate?-1:1).slice(0,24);
-  return `<div class="page-h"><div><h1>Attendance</h1><p>Daily sheets from the supervisor phones. Submitted sheets wait for the estate manager’s approval.</p></div></div>
-  <section class="panel"><div class="tbl-wrap"><table class="data"><thead><tr><th>Date</th><th>Estate</th><th>Supervisor</th><th class="r">Present</th><th class="r">Half day</th><th class="r">Absent or leave</th><th class="r">Not marked</th><th>Status</th></tr></thead><tbody>
-  ${sheets.map(s=>{ const c=countSheet(s); return `<tr class="click" data-act="openSheet" data-v="${s.estate}|${s.date}"><td>${dow(s.date)} ${fd(s.date)}</td><td>${ESTATE[s.estate].short}</td><td>${esc(s.supervisor)}</td><td class="r">${c.P}</td><td class="r">${c.H}</td><td class="r">${c.A}</td><td class="r">${c.none||''}</td><td>${statusChip(s.status)}</td></tr>`; }).join('')}
-  </tbody></table></div></section>`;
-}
 function pPlucking(){
   const es = estList();
   const ms = S.muster.filter(m=>es.includes(m.estate) && m.sync==='synced');
@@ -1029,13 +1084,13 @@ function pPlucking(){
     <div class="kpi"><span class="eyebrow">Per plucker</span><span class="v">${kg(pluckers?sum(dm,m=>m.net)/pluckers:0)}</span></div>
   </div>
   <div class="two">
-  <section class="panel"><div class="panel-h"><h2>By subdivision</h2></div><div class="tbl-wrap"><table class="data"><thead><tr><th>Division</th><th>Subdivision</th><th>Variety</th><th class="r">Workers</th><th class="r">Net</th></tr></thead><tbody>
+  <section class="panel"><div class="panel-h"><h2>By subdivision</h2></div><div class="tbl-wrap"><table class="data"><thead><tr><th>Field</th><th>Subdivision</th><th>Variety</th><th class="r">Workers</th><th class="r">Net</th></tr></thead><tbody>
     ${Object.values(bySub).sort((a,b)=>b.kg-a.kg).map(r=>`<tr><td>${esc(DIV[SUB[r.sub].div].name)} ${estTag(SUB[r.sub].div.slice(0,3))}</td><td class="mono">${r.sub}</td><td>${VARIETY[SUB[r.sub].variety]}</td><td class="r">${r.w.size}</td><td class="r">${kg(r.kg)}</td></tr>`).join('')}
   </tbody></table></div></section>
   <section class="panel"><div class="panel-h"><h2>Muster and washing</h2><small class="muted">Last 10 days</small></div><div class="tbl-wrap"><table class="data"><thead><tr><th>Day</th><th class="r">Muster</th><th class="r">Washed</th><th>Status</th></tr></thead><tbody>
     ${recon.map(r=>`<tr><td>${fds(r.d)}</td><td class="r">${kg(r.mk)}</td><td class="r">${kg(r.wk)}</td><td>${r.unwashed?`<span class="chip warn">${r.unwashed} not washed</span>`:'<span class="chip ok">All washed</span>'}</td></tr>`).join('')}
   </tbody></table></div></section></div>
-  <section class="panel"><div class="panel-h"><h2>Weigh-ins on ${fd(d)}</h2></div><div class="tbl-wrap"><table class="data"><thead><tr><th>Time</th><th>Worker</th><th>Division</th><th>Subdivision</th><th>Variety</th><th class="r">Gross</th><th class="r">Bag</th><th class="r">Net</th><th>Washing lot</th></tr></thead><tbody>
+  <section class="panel"><div class="panel-h"><h2>Weigh-ins on ${fd(d)}</h2></div><div class="tbl-wrap"><table class="data"><thead><tr><th>Time</th><th>Worker</th><th>Field</th><th>Subdivision</th><th>Variety</th><th class="r">Gross</th><th class="r">Bag</th><th class="r">Net</th><th>Washing lot</th></tr></thead><tbody>
     ${dm.sort((a,b)=>a.at<b.at?-1:1).map(m=>`<tr><td>${m.at.slice(11,16)}</td><td><span class="mono">${m.worker}</span> ${esc(workerBy(m.worker).name)}</td><td>${esc(DIV[m.div].name)}</td><td class="mono">${m.sub}</td><td>${VARIETY[m.variety]}</td><td class="r">${nf1.format(m.gross)}</td><td class="r">${nf1.format(m.tare)}</td><td class="r"><b>${nf1.format(m.net)}</b></td><td>${m.washLot?`<span class="mono">${m.washLot}</span>`:'<span class="chip warn">Waiting</span>'}</td></tr>`).join('')}
   </tbody></table></div></section>`;
 }
@@ -1117,7 +1172,7 @@ function traceView(o){
   <div class="two">
     <section class="panel"><div class="panel-h"><h2>Harvest dates</h2></div><div class="tbl-wrap"><table class="data"><thead><tr><th>Harvest date</th><th class="r">${pub?'':'Kilograms'}</th><th>Share</th></tr></thead><tbody>
       ${dates.map(([d,k])=>`<tr><td>${dow(d)} ${fd(d)}</td><td class="r">${pub?'':kgx(k)}</td><td>${share(k)}</td></tr>`).join('')}</tbody></table></div></section>
-    <section class="panel"><div class="panel-h"><h2>Where it was grown</h2></div><div class="tbl-wrap"><table class="data"><thead><tr><th>Division</th><th>Subdivision</th><th>Variety</th><th>Share</th></tr></thead><tbody>
+    <section class="panel"><div class="panel-h"><h2>Where it was grown</h2></div><div class="tbl-wrap"><table class="data"><thead><tr><th>Field</th><th>Subdivision</th><th>Variety</th><th>Share</th></tr></thead><tbody>
       ${subs.map(([s,k])=>`<tr><td>${esc(DIV[SUB[s].div].name)}</td><td class="mono">${s}</td><td>${VARIETY[SUB[s].variety]}</td><td>${share(k)}</td></tr>`).join('')}</tbody></table></div>
       <p class="note" style="margin-top:8px">Varieties: ${vars.map(([v,k])=>esc(VARIETY[v])+' '+pct(k,T.total)+'%').join(' · ')}</p></section>
   </div>
@@ -1139,20 +1194,205 @@ function labelCard(bag, lot){
     <span>${nf3.format(bag.kg)} kg net · ${BAGS[lot.bagType].label}</span>
     <span>${esc(lot.process)}</span>
     <span><b>${esc(datesLabel(L.dates))}</b></span>
-    <span>${esc(listLabel(L.divs,'divisions'))} · ${esc(L.vars.join(', '))}</span>
+    <span>${esc(listLabel(L.divs,'fields'))} · ${esc(L.vars.join(', '))}</span>
     <span style="grid-column:1 / -1">Packed ${fd(lot.at)} · Lot ${lot.code}</span></div>`;
 }
-function pDivisions(){
-  const es = estList();
-  const ms = S.muster.filter(m=>es.includes(m.estate)&&m.sync==='synced');
-  return `<div class="page-h"><div><h1>Divisions</h1><p>From the Division and Subdivision Import sheet. Each division is split into subdivisions with one land use and at most one variety; only bearing subdivisions can be plucked.</p></div></div>
-  ${es.map(e=>{ const ds=DIVS.filter(d=>d.estate===e); return `<section class="panel"><div class="panel-h"><h2>${ESTATE[e].name}</h2><small class="muted">${ds.length} divisions · ${nf1.format(sum(ds,d=>d.acres))} acres · ${nf1.format(sum(ds,bearingAcres))} bearing</small></div>
-    <div class="tbl-wrap"><table class="data"><thead><tr><th>Code</th><th>Division</th><th class="r">Acres</th><th>Subdivisions</th><th class="r">Expected</th><th class="r">Plucked</th><th>Progress</th></tr></thead><tbody>
-    ${ds.map(d=>{ const got=sum(ms.filter(m=>m.div===d.code),m=>m.net); return `<tr><td class="mono">${d.code}</td><td>${esc(d.name)}</td><td class="r">${d.acres}</td>
-      <td><div class="row">${d.subs.map(s=>`<span class="chip ${s.land==='B'?'ok':s.confirm?'warn':''}" title="${s.code}">${s.code.slice(-1)} · ${LAND[s.land]}${s.variety?' · '+s.variety:''} · ${s.acres} ac${s.confirm?' · to confirm':''}</span>`).join('')}</div></td>
-      <td class="r">${d.expected?kg(d.expected):'–'}</td><td class="r">${got?kg(got):'–'}</td><td>${d.expected?`<div class="barrow"><div class="bar"><i style="width:${Math.min(100,pct(got,d.expected))}%"></i></div><small>${pct(got,d.expected)}%</small></div>`:''}</td></tr>`; }).join('')}
-    </tbody></table></div></section>`; }).join('')}`;
+/* ===== Attendance register (portal) ===== */
+const SEASON_START = '2026-10-01';
+const attEstate = ()=>S.ui.estate==='ALL' ? (S.ui.attEstate||'GLZ') : S.ui.estate;
+const attDate = ()=>{ const d=S.ui.attDate||today(); return d>today()?today():d; };
+const attSheet = ()=>sheetOf(attEstate(), attDate());
+const selectedIds = ()=>{ const sh=attSheet(); return Object.keys(S.ui.attSel||{}).filter(w=>S.ui.attSel[w] && sh && sh.rows[w]); };
+const ST_LABEL = {P:'Present', H:'Half day', A:'Absent', L:'Leave'};
+function pAttendance(){
+  const e = attEstate(), d = attDate(); const sh = sheetOf(e,d); if(sh) syncRows(sh);
+  const head = `<div class="page-h"><div><h1>Attendance</h1><p>One register per estate per day. Each worker gets a status, a field from the Fields master and a job. Supervisors can fill the same register on their phone; it starts with the previous day’s fields and jobs, so only changes need entering.</p></div></div>
+  <div class="panel row" style="padding:12px 16px">
+    ${S.ui.estate==='ALL'?`<label class="row" for="at-e"><span class="muted">Estate</span><select id="at-e" data-change="attEstate">${['GLZ','BYV'].map(x=>`<option value="${x}" ${x===e?'selected':''}>${ESTATE[x].short}</option>`).join('')}</select></label>`:`<b>${ESTATE[e].name}</b>`}
+    <span class="spacer"></span>
+    <button class="btn" data-act="attDay" data-v="-1" ${d<=SEASON_START?'disabled':''} aria-label="Previous day">‹</button>
+    <label class="row" for="at-d"><span class="muted">Day</span><input type="date" id="at-d" value="${d}" min="${SEASON_START}" max="${today()}" data-change="attDate"></label>
+    <button class="btn" data-act="attDay" data-v="1" ${d>=today()?'disabled':''} aria-label="Next day">›</button>
+    <span class="muted num">${dow(d)}</span>
+  </div>`;
+  if(!sh) return head + `<section class="panel stack"><h2>No attendance for ${dow(d)} ${fd(d)} yet</h2>
+    <p class="muted">Starting the day lists every active worker with the field and job they had on their last working day. Status starts blank.</p>
+    <div class="row"><button class="btn btn-primary" data-act="attStart">Start the day</button></div></section>` + historyPanel(e);
+  const locked = sh.status==='APPROVED'; const c = countSheet(sh);
+  const ws = S.workers.filter(w=>w.estate===e && sh.rows[w.id]);
+  const sel = S.ui.attSel||{}; const nSel = ws.filter(w=>sel[w.id]).length;
+  const actions = sh.status==='DRAFT' ? `<button class="btn" data-act="attRest" ${c.none?'':'disabled'}>Mark the rest present</button><button class="btn btn-primary" data-act="attSubmit" ${c.none?'disabled':''} title="${c.none?'Mark every worker first':''}">${c.none?`Mark ${c.none} more to submit`:'Submit for approval'}</button>`
+    : sh.status==='SUBMITTED' ? `<button class="btn btn-primary" data-act="attApprove" ${c.none?'disabled':''}>Approve attendance</button>`
+    : `<button class="btn" data-act="attReopen">Reopen for correction</button>`;
+  const rows = ws.map(w=>{ const r=sh.rows[w.id]; const on=working(r.st); const noPluck = on && isHarvestJob(r.job) && !bearingSubs(DIV[r.div]).length;
+    return `<tr class="${sel[w.id]?'sel':''}">
+      <td><input type="checkbox" data-change="attSel" data-w="${w.id}" ${sel[w.id]?'checked':''} ${locked?'disabled':''} aria-label="Select ${esc(w.name)}"></td>
+      <td><span class="mono">${w.id}</span> ${esc(w.name)}<br><small class="muted">${esc(w.type||'Permanent')}${w.active===false?' · inactive':''}</small></td>
+      <td><div class="seg4" role="group" aria-label="Status for ${esc(w.name)}">${['P','H','A','L'].map(s=>`<button data-act="attMark" data-w="${w.id}" data-v="${s}" class="${r.st===s?'on-'+s:''}" aria-pressed="${r.st===s}" ${locked?'disabled':''} title="${ST_LABEL[s]}">${{P:'P',H:'½',A:'A',L:'L'}[s]}</button>`).join('')}</div></td>
+      <td>${on||!r.st?`<select data-change="attField" data-w="${w.id}" aria-label="Field for ${esc(w.name)}" ${locked?'disabled':''}>${fieldOptions(e, r.div)}</select>${noPluck?'<br><small class="chip bad">No coffee to pluck here</small>':''}`:'<span class="muted">–</span>'}</td>
+      <td>${on||!r.st?`<select data-change="attJob" data-w="${w.id}" aria-label="Job for ${esc(w.name)}" ${locked?'disabled':''}>${jobOptions(r.job)}</select>`:'<span class="muted">–</span>'}</td>
+      <td><input type="text" data-change="attRemark" data-w="${w.id}" value="${esc(r.remark||'')}" placeholder="Remark" aria-label="Remark for ${esc(w.name)}" ${locked?'disabled':''} style="width:100%;min-width:110px"></td>
+      <td>${r.sync==='pending'?'<span class="chip bad">On phone</span>':''}</td></tr>`; }).join('');
+  return head + `
+  <section class="panel stack">
+    <div class="row">${statusChip(sh.status)}<span class="chip">${sh.source==='portal'?'Started in portal':'Started on phone'}</span>
+      <small class="muted">${c.P} present · ${c.H} half day · ${c.A} absent or leave${c.none?` · <b>${c.none} not marked</b>`:''}</small><span class="spacer"></span>${actions}</div>
+    ${locked?`<p class="note">Approved${sh.approvedAt?' '+fdt(sh.approvedAt):''}. Reopen it to correct a mistake; the change is kept in the audit trail.</p>`:`
+    <div class="bulk ${nSel?'':'idle'}" role="group" aria-label="Change selected workers">
+      <b>${nSel?nSel+' selected':'Select workers to change them together'}</b>
+      <label class="row" for="bk-field"><span class="muted">Field</span><select id="bk-field" ${nSel?'':'disabled'}>${fieldOptions(e,'')}</select></label>
+      <label class="row" for="bk-job"><span class="muted">Job</span><select id="bk-job" ${nSel?'':'disabled'}>${jobOptions('PLK')}</select></label>
+      <button class="btn btn-primary" data-act="bulkAssign" ${nSel?'':'disabled'}>Assign field and job</button>
+      <span class="sep" aria-hidden="true"></span>
+      <label class="row" for="bk-st"><span class="muted">Status</span><select id="bk-st" ${nSel?'':'disabled'}>${Object.entries(ST_LABEL).map(([k,l])=>`<option value="${k}">${l}</option>`).join('')}</select></label>
+      <button class="btn" data-act="bulkStatus" ${nSel?'':'disabled'}>Set status</button>
+      ${nSel?'<button class="btn-link" data-act="attClearSel">Clear selection</button>':''}
+    </div>`}
+    ${S.ui.attFlash?`<div class="msg ok">${esc(S.ui.attFlash)}</div>`:''}
+    <div class="tbl-wrap"><table class="data reg"><thead><tr><th><input type="checkbox" data-change="attSelAll" ${nSel&&nSel===ws.length?'checked':''} ${locked?'disabled':''} aria-label="Select all workers"></th><th>Worker</th><th>Status</th><th>Field</th><th>Job</th><th>Remark</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
+  </section>
+  <div class="two">${fieldSummaryPanel(e, sh)}${historyPanel(e)}</div>`;
 }
+function fieldSummaryPanel(e, sh){
+  const g = {};
+  for(const [wid,r] of Object.entries(sh.rows)) if(working(r.st) && r.div){ (g[r.div]=g[r.div]||{jobs:{}, names:[], n:0}); g[r.div].n++; add(g[r.div].jobs, JOB[r.job]||r.job, 1); g[r.div].names.push(workerBy(wid).name); }
+  const rows = Object.entries(g).sort((a,b)=>b[1].n-a[1].n);
+  const empty = bearingDivs(e).filter(d=>!g[d.code]);
+  return `<section class="panel"><div class="panel-h"><h2>Workers by field</h2><small class="muted">${sum(rows,r=>r[1].n)} working in ${rows.length} field${rows.length===1?'':'s'}</small></div>
+    ${rows.length?`<div class="tbl-wrap"><table class="data"><thead><tr><th>Field</th><th class="r">Workers</th><th>Jobs</th><th>Who</th></tr></thead><tbody>
+    ${rows.map(([dc,v])=>`<tr><td>${esc(fieldName(dc))}</td><td class="r"><b>${v.n}</b></td><td>${Object.entries(v.jobs).map(([j,n])=>esc(j)+' '+n).join(' · ')}</td><td><small class="muted">${esc(v.names.join(', '))}</small></td></tr>`).join('')}
+    </tbody></table></div>`:'<p class="muted">No one is marked present yet.</p>'}
+    ${empty.length?`<p class="note" style="margin-top:12px">Fields with coffee and no one today: ${empty.map(d=>esc(d.name)).join(', ')}</p>`:''}</section>`;
+}
+function historyPanel(e){
+  const ws = S.workers.filter(w=>w.estate===e);
+  const wid = ws.find(w=>w.id===S.ui.histWorker) ? S.ui.histWorker : ws[0].id;
+  const days = daysBetween(SEASON_START, today());
+  const first = new Date(toMs(days[0])).getUTCDay(); const pre = (first+6)%7;
+  let P=0,H=0,A=0;
+  const cells = days.map(d=>{ const sh=sheetOf(e,d); const r=sh&&sh.rows[wid]; const st=r&&r.st;
+    if(st==='P') P++; else if(st==='H') H++; else if(st==='A'||st==='L') A++;
+    return `<div class="cal-d ${st?'st-'+st:''}" title="${fd(d)}${st?': '+ST_LABEL[st]+(working(st)?' · '+fieldName(r.div)+' · '+(JOB[r.job]||''):''):''}"><span class="num">${new Date(toMs(d)).getUTCDate()}</span><b>${st?{P:'P',H:'½',A:'A',L:'L'}[st]:''}</b><small>${working(st)?esc(fieldName(r.div)):''}</small></div>`; }).join('');
+  return `<section class="panel"><div class="panel-h"><h2>Worker history</h2>
+      <label class="row" for="hw"><span class="muted">Worker</span><select id="hw" data-change="histWorker">${ws.map(w=>`<option value="${w.id}" ${w.id===wid?'selected':''}>${w.id} · ${esc(w.name)}</option>`).join('')}</select></label></div>
+    <p class="muted" style="margin-bottom:10px">October 2026: ${P} full days, ${H} half days, ${A} absent or leave · ${r1(P+H/2)} days worked</p>
+    <div class="cal">${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(x=>`<div class="cal-h">${x}</div>`).join('')}${'<div></div>'.repeat(pre)}${cells}</div></section>`;
+}
+
+/* ===== Masters: fields, workers, jobs ===== */
+function pMasters(){
+  const tab = S.ui.mtab||'fields'; const es = estList();
+  const tabs = `<div class="seg" role="group" aria-label="Master lists">${[['fields','Fields'],['workers','Workers'],['jobs','Jobs']].map(([k,l])=>`<button data-act="mtab" data-v="${k}" aria-pressed="${tab===k}">${l}</button>`).join('')}</div>`;
+  let body = '';
+  if(tab==='fields'){
+    const ms = S.muster.filter(m=>es.includes(m.estate)&&m.sync==='synced');
+    body = es.map(e=>{ const ds=DIVS.filter(d=>d.estate===e); return `<section class="panel"><div class="panel-h"><h2>${ESTATE[e].name}</h2><small class="muted">${ds.filter(d=>d.active!==false).length} active fields · ${nf1.format(sum(ds,d=>d.acres))} acres · ${nf1.format(sum(ds,bearingAcres))} bearing</small></div>
+      <div class="tbl-wrap"><table class="data"><thead><tr><th>Code</th><th>Field</th><th class="r">Acres</th><th>Subdivisions</th><th class="r">Expected</th><th class="r">Plucked</th><th>Progress</th><th>Status</th><th></th></tr></thead><tbody>
+      ${ds.map(d=>{ const got=sum(ms.filter(m=>m.div===d.code),m=>m.net); return `<tr><td class="mono">${d.code}</td><td>${esc(d.name)}${d.elevation?`<br><small class="muted">${d.elevation} m</small>`:''}</td><td class="r">${d.acres}</td>
+        <td><div class="row">${d.subs.map(s=>`<span class="chip ${s.land==='B'?'ok':s.confirm?'warn':''}" title="${s.code}">${s.code.slice(-1)} · ${LAND[s.land]}${s.variety?' · '+s.variety:''} · ${s.acres} ac${s.confirm?' · to confirm':''}</span>`).join('')}</div></td>
+        <td class="r">${d.expected?kg(d.expected):'–'}</td><td class="r">${got?kg(got):'–'}</td><td>${d.expected?`<div class="barrow"><div class="bar"><i style="width:${Math.min(100,pct(got,d.expected))}%"></i></div><small>${pct(got,d.expected)}%</small></div>`:''}</td>
+        <td>${d.active===false?'<span class="chip">Inactive</span>':'<span class="chip ok">Active</span>'}</td><td class="r"><button class="btn-link" data-act="editField" data-v="${d.code}">Edit</button></td></tr>`; }).join('')}
+      </tbody></table></div></section>`; }).join('');
+  } else if(tab==='workers'){
+    body = es.map(e=>{ const ws=S.workers.filter(w=>w.estate===e); return `<section class="panel"><div class="panel-h"><h2>${ESTATE[e].name}</h2><small class="muted">${ws.filter(w=>w.active!==false).length} active workers</small></div>
+      <div class="tbl-wrap"><table class="data"><thead><tr><th>ID</th><th>Name</th><th>Type</th><th class="r">Days worked this season</th><th>Last field</th><th>Status</th><th></th></tr></thead><tbody>
+      ${ws.map(w=>{ let dw=0, last=''; for(const sh of Object.values(S.att)) if(sh.estate===e && sh.rows[w.id]){ const r=sh.rows[w.id]; if(r.st==='P') dw+=1; if(r.st==='H') dw+=.5; } const lr=prevAssignment(e, addDays(today(),1), w.id); last=lr?fieldName(lr.div):'';
+        return `<tr><td class="mono">${w.id}</td><td>${esc(w.name)}</td><td>${esc(w.type||'Permanent')}</td><td class="r">${dw}</td><td>${esc(last)}</td><td>${w.active===false?'<span class="chip">Inactive</span>':'<span class="chip ok">Active</span>'}</td><td class="r"><button class="btn-link" data-act="editWorker" data-v="${w.id}">Edit</button></td></tr>`; }).join('')}
+      </tbody></table></div></section>`; }).join('');
+  } else {
+    body = `<section class="panel"><div class="tbl-wrap"><table class="data"><thead><tr><th>Code</th><th>Job</th><th>Counts as plucking</th><th>Status</th><th></th></tr></thead><tbody>
+      ${S.jobs.map(j=>`<tr><td class="mono">${j.code}</td><td>${esc(j.name)}</td><td>${j.harvest?'Yes, weighed at the evening muster':'No'}</td><td>${j.active===false?'<span class="chip">Inactive</span>':'<span class="chip ok">Active</span>'}</td><td class="r"><button class="btn-link" data-act="editJob" data-v="${j.code}">Edit</button></td></tr>`).join('')}
+      </tbody></table></div></section>`;
+  }
+  const addBtn = {fields:['newField','Add field'], workers:['newWorker','Add worker'], jobs:['newJob','Add job']}[tab];
+  return `<div class="page-h"><div><h1>Masters</h1><p>The lists that attendance, muster and reports pick from. Inactive entries stay in history but no longer appear in the daily register.</p></div>
+    <div class="row">${tabs}<button class="btn btn-primary" data-act="${addBtn[0]}">${addBtn[1]}</button></div></div>${body}`;
+}
+function dField(d){
+  const ex = d.code ? DIV[d.code] : null; const e = d.estate;
+  const subs = d.subs; const F = d.form || (ex ? {name:ex.name, acres:ex.acres, exp:ex.expected, elev:ex.elevation||'', act:ex.active!==false?'1':'0'} : {name:'', acres:'', exp:0, elev:'', act:'1'});
+  return dHead(ex?'Edit field':'New field', ex?`<span class="mono">${ex.code}</span> ${esc(ex.name)}`:ESTATE[e].short) + `
+  ${!ex && S.ui.estate==='ALL'?`<label class="f" for="fd-e">Estate<select id="fd-e" data-change="fdEstate">${['GLZ','BYV'].map(x=>`<option value="${x}" ${x===e?'selected':''}>${ESTATE[x].short}</option>`).join('')}</select></label>`:''}
+  <div class="formgrid">
+    <label class="f" for="fd-name">Field name<input type="text" id="fd-name" value="${esc(F.name)}" placeholder="For example Middle Field"></label>
+    <label class="f" for="fd-acres">Total acres<input type="number" id="fd-acres" step="0.25" min="0" value="${F.acres}" data-live="fd"></label>
+    <label class="f" for="fd-exp">Expected cherry this season (kg)<input type="number" id="fd-exp" step="50" min="0" value="${F.exp}"></label>
+    <label class="f" for="fd-elev">Elevation (m)<input type="number" id="fd-elev" step="10" min="0" value="${F.elev}"></label>
+    <label class="f" for="fd-act">Status<select id="fd-act"><option value="1" ${F.act==='1'?'selected':''}>Active</option><option value="0" ${F.act==='0'?'selected':''}>Inactive</option></select></label>
+  </div>
+  <h3>Subdivisions</h3>
+  <p class="note">Each part of the field with one land use and at most one variety. Plucking is only offered on bearing subdivisions.</p>
+  <div class="tbl-wrap"><table class="data"><thead><tr><th></th><th>Land use</th><th>Variety</th><th class="r">Acres</th></tr></thead><tbody>
+  ${subs.map((s,i)=>`<tr><td class="mono">${String.fromCharCode(65+i)}</td>
+    <td><select id="sd-land-${i}" aria-label="Land use ${String.fromCharCode(65+i)}">${Object.entries(LAND).map(([k,l])=>`<option value="${k}" ${s.land===k?'selected':''}>${l}</option>`).join('')}</select></td>
+    <td><select id="sd-var-${i}" aria-label="Variety ${String.fromCharCode(65+i)}"><option value="">None</option>${Object.entries(VARIETY).filter(([k])=>k).map(([k,l])=>`<option value="${k}" ${s.variety===k?'selected':''}>${l}</option>`).join('')}</select></td>
+    <td class="r"><input type="number" id="sd-ac-${i}" step="0.25" min="0" value="${s.acres}" data-live="fd" aria-label="Acres ${String.fromCharCode(65+i)}"></td></tr>`).join('')}
+  </tbody></table></div>
+  <div class="row"><button class="btn" data-act="fieldAddSub">Add subdivision</button><span id="fd-prev" class="muted"></span></div>
+  ${d.err?`<div class="msg" role="alert">${esc(d.err)}</div>`:''}
+  <div class="row"><button class="btn btn-primary" data-act="saveField">${ex?'Save changes':'Add field'}</button><button class="btn" data-act="close">Cancel</button></div>`;
+}
+function readFieldForm(){ const v=id=>(document.getElementById(id)||{}).value; return {name:v('fd-name')||'', acres:v('fd-acres')||'', exp:v('fd-exp')||0, elev:v('fd-elev')||'', act:v('fd-act')||'1', est:v('fd-e')}; }
+function readSubs(){ return S.ui.drawer.subs.map((s,i)=>({code:s.code, land:document.getElementById('sd-land-'+i).value, variety:document.getElementById('sd-var-'+i).value, acres:parseFloat(document.getElementById('sd-ac-'+i).value)||0})); }
+function saveFieldForm(){
+  const d = S.ui.drawer; d.form = readFieldForm(); if(d.form.est) d.estate = d.form.est; d.subs = readSubs(); d.err = ''; const err = t=>{ d.err = t; return false; };
+  const name = document.getElementById('fd-name').value.trim(); const acres = num('#fd-acres');
+  const subs = d.subs.filter(s=>s.acres>0);
+  if(!name) return err('Give the field a name.');
+  const e = d.code ? DIV[d.code].estate : (document.getElementById('fd-e') ? document.getElementById('fd-e').value : d.estate);
+  if(DIVS.some(x=>x.estate===e && x.code!==d.code && x.name.toLowerCase()===name.toLowerCase())) return err('Another field in this estate already has that name.');
+  if(acres<=0) return err('Enter the total acres.');
+  if(!subs.length) return err('Add at least one subdivision with acres.');
+  if(Math.abs(sum(subs,s=>s.acres)-acres)>0.001) return err(`Subdivisions add up to ${sum(subs,s=>s.acres)} acres, but the field is ${acres} acres. Make them match.`);
+  if(subs.some(s=>s.land==='B' && !s.variety)) return err('Bearing subdivisions need a variety.');
+  let f = d.code ? DIV[d.code] : null;
+  if(!f){ const n = Math.max(0,...DIVS.filter(x=>x.estate===e).map(x=>+x.code.slice(4)))+1; f = {code:e+'-'+pad(n,2), estate:e, subs:[]}; S.divs.push(f); }
+  f.name=name; f.acres=acres; f.expected=num('#fd-exp'); f.elevation=document.getElementById('fd-elev').value; f.active=document.getElementById('fd-act').value==='1';
+  f.subs = subs.map((s,i)=>({code:f.code+'-'+String.fromCharCode(65+i), div:f.code, land:s.land, acres:s.acres, variety:s.land==='B'||s.land==='Y'?s.variety:'', confirm:false}));
+  buildMasters(); S.ui.drawer=null; return true;
+}
+function dWorker(d){
+  const w = d.id ? workerBy(d.id) : null; const F = d.f || {name:w?w.name:'', type:w?w.type:'Permanent'};
+  return dHead(w?'Edit worker':'New worker', w?`<span class="mono">${w.id}</span> ${esc(w.name)}`:ESTATE[d.estate].short) + `
+  ${!w && S.ui.estate==='ALL'?`<label class="f" for="wk-e">Estate<select id="wk-e">${['GLZ','BYV'].map(x=>`<option value="${x}" ${x===d.estate?'selected':''}>${ESTATE[x].short}</option>`).join('')}</select></label>`:''}
+  <div class="formgrid">
+    <label class="f" for="wk-name">Name<input type="text" id="wk-name" value="${esc(F.name)}"></label>
+    <label class="f" for="wk-type">Type<select id="wk-type">${WTYPE.map(t=>`<option ${F.type===t?'selected':''}>${t}</option>`).join('')}</select></label>
+    <label class="f" for="wk-act">Status<select id="wk-act"><option value="1" ${!w||w.active!==false?'selected':''}>Active</option><option value="0" ${w&&w.active===false?'selected':''}>Inactive (left the estate)</option></select></label>
+  </div>
+  <p class="note">New and reactivated workers appear in the next attendance register that is not yet approved.</p>
+  ${d.err?`<div class="msg" role="alert">${esc(d.err)}</div>`:''}
+  <div class="row"><button class="btn btn-primary" data-act="saveWorker">${w?'Save changes':'Add worker'}</button><button class="btn" data-act="close">Cancel</button></div>`;
+}
+function saveWorkerForm(){
+  const d = S.ui.drawer; const name = document.getElementById('wk-name').value.trim(); d.f = {name, type:document.getElementById('wk-type').value}; d.err='';
+  if(!name){ d.err='Enter the worker’s name.'; return; }
+  let w = d.id ? workerBy(d.id) : null;
+  if(!w){ const e = document.getElementById('wk-e') ? document.getElementById('wk-e').value : d.estate; const p = e==='GLZ'?'G':'B'; const n = Math.max(0,...S.workers.filter(x=>x.estate===e).map(x=>+x.id.slice(1)))+1; w = {id:p+pad(n,2), estate:e}; S.workers.push(w); }
+  w.name=name; w.type=document.getElementById('wk-type').value; w.active=document.getElementById('wk-act').value==='1';
+  S.ui.drawer=null;
+}
+function dJob(d){
+  const j = d.code ? S.jobs.find(x=>x.code===d.code) : null; const F = d.f || {code:j?j.code:'', name:j?j.name:''};
+  return dHead(j?'Edit job':'New job', j?esc(j.name):'Job') + `
+  <div class="formgrid">
+    <label class="f" for="jb-code">Code<input type="text" id="jb-code" value="${esc(F.code)}" ${j?'disabled':''} maxlength="4" placeholder="FRT"></label>
+    <label class="f" for="jb-name">Job name<input type="text" id="jb-name" value="${esc(F.name)}" placeholder="For example Fertilising"></label>
+    <label class="f" for="jb-act">Status<select id="jb-act"><option value="1" ${!j||j.active!==false?'selected':''}>Active</option><option value="0" ${j&&j.active===false?'selected':''}>Inactive</option></select></label>
+  </div>
+  ${j&&j.harvest?'<p class="note">Plucking is the job that is weighed at the evening muster, so it cannot be switched off.</p>':''}
+  ${d.err?`<div class="msg" role="alert">${esc(d.err)}</div>`:''}
+  <div class="row"><button class="btn btn-primary" data-act="saveJob">${j?'Save changes':'Add job'}</button><button class="btn" data-act="close">Cancel</button></div>`;
+}
+function saveJobForm(){
+  const d = S.ui.drawer; const name = document.getElementById('jb-name').value.trim(); const err = t=>{ d.err = t; };
+  let j = d.code ? S.jobs.find(x=>x.code===d.code) : null; d.f = {code:document.getElementById('jb-code').value, name}; d.err='';
+  if(!name) return err('Enter the job name.');
+  if(!j){ const code = document.getElementById('jb-code').value.trim().toUpperCase(); if(!/^[A-Z]{2,4}$/.test(code)) return err('Use a code of 2 to 4 letters.'); if(S.jobs.some(x=>x.code===code)) return err('That code is already used.'); j = {code}; S.jobs.push(j); }
+  j.name=name; j.active = j.harvest ? true : document.getElementById('jb-act').value==='1';
+  buildMasters(); S.ui.drawer=null;
+}
+
 function pSetup(){
   const st = S.settings;
   const dayOpt = (k)=>`<select id="set-${k}">${[14,21,10,12,16,18].map(n=>`<option value="${n}" ${st.dry[k]===n?'selected':''}>${n} days</option>`).join('')}</select>`;
@@ -1184,6 +1424,9 @@ function renderDrawer(){
   else if(d.type==='newBatch') inner = dNewBatch(d);
   else if(d.type==='pack') inner = dPack(d);
   else if(d.type==='packLot') inner = dPackLot(d);
+  else if(d.type==='field') inner = dField(d);
+  else if(d.type==='worker') inner = dWorker(d);
+  else if(d.type==='job') inner = dJob(d);
   return `<div class="backdrop" data-act="close"></div><aside class="drawer" role="dialog" aria-modal="true">${inner}</aside>`;
 }
 const dHead = (eyebrow,title)=>`<div class="drawer-h"><div><span class="eyebrow">${eyebrow}</span><h2>${title}</h2></div><button class="btn" data-act="close" aria-label="Close">Close</button></div>`;
@@ -1193,7 +1436,7 @@ function dSheet(d){
   <div class="row">${statusChip(s.status)}<small class="muted">${esc(s.supervisor)} · ${c.P} present · ${c.H} half day · ${c.A} absent or leave${c.none?' · '+c.none+' not marked':''}</small></div>
   ${s.status==='SUBMITTED'?`<div class="row"><button class="btn btn-primary" data-act="approveSheet" data-v="${d.key}">Approve attendance</button></div>`:''}
   ${s.status==='DRAFT'?`<p class="note">This sheet is still being filled in on the supervisor’s phone.</p>`:''}
-  <div class="tbl-wrap"><table class="data"><thead><tr><th>Worker</th><th>Status</th><th>Job</th><th>Division</th></tr></thead><tbody>
+  <div class="tbl-wrap"><table class="data"><thead><tr><th>Worker</th><th>Status</th><th>Job</th><th>Field</th></tr></thead><tbody>
   ${S.workers.filter(w=>w.estate===s.estate).map(w=>{ const r=s.rows[w.id]; return `<tr><td><span class="mono">${w.id}</span> ${esc(w.name)}</td><td>${r.st?{P:'Present',H:'Half day',A:'Absent',L:'Leave'}[r.st]:'<span class="muted">Not marked</span>'} ${r.sync==='pending'?'<span class="chip bad">on phone</span>':''}</td><td>${r.st&&r.st!=='A'&&r.st!=='L'?JOB[r.job]||'':''}</td><td>${r.st&&r.st!=='A'&&r.st!=='L'&&DIV[r.div]?esc(DIV[r.div].name)+(r.sub&&r.job==='PLK'?' <span class="mono">('+r.sub.slice(-1)+')</span>':''):''}</td></tr>`; }).join('')}
   </tbody></table></div>`;
 }
@@ -1354,6 +1597,7 @@ const LIVE = {
     const ds = [...new Set(picks.flatMap(p=>lotBy(p.lot).entries.map(id=>musterBy(id).date)))];
     el.innerHTML = picks.length ? `<p><b>${kg(sum(picks,p=>p.kg))}</b> of washed cherry · ${esc(datesLabel(ds))}</p>` : '<p class="muted">Pick at least one washing lot.</p>';
   },
+  fd(){ const el=document.getElementById('fd-prev'); if(!el||!S.ui.drawer||S.ui.drawer.type!=='field') return; const t=sum(S.ui.drawer.subs.map((s,i)=>parseFloat((document.getElementById('sd-ac-'+i)||{}).value)||0)); const a=num('#fd-acres'); el.textContent='Subdivisions: '+t+' of '+a+' acres'+(Math.abs(t-a)>0.001?' (should match)':''); },
   pk(){
     const el = document.getElementById('pk-prev'); if(!el) return;
     const picks = [...document.querySelectorAll('input[name=pk-b]:checked')].map(x=>({code:x.value, kg:Math.min(num('#pk-kg-'+x.value), bAvail(batchBy(x.value)))})).filter(p=>p.kg>0);
@@ -1382,7 +1626,7 @@ function msg(t,ok){ S.field.msg=t; S.field.msgOk=!!ok; }
 const ACT = {
   mode(el){ S.ui.mode=el.dataset.v; S.ui.drawer=null; },
   page(el){ S.ui.page=el.dataset.v; S.ui.drawer=null; S.ui.flash=''; if(S.ui.mode!=='portal') S.ui.mode='portal'; },
-  advance(el){ S.now = addH(S.now, +el.dataset.h); },
+  advance(el){ S.now = addH(S.now, +el.dataset.h); S.ui.attDate=''; S.ui.attSel={}; },
   reset(){ if(!S.ui.resetArmed){ S.ui.resetArmed=true; return; } try{ localStorage.removeItem(STORE_KEY); }catch(e){} seed(); },
   close(){ S.ui.drawer=null; },
   toggleNet(){ S.field.online=!S.field.online; if(S.field.online && S.queue.length) msg('Signal is back. Open Sync to send '+S.queue.length+' saved changes.', true); },
@@ -1392,7 +1636,7 @@ const ACT = {
   mark(el){ const sh=sheetOf(fEst(),today()); const r=sh.rows[el.dataset.w]; r.st=el.dataset.v; r.sync=fieldWrite(workerBy(el.dataset.w).name+' marked '+{P:'present',H:'half day',A:'absent'}[r.st]); },
   markRest(){ const sh=sheetOf(fEst(),today()); let n=0; for(const r of Object.values(sh.rows)) if(!r.st){ r.st='P'; n++; } if(n){ const s=fieldWrite(n+' workers marked present'); for(const r of Object.values(sh.rows)) if(r.sync!=='pending') r.sync=s; } },
   assign(el){ S.field.assign = el.dataset.w || null; },
-  saveAssign(el){ const sh=sheetOf(fEst(),today()); const r=sh.rows[el.dataset.w]; r.job=document.getElementById('as-job').value; r.div=document.getElementById('as-div').value; const subEl=document.getElementById('as-sub'); const bs=bearingSubs(DIV[r.div]); r.sub = subEl ? subEl.value : (bs[0]?bs[0].code:''); if(r.job==='PLK' && !bs.length){ r.job='WED'; } S.field.assign=null; r.sync=fieldWrite(workerBy(el.dataset.w).name+' assigned to '+DIV[r.div].name+' · '+JOB[r.job]); },
+  saveAssign(el){ const sh=sheetOf(fEst(),today()); const r=sh.rows[el.dataset.w]; r.job=document.getElementById('as-job').value; r.div=document.getElementById('as-div').value; r.sub=''; S.field.assign=null; r.sync=fieldWrite(workerBy(el.dataset.w).name+' assigned to '+fieldName(r.div)+' · '+JOB[r.job]); },
   submitSheet(){ const sh=sheetOf(fEst(),today()); sh.status='SUBMITTED'; sh.submittedAt=S.now; sh.sync=fieldWrite('Attendance submitted'); },
   focusW(el){ S.field.draft.focus=el.dataset.v; },
   key(el){ const dr=S.field.draft; const k=el.dataset.v; let v=dr[dr.focus]||''; if(k==='⌫') v=v.slice(0,-1); else if(k==='.'){ if(!v.includes('.')) v=(v||'0')+'.'; } else { if(v==='0') v=''; if(v.length<5 && !(v.includes('.') && v.split('.')[1].length>=1)) v+=k; } dr[dr.focus]=v; S.field.msg=''; },
@@ -1408,13 +1652,36 @@ const ACT = {
     reindex(); fieldWrite('Muster '+workerBy(dr.worker).name+' '+kg(net));
     msg('Saved '+kg(net)+' for '+workerBy(dr.worker).name+(sync==='pending'?'. It will sync when there is signal.':'.'), true);
     const sh=sheetOf(e,d); const ms=S.muster.filter(m=>m.estate===e&&m.date===d);
-    const pl=S.workers.filter(w=>w.estate===e && sh && (sh.rows[w.id].st==='P'||sh.rows[w.id].st==='H') && sh.rows[w.id].job==='PLK');
+    const pl=S.workers.filter(w=>w.estate===e && sh && sh.rows[w.id] && working(sh.rows[w.id].st) && isHarvestJob(sh.rows[w.id].job));
     const next=pl.find(w=>!ms.some(m=>m.worker===w.id));
     if(next){ dr.worker=next.id; dr.div=sh.rows[next.id].div; dr.sub=sh.rows[next.id].sub; }
     dr.gross=''; dr.focus='gross';
   },
   submitMuster(){ const e=fEst(), d=today(); let n=0; for(const m of S.muster) if(m.estate===e&&m.date===d&&m.status!=='SUBMITTED'){ m.status='SUBMITTED'; n++; } fieldWrite('Muster submitted ('+n+' entries)'); msg(n+' entries submitted'+(S.field.online?'. They are now in the portal for washing.':'. They will reach the portal when the phone syncs.'), true); },
-  openSheet(el){ S.ui.drawer={type:'sheet', key:el.dataset.v}; if(S.ui.mode!=='portal'){ S.ui.mode='portal'; S.ui.page='attendance'; } },
+  openSheet(el){ const [e,d]=el.dataset.v.split('|'); S.ui.mode='portal'; S.ui.page='attendance'; S.ui.attEstate=e; S.ui.attDate=d; S.ui.attSel={}; S.ui.drawer=null; window.scrollTo(0,0); },
+  /* ---- Portal attendance register ---- */
+  attDay(el){ S.ui.attFlash=''; const d=addDays(attDate(), +el.dataset.v); if(d>=SEASON_START && d<=today()){ S.ui.attDate=d; S.ui.attSel={}; } },
+  attStart(){ S.ui.attFlash=''; ensureSheet(attEstate(), attDate(), 'portal'); },
+  attMark(el){ S.ui.attFlash=''; const r=attSheet().rows[el.dataset.w]; r.st=el.dataset.v; r.sync='synced'; },
+  attRest(){ S.ui.attFlash=''; for(const r of Object.values(attSheet().rows)) if(!r.st) r.st='P'; },
+  bulkStatus(){ S.ui.attFlash=''; const v=document.getElementById('bk-st').value; const sh=attSheet(); for(const w of selectedIds()) sh.rows[w].st=v; },
+  bulkAssign(){ const f=document.getElementById('bk-field').value, j=document.getElementById('bk-job').value; const sh=attSheet(); let n=0; for(const w of selectedIds()){ const r=sh.rows[w]; if(f) r.div=f; if(j) r.job=j; r.sub=''; n++; } S.ui.attFlash=n+' worker'+(n===1?'':'s')+' assigned to '+fieldName(f)+(j?' · '+JOB[j]:''); S.ui.attSel={}; },
+  attClearSel(){ S.ui.attSel={}; },
+  attSubmit(){ S.ui.attFlash=''; const sh=attSheet(); sh.status='SUBMITTED'; sh.submittedAt=S.now; },
+  attApprove(){ S.ui.attFlash=''; const sh=attSheet(); sh.status='APPROVED'; sh.approvedAt=S.now; S.ui.attSel={}; },
+  attReopen(){ S.ui.attFlash=''; const sh=attSheet(); sh.status='DRAFT'; sh.reopenedAt=S.now; },
+  /* ---- Masters ---- */
+  mtab(el){ S.ui.mtab=el.dataset.v; },
+  newField(){ const e=estList()[0]; S.ui.drawer={type:'field', estate:e, code:'', subs:[{land:'B', acres:'', variety:'CG'}]}; },
+  editField(el){ const d=DIV[el.dataset.v]; S.ui.drawer={type:'field', estate:d.estate, code:d.code, subs:d.subs.map(s=>({code:s.code, land:s.land, acres:s.acres, variety:s.variety}))}; },
+  fieldAddSub(){ const d=S.ui.drawer; d.form=readFieldForm(); if(d.form.est) d.estate=d.form.est; d.subs=readSubs(); d.subs.push({land:'B', acres:'', variety:'CG'}); },
+  saveField(){ saveFieldForm(); },
+  newWorker(){ S.ui.drawer={type:'worker', estate:estList()[0], id:''}; },
+  editWorker(el){ const w=workerBy(el.dataset.v); S.ui.drawer={type:'worker', estate:w.estate, id:w.id}; },
+  saveWorker(){ saveWorkerForm(); },
+  newJob(){ S.ui.drawer={type:'job', code:''}; },
+  editJob(el){ S.ui.drawer={type:'job', code:el.dataset.v}; },
+  saveJob(){ saveJobForm(); },
   approveSheet(el){ S.att[el.dataset.v].status='APPROVED'; },
   newWash(el){ const [e,d]=el.dataset.v.split('|'); const g=waitingWash([e]).find(x=>x.date===d); S.ui.drawer={type:'wash', estate:e, date:d, ids:g?g.ids:[]}; },
   saveWash(){ const dr=S.ui.drawer; const ids=[...document.querySelectorAll('input[name=wentry]:checked')].map(x=>x.value); if(!ids.length) return; const fl=r1(num('#w-fl')), rj=r1(num('#w-rj')); const rec=sum(ids,id=>musterBy(id).net); if(fl+rj>=rec) return; makeWash(dr.estate, dr.date, S.now, ids, null, fl, rj); reindex(); S.ui.drawer=null; },
@@ -1467,6 +1734,15 @@ const CHANGE = {
   muDiv(el){ const dr=S.field.draft; dr.div=el.value; const bs=bearingSubs(DIV[dr.div]); dr.sub=bs[0]?bs[0].code:''; },
   muSub(el){ S.field.draft.sub=el.value; },
   pluckDate(el){ S.ui.pluckDate=el.value; },
+  attEstate(el){ S.ui.attEstate=el.value; S.ui.attSel={}; S.ui.attFlash=''; },
+  attDate(el){ if(el.value && el.value>=SEASON_START && el.value<=today()){ S.ui.attDate=el.value; S.ui.attSel={}; S.ui.attFlash=''; } },
+  attSel(el){ S.ui.attSel=S.ui.attSel||{}; S.ui.attSel[el.dataset.w]=el.checked; S.ui.attFlash=''; },
+  attSelAll(el){ const sh=attSheet(); S.ui.attSel={}; if(el.checked) for(const w of Object.keys(sh.rows)) S.ui.attSel[w]=true; S.ui.attFlash=''; },
+  attField(el){ const r=attSheet().rows[el.dataset.w]; r.div=el.value; r.sub=''; S.ui.attFlash=''; },
+  attJob(el){ attSheet().rows[el.dataset.w].job=el.value; S.ui.attFlash=''; },
+  attRemark(el){ attSheet().rows[el.dataset.w].remark=el.value; },
+  histWorker(el){ S.ui.histWorker=el.value; },
+  fdEstate(el){ const d=S.ui.drawer; d.form=readFieldForm(); d.subs=readSubs(); d.estate=el.value; },
   publicView(el){ S.ui.publicView=el.checked; },
   nbRoute(el){ S.ui.drawer.route=el.value; },
   nbEstate(el){ S.ui.drawer.estate=el.value; },
@@ -1500,7 +1776,7 @@ document.addEventListener('submit', ev=>{
 document.addEventListener('keydown', ev=>{ if(ev.key==='Escape' && S.ui.drawer){ S.ui.drawer=null; render(); } });
 function runLive(){
   const d = S.ui.drawer; if(!d) return;
-  if(d.type==='wash') LIVE.wash(); if(d.type==='newBatch') LIVE.nb(); if(d.type==='pack') LIVE.pk();
+  if(d.type==='field') LIVE.fd(); if(d.type==='wash') LIVE.wash(); if(d.type==='newBatch') LIVE.nb(); if(d.type==='pack') LIVE.pk();
 }
 function drawQRs(){
   document.querySelectorAll('.qr[data-text]').forEach(el=>{
