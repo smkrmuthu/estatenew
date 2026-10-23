@@ -944,8 +944,8 @@ function fMuster(e,d){
   <div class="fcard">
     <label class="f" for="mu-w">Worker<select id="mu-w" data-change="muWorker">${pluckers.map(w=>`<option value="${w.id}" ${dr.worker===w.id?'selected':''}>${w.id} · ${esc(w.name)}${ms.some(m=>m.worker===w.id)?' ✓':''}</option>`).join('')}</select></label>
     <label class="f" for="mu-d">Field<select id="mu-d" data-change="muDiv">${bearingDivs(e).map(d=>`<option value="${d.code}" ${dr.div===d.code?'selected':''}>${esc(d.name)}</option>`).join('')}</select></label>
-    ${bs.length>1?`<label class="f" for="mu-s">Subdivision<select id="mu-s" data-change="muSub">${bs.map(s=>`<option value="${s.code}" ${dr.sub===s.code?'selected':''}>${s.code} · ${VARIETY[s.variety]}</option>`).join('')}</select></label>`
-      :`<small class="muted">Subdivision ${sub?sub.code:''} · ${sub?VARIETY[sub.variety]:''}</small>`}
+    ${bs.length>1?`<label class="f" for="mu-s">Variety<select id="mu-s" data-change="muSub">${bs.map(s=>`<option value="${s.code}" ${dr.sub===s.code?'selected':''}>${VARIETY[s.variety]} (${s.code.slice(-1)})</option>`).join('')}</select></label>`
+      :`<small class="muted">Variety ${sub?VARIETY[sub.variety]+' ('+sub.code.slice(-1)+')':''}</small>`}
     ${sub && !sub.variety?'<small class="chip warn">Variety for this subdivision is still to be confirmed by the owner</small>':''}
     <div class="wboxes">
       <button class="wbox ${dr.focus==='gross'?'focus':''}" data-act="focusW" data-v="gross"><small class="muted">Gross</small><b>${esc(dr.gross||'0')}</b></button>
@@ -1076,7 +1076,7 @@ const HOWTO = {
   plucking:{title:'How plucking is recorded', steps:[
     ['Morning','Workers are marked present on the attendance register with the job Plucking and a field.'],
     ['Evening muster','Each worker brings their bags to the muster point. The supervisor on the phone, or the office here, picks the worker; the field comes from the morning’s attendance.'],
-    ['Variety','If the field has more than one variety, such as Super Kadu, pick the subdivision. Otherwise it is filled in.'],
+    ['Variety','If the field has more than one variety, such as Super Kadu, pick the variety; its subdivision letter is shown in brackets. Otherwise it is filled in.'],
     ['Weigh','Enter the gross weight and the bag weight; net weight is calculated. A worker can be weighed more than once.'],
     ['Submit','Submit the day’s muster. Submitted weigh-ins go to Washing. Changes after that are made as corrections with a reason.']]},
   washing:{title:'How washing and sorting is recorded', steps:[
@@ -1161,8 +1161,8 @@ function weighInPanel(e,d,sh,dm){
     <div class="formgrid weigh">
       <label class="f" for="pe-w">Worker<select id="pe-w" data-change="peWorker">${pl.map(w=>`<option value="${w.id}" ${pe.worker===w.id?'selected':''}>${w.id} · ${esc(w.name)}${weighed.has(w.id)?' ✓':''}</option>`).join('')}</select></label>
       <label class="f" for="pe-d">Field<select id="pe-d" data-change="peDiv">${bearingDivs(e).map(x=>`<option value="${x.code}" ${pe.div===x.code?'selected':''}>${esc(x.name)}</option>`).join('')}</select></label>
-      ${bs.length>1?`<label class="f" for="pe-s">Subdivision<select id="pe-s" data-change="peSub">${bs.map(s=>`<option value="${s.code}" ${pe.sub===s.code?'selected':''}>${s.code.slice(-1)} · ${VARIETY[s.variety]}</option>`).join('')}</select></label>`
-        :`<div class="f">Subdivision<b>${pe.sub?pe.sub.slice(-1)+' · '+VARIETY[SUB[pe.sub].variety]:'–'}</b></div>`}
+      ${bs.length>1?`<label class="f" for="pe-s">Variety<select id="pe-s" data-change="peSub">${bs.map(s=>`<option value="${s.code}" ${pe.sub===s.code?'selected':''}>${VARIETY[s.variety]} (${s.code.slice(-1)})</option>`).join('')}</select></label>`
+        :`<div class="f">Variety<b>${pe.sub?VARIETY[SUB[pe.sub].variety]+' ('+pe.sub.slice(-1)+')':'–'}</b></div>`}
       <label class="f" for="pe-g">Gross (kg)<input type="number" id="pe-g" step="0.1" min="0" inputmode="decimal" data-live="pe"></label>
       <label class="f" for="pe-t">Bag (kg)<input type="number" id="pe-t" step="0.1" min="0" value="1.0" inputmode="decimal" data-live="pe"></label>
       <div class="f">Net<b id="pe-net">–</b></div>
@@ -1727,7 +1727,7 @@ const ACT = {
     if(g<=0){ msg('Type the gross weight on the keypad.'); return; }
     if(net<=0){ msg('Net weight must be more than zero. Check the bag weight.'); return; }
     if(g>80){ msg('Gross weight looks too high for one weigh-in. Check the scale.'); return; }
-    const sub=SUB[dr.sub]; if(!sub){ msg('Pick a subdivision.'); return; }
+    const sub=SUB[dr.sub]; if(!sub){ msg('Pick the variety.'); return; }
     const sync = S.field.online ? 'synced' : 'pending';
     S.muster.push({id:'M'+(++S.seq.m), estate:e, date:d, worker:dr.worker, div:dr.div, sub:dr.sub, variety:sub.variety, gross:r1(g), tare:t, net, status:'RECORDED', sync, at:S.now});
     reindex(); fieldWrite('Muster '+workerBy(dr.worker).name+' '+kg(net));
@@ -1763,7 +1763,7 @@ const ACT = {
     if(t<0) return fail('Bag weight cannot be negative.');
     if(net<=0) return fail('Net weight must be more than zero. Check the bag weight.');
     if(g>80) return fail('Gross weight looks too high for one weigh-in. Check the scale.');
-    const sub=SUB[pe.sub]; if(!sub) return fail('Pick a subdivision.');
+    const sub=SUB[pe.sub]; if(!sub) return fail('Pick the variety.');
     const at = d===today() ? S.now : d+'T18:00';
     S.muster.push({id:'M'+(++S.seq.m), estate:e, date:d, worker:pe.worker, div:pe.div, sub:pe.sub, variety:sub.variety, gross:r1(g), tare:r1(t), net, status:'RECORDED', sync:'synced', source:'portal', at});
     reindex();
