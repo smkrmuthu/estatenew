@@ -4,37 +4,38 @@
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
 <style>
-/* Layout: minimal Swiss. Hairline top bar; portal = icon side nav + centred work column (max 1240px); supervisor = phone frame beside a short guide. One leaf-green action colour, cherry red only on the brand mark. */
+/* Layout: minimal Swiss. Hairline top bar; portal = icon side nav + centred work column (max 1240px); supervisor = phone frame beside a short guide. Coffee palette: warm cream surfaces, one roasted-brown action colour, cherry red on the brand mark; Fraunces headings, Inter text, JetBrains Mono for codes and weights. */
 :root{
-  --bg:#F6F7F5; --surface:#FFFFFF; --surface-2:#F0F2EE; --line:#E3E7E1; --line-strong:#CBD2C9;
-  --fg:#111813; --muted:#5B675F; --accent:#1F6B47; --accent-hover:#185A3B; --accent-fg:#FFFFFF; --accent-soft:#E5F0E9;
-  --cherry:#B23A2B; --cherry-soft:#F8E7E3;
-  --ok:#1F6B47; --ok-soft:#E5F0E9; --warn:#8A5A00; --warn-soft:#FBF1D9; --bad:#B42318; --bad-soft:#FCE8E6; --info:#2A5B88; --info-soft:#E5EDF6;
-  --paper:#FFFFFF; --ink:#141814; --scrim:rgba(14,20,16,.42); --shadow:rgba(16,32,22,.14);
-  --font:'Geist',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
-  --font-mono:'Geist Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --bg:#F8F3EA; --surface:#FFFDF9; --surface-2:#F3ECE0; --line:#E7DDCF; --line-strong:#D6C9B6;
+  --fg:#1D1A17; --muted:#74685D; --accent:#5B3A1E; --accent-hover:#4A2F17; --accent-fg:#FFFFFF; --accent-soft:#F1E6D6;
+  --cherry:#A8322D; --cherry-soft:#F8E3E1;
+  --ok:#2F6B3A; --ok-soft:#E3EFDF; --warn:#8A5A00; --warn-soft:#FBEED2; --bad:#A8322D; --bad-soft:#F8E3E1; --info:#0E7F77; --info-soft:#DDF0EE;
+  --paper:#FFFFFF; --ink:#1D1A17; --scrim:rgba(29,26,23,.42); --shadow:rgba(74,47,23,.14);
+  --font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  --display:'Fraunces',Georgia,'Times New Roman',serif;
+  --font-mono:'JetBrains Mono',ui-monospace,Menlo,Consolas,monospace;
   --r-sm:8px; --r:12px; --r-lg:16px;
   --ease:cubic-bezier(.2,.7,.2,1);
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
-  --bg:#0E1210; --surface:#151A17; --surface-2:#1C231F; --line:#262F29; --line-strong:#36423A;
-  --fg:#E8EDE9; --muted:#9BA79F; --accent:#6CC497; --accent-hover:#84D2A9; --accent-fg:#06140C; --accent-soft:#17301F;
-  --cherry:#EA8C7B; --cherry-soft:#3A211C;
-  --ok:#6CC497; --ok-soft:#17301F; --warn:#E8B85E; --warn-soft:#33280F; --bad:#F38B80; --bad-soft:#3A1C19; --info:#91B9E3; --info-soft:#18263A;
+  --bg:#14110E; --surface:#1E1A16; --surface-2:#26201A; --line:#352D25; --line-strong:#4A3F34;
+  --fg:#F1EBE3; --muted:#A99B8C; --accent:#E0AD6E; --accent-hover:#E5BD8F; --accent-fg:#1A120A; --accent-soft:#2F2419;
+  --cherry:#FF9B8F; --cherry-soft:#3D1D19;
+  --ok:#8FD19A; --ok-soft:#1D2E20; --warn:#F2C26B; --warn-soft:#3A2D12; --bad:#FF9B8F; --bad-soft:#3D1D19; --info:#4FC1B5; --info-soft:#17302D;
   --scrim:rgba(0,0,0,.62); --shadow:rgba(0,0,0,.5); color-scheme:dark}}
 :root[data-theme="dark"]{
-  --bg:#0E1210; --surface:#151A17; --surface-2:#1C231F; --line:#262F29; --line-strong:#36423A;
-  --fg:#E8EDE9; --muted:#9BA79F; --accent:#6CC497; --accent-hover:#84D2A9; --accent-fg:#06140C; --accent-soft:#17301F;
-  --cherry:#EA8C7B; --cherry-soft:#3A211C;
-  --ok:#6CC497; --ok-soft:#17301F; --warn:#E8B85E; --warn-soft:#33280F; --bad:#F38B80; --bad-soft:#3A1C19; --info:#91B9E3; --info-soft:#18263A;
+  --bg:#14110E; --surface:#1E1A16; --surface-2:#26201A; --line:#352D25; --line-strong:#4A3F34;
+  --fg:#F1EBE3; --muted:#A99B8C; --accent:#E0AD6E; --accent-hover:#E5BD8F; --accent-fg:#1A120A; --accent-soft:#2F2419;
+  --cherry:#FF9B8F; --cherry-soft:#3D1D19;
+  --ok:#8FD19A; --ok-soft:#1D2E20; --warn:#F2C26B; --warn-soft:#3A2D12; --bad:#FF9B8F; --bad-soft:#3D1D19; --info:#4FC1B5; --info-soft:#17302D;
   --scrim:rgba(0,0,0,.62); --shadow:rgba(0,0,0,.5); color-scheme:dark}
 
 *{box-sizing:border-box}
-body{background:var(--bg);color:var(--fg);font-family:var(--font);font-size:14.5px;line-height:1.5;-webkit-font-smoothing:antialiased;font-feature-settings:"ss01"}
+body{background:var(--bg);color:var(--fg);font-family:var(--font);font-size:14.5px;line-height:1.5;-webkit-font-smoothing:antialiased}
 body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:30;background:var(--surface)}
-h1,h2,h3{font-family:var(--font);font-weight:600;letter-spacing:-.015em;text-wrap:balance;margin:0;line-height:1.2}
+h1,h2,h3{font-family:var(--display);font-weight:600;letter-spacing:-.015em;text-wrap:balance;margin:0;line-height:1.2}
 h1{font-size:1.65rem;letter-spacing:-.025em} h2{font-size:1.05rem} h3{font-size:.95rem}
 p{margin:0}
 small{font-size:.8rem}
@@ -220,7 +221,7 @@ table.reg tr.sel td{background:var(--accent-soft)}
 
 /* Labels */
 .labels{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(280px,100%),1fr));gap:12px}
-.label-card{background:var(--paper);color:var(--ink);border:1px solid #D8DCD6;border-radius:var(--r-sm);padding:14px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 14px;font-size:.78rem;line-height:1.4}
+.label-card{background:var(--paper);color:var(--ink);border:1px solid var(--line-strong);border-radius:var(--r-sm);padding:14px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 14px;font-size:.78rem;line-height:1.4}
 .label-card .code{font-family:var(--font-mono);font-size:1.05rem;font-weight:500}
 .label-card .est{font-weight:600;font-size:.9rem;letter-spacing:-.01em}
 .qr{width:84px;height:84px;background:var(--paper);grid-row:1 / span 6;grid-column:2;display:flex;align-items:center;justify-content:center}
