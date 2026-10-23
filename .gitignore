@@ -1,0 +1,9 @@
+# Source documents and estate data stay out of the repository
+*.docx
+*.xlsx
+~$*
+
+# Local tools and OS files
+.claude/
+.DS_Store
+pages/
