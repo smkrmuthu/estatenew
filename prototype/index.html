@@ -1250,6 +1250,8 @@ function weighInPanel(e,d,sh,dm){
     <div class="row"><button class="btn btn-primary" data-act="peSave">Save and next worker</button><small class="muted">Field ${pe.div&&sh.rows[pe.worker]&&sh.rows[pe.worker].div===pe.div?'from this morning’s attendance':'changed from this morning’s attendance'}</small></div></section>`;
 }
 
+const byVariety = ids=>{ const o={}; ids.forEach(id=>{ const m=musterBy(id); const x=(o[m.variety]=o[m.variety]||{ids:[], kg:0}); x.ids.push(id); x.kg+=m.net; }); return o; };
+const lotVarLabel = l=>{ const v=[...new Set(l.entries.map(id=>musterBy(id).variety))]; return v.length===1 ? VARIETY[v[0]] : 'Mixed: '+v.map(x=>VARIETY[x]).join(' + '); };
 const WASH_WHY = ['Cherries spilled in transport','Scale difference between muster and washing','Muster weight entered wrongly','Cherries dried out while waiting'];
 const washDiff = l=>({kg:r1(l.received-l.musterKg), pct:l.musterKg>0 ? (l.received-l.musterKg)/l.musterKg*100 : 0});
 function diffCell(l){
@@ -1263,9 +1265,9 @@ function pWashing(){
   return `<div class="page-h"><div><h1>Washing and sorting</h1><p>Submitted muster entries are washed and sorted into a washing lot. Floaters and rejects are weighed and removed; the accepted kilograms go on to processing.</p></div></div>
   ${howTo('washing')}
   <section class="panel"><div class="panel-h"><h2>Waiting for washing</h2></div>
-    ${wait.length?`<div class="alerts">${wait.map(g=>`<div class="alert info"><div><b>${ESTATE[g.estate].short} · ${dow(g.date)} ${fd(g.date)}</b><br><small class="muted">${g.ids.length} muster entries · ${kg(sum(g.ids,id=>musterBy(id).net))} net cherry</small></div><button class="btn btn-primary" data-act="newWash" data-v="${g.estate}|${g.date}">Create washing lot</button></div>`).join('')}</div>`:'<p class="muted">All submitted muster is washed. Submit weigh-ins on the Plucking screen or the supervisor phone to add more.</p>'}</section>
-  <section class="panel"><div class="panel-h"><h2>Washing lots</h2><small class="muted">A difference of more than ${S.settings.washTol}% between muster and washing needs a reason</small></div><div class="tbl-wrap"><table class="data"><thead><tr><th>Lot</th><th>Harvest day</th><th class="r">Muster</th><th class="r">Weighed at washing</th><th>Difference</th><th class="r">Floaters</th><th class="r">Rejected</th><th class="r">Accepted</th><th class="r">Not yet in a batch</th></tr></thead><tbody>
-  ${lots.map(l=>`<tr><td class="mono">${l.code}</td><td>${fd(l.date)} ${estTag(l.estate)}</td><td class="r">${kg(l.musterKg)}</td><td class="r">${kg(l.received)}</td><td>${diffCell(l)}</td><td class="r">${kg(l.floaters)}</td><td class="r">${kg(l.rejected)}</td><td class="r"><b>${kg(l.accepted)}</b></td><td class="r">${lotAvail(l)>0?`<span class="chip warn">${kg(lotAvail(l))}</span>`:'<span class="muted">0</span>'}</td></tr>`).join('')}
+    ${wait.length?`<div class="alerts">${wait.map(g=>`<div class="alert info"><div><b>${ESTATE[g.estate].short} · ${dow(g.date)} ${fd(g.date)}</b><br><small class="muted">${g.ids.length} muster entries · ${kg(sum(g.ids,id=>musterBy(id).net))} net cherry</small><br><small class="muted">${Object.entries(byVariety(g.ids)).map(([v,x])=>VARIETY[v]+' '+kg(x.kg)).join(' · ')}</small></div><span class="row" style="flex:none;justify-content:flex-end">${Object.keys(byVariety(g.ids)).length>1?Object.entries(byVariety(g.ids)).map(([v,x])=>`<button class="btn" data-act="newWash" data-v="${g.estate}|${g.date}|${v}">Wash ${esc(VARIETY[v])} only</button>`).join(''):''}<button class="btn btn-primary" data-act="newWash" data-v="${g.estate}|${g.date}">${Object.keys(byVariety(g.ids)).length>1?'Wash all together':'Create washing lot'}</button></span></div>`).join('')}</div>`:'<p class="muted">All submitted muster is washed. Submit weigh-ins on the Plucking screen or the supervisor phone to add more.</p>'}</section>
+  <section class="panel"><div class="panel-h"><h2>Washing lots</h2><small class="muted">A difference of more than ${S.settings.washTol}% between muster and washing needs a reason</small></div><div class="tbl-wrap"><table class="data"><thead><tr><th>Lot</th><th>Harvest day</th><th>Variety</th><th class="r">Muster</th><th class="r">Weighed at washing</th><th>Difference</th><th class="r">Floaters</th><th class="r">Rejected</th><th class="r">Accepted</th><th class="r">Not yet in a batch</th></tr></thead><tbody>
+  ${lots.map(l=>`<tr><td class="mono">${l.code}</td><td>${fd(l.date)} ${estTag(l.estate)}</td><td>${esc(lotVarLabel(l))}</td><td class="r">${kg(l.musterKg)}</td><td class="r">${kg(l.received)}</td><td>${diffCell(l)}</td><td class="r">${kg(l.floaters)}</td><td class="r">${kg(l.rejected)}</td><td class="r"><b>${kg(l.accepted)}</b></td><td class="r">${lotAvail(l)>0?`<span class="chip warn">${kg(lotAvail(l))}</span>`:'<span class="muted">0</span>'}</td></tr>`).join('')}
   </tbody></table></div></section>`;
 }
 function pProcessing(){
@@ -1775,15 +1777,16 @@ function dWash(d){
   const ids = d.ids; const F = d.f || {}; const sel = F.ids || ids;
   const mk = r1(sum(sel,id=>musterBy(id).net)); const v = (k,def)=>F[k]!=null ? F[k] : def;
   return dHead('New washing lot', ESTATE[d.estate].short+' · harvest '+fd(d.date)) + `
-  <p class="note">All submitted entries for the day are selected. Untick any that were washed separately.</p>
-  <div class="tbl-wrap" style="max-height:260px;overflow-y:auto"><table class="data"><thead><tr><th></th><th>Worker</th><th>Subdivision</th><th class="r">Net</th></tr></thead><tbody>
-  ${ids.map(id=>{ const m=musterBy(id); return `<tr><td><input type="checkbox" name="wentry" value="${id}" ${sel.includes(id)?'checked':''} data-live="wash" aria-label="Include ${m.worker}"></td><td><span class="mono">${m.worker}</span> ${esc(workerBy(m.worker).name)}</td><td class="mono">${m.sub}</td><td class="r">${kg(m.net)}</td></tr>`; }).join('')}
+  <p class="note">Weigh-ins are grouped by variety. Tick a variety to wash it as its own lot, or tick single weigh-ins. Anything left unticked waits for its own lot.</p>
+  <div class="tbl-wrap" style="max-height:300px;overflow-y:auto"><table class="data"><thead><tr><th></th><th>Worker</th><th>Field and part</th><th class="r">Bags</th><th class="r">Net</th></tr></thead><tbody>
+  ${Object.entries(byVariety(ids)).sort((a,b)=>b[1].kg-a[1].kg).map(([vk,g])=>`<tr style="background:var(--surface-2)"><td><input type="checkbox" data-wgrp="${vk}" aria-label="Select all ${esc(VARIETY[vk])}"></td><td colspan="3"><b>${esc(VARIETY[vk])}</b> <small class="muted">${g.ids.length} weigh-in${g.ids.length===1?'':'s'}</small></td><td class="r"><b>${kg(g.kg)}</b></td></tr>`
+    + g.ids.slice().sort((a,b)=>musterBy(a).worker<musterBy(b).worker?-1:1).map(id=>{ const m=musterBy(id); return `<tr><td><input type="checkbox" name="wentry" value="${id}" data-var="${vk}" ${sel.includes(id)?'checked':''} data-live="wash" aria-label="Include ${esc(workerBy(m.worker).name)}, ${kg(m.net)}"></td><td><span class="mono">${m.worker}</span> ${esc(workerBy(m.worker).name)}</td><td>${esc(fieldName(m.div))} <span class="mono">${m.sub.slice(-1)}</span></td><td class="r">${m.bags||'–'}</td><td class="r">${kg(m.net)}</td></tr>`; }).join('')).join('')}
   </tbody></table></div>
   <div class="formgrid">
     <div class="f">Muster total<b id="w-mk">${kg(mk)}</b></div>
     <label class="f" for="w-rc">Weighed at washing (kg)<input type="number" id="w-rc" step="0.1" min="0" value="${v('rc',mk)}" data-live="wash" data-auto="${F.rc!=null?'0':'1'}"></label>
-    <label class="f" for="w-fl">Floaters removed (kg)<input type="number" id="w-fl" step="0.1" min="0" value="${v('fl',r1(mk*0.03))}" data-live="wash"></label>
-    <label class="f" for="w-rj">Rejected in sorting (kg)<input type="number" id="w-rj" step="0.1" min="0" value="${v('rj',r1(mk*0.015))}" data-live="wash"></label>
+    <label class="f" for="w-fl">Floaters removed (kg)<input type="number" id="w-fl" step="0.1" min="0" value="${v('fl',r1(mk*0.03))}" data-live="wash" data-auto="${F.fl!=null?'0':'1'}"></label>
+    <label class="f" for="w-rj">Rejected in sorting (kg)<input type="number" id="w-rj" step="0.1" min="0" value="${v('rj',r1(mk*0.015))}" data-live="wash" data-auto="${F.rj!=null?'0':'1'}"></label>
   </div>
   <label class="f" for="w-why">Reason for a difference<input type="text" id="w-why" list="w-whys" maxlength="120" value="${esc(v('why',''))}" placeholder="Needed when washing differs from the muster by more than ${S.settings.washTol}%"><datalist id="w-whys">${WASH_WHY.map(x=>`<option value="${esc(x)}">`).join('')}</datalist></label>
   <div id="w-prev"></div>
@@ -1897,7 +1900,7 @@ function dNewBatch(d){
     <label class="f" for="nb-tank">Tank<select id="nb-tank">${TANKS.map(t=>`<option value="${t}" ${busy.has(t)?'disabled':''}>Tank ${t}${busy.has(t)?' (in use)':''}</option>`).join('')}</select></label></div>`:''}
   <h3>Washed coffee to use</h3>
   ${lots.length?`<div class="tbl-wrap"><table class="data"><thead><tr><th></th><th>Washing lot</th><th>Harvest day</th><th class="r">Available</th><th class="r">Use (kg)</th></tr></thead><tbody>
-  ${lots.map((l,i)=>`<tr><td><input type="checkbox" name="nb-lot" value="${l.code}" ${i===lots.length-1?'checked':''} data-live="nb" aria-label="Use ${l.code}"></td><td class="mono">${l.code}</td><td>${fd(l.date)}</td><td class="r">${kg(lotAvail(l))}</td><td class="r"><input type="number" id="nb-kg-${l.code}" value="${lotAvail(l)}" step="0.1" min="0" max="${lotAvail(l)}" data-live="nb"></td></tr>`).join('')}
+  ${lots.map((l,i)=>`<tr><td><input type="checkbox" name="nb-lot" value="${l.code}" ${i===lots.length-1?'checked':''} data-live="nb" aria-label="Use ${l.code}"></td><td class="mono">${l.code}</td><td>${fd(l.date)}<br><small class="muted">${esc(lotVarLabel(l))}</small></td><td class="r">${kg(lotAvail(l))}</td><td class="r"><input type="number" id="nb-kg-${l.code}" value="${lotAvail(l)}" step="0.1" min="0" max="${lotAvail(l)}" data-live="nb"></td></tr>`).join('')}
   </tbody></table></div>`:'<p class="muted">No washed coffee is waiting for this estate.</p>'}
   <div id="nb-prev"></div>
   ${d.route==='C'&&lots.length?`<h3>Trays</h3>${trayPicker('nb', lotAvail(lots[lots.length-1]))}`:''}
@@ -1955,11 +1958,16 @@ const LIVE = {
     const ids = [...document.querySelectorAll('input[name=wentry]:checked')].map(x=>x.value);
     const mk = r1(sum(ids,id=>musterBy(id).net)); const rcEl = document.getElementById('w-rc');
     if(rcEl && rcEl.dataset.auto==='1') rcEl.value = mk;
+    const flEl = document.getElementById('w-fl'), rjEl = document.getElementById('w-rj');
+    if(flEl && flEl.dataset.auto==='1') flEl.value = r1(mk*0.03);
+    if(rjEl && rjEl.dataset.auto==='1') rjEl.value = r1(mk*0.015);
     const mkEl = document.getElementById('w-mk'); if(mkEl) mkEl.textContent = kg(mk);
     const rec = num('#w-rc'); const fl = num('#w-fl'), rj = num('#w-rj'); const acc = r1(rec-fl-rj);
     const x = washDiff({received:rec, musterKg:mk}); const big = Math.abs(x.pct) > S.settings.washTol;
+    document.querySelectorAll('input[data-wgrp]').forEach(g=>{ const all=[...document.querySelectorAll('input[name=wentry]')].filter(e=>e.dataset.var===g.dataset.wgrp); const n=all.filter(e=>e.checked).length; g.checked=all.length>0&&n===all.length; g.indeterminate=n>0&&n<all.length; });
+    const vs = byVariety(ids); const vn = Object.keys(vs);
     const el = document.getElementById('w-prev'); if(!el) return;
-    el.innerHTML = `<div class="kpis"><div class="kpi"><span class="eyebrow">Muster</span><span class="v">${kg(mk)}</span><small class="muted">${ids.length} entries</small></div><div class="kpi"><span class="eyebrow">Weighed at washing</span><span class="v">${kg(rec)}</span><small class="muted">${x.kg?(x.kg>0?'+':'−')+kg(Math.abs(x.kg))+' ('+(x.kg>0?'+':'−')+Math.abs(x.pct).toFixed(1)+'%)':'Same as muster'}</small></div><div class="kpi"><span class="eyebrow">Accepted</span><span class="v">${kg(acc)}</span><small class="muted">${pct(acc,rec)}% of weighed</small></div></div>${big?`<p class="note">The difference is more than ${S.settings.washTol}%, so a reason is needed.</p>`:''}${acc<0?'<div class="msg">Floaters and rejects are more than the cherry weighed.</div>':''}`;
+    el.innerHTML = `<p class="note">${vn.length>1?'<b>This lot mixes '+vn.length+' varieties:</b> ':'Variety: '}${vn.map(v=>esc(VARIETY[v])+' '+kg(vs[v].kg)).join(' · ')||'none selected'}</p><div class="kpis"><div class="kpi"><span class="eyebrow">Muster</span><span class="v">${kg(mk)}</span><small class="muted">${ids.length} entries</small></div><div class="kpi"><span class="eyebrow">Weighed at washing</span><span class="v">${kg(rec)}</span><small class="muted">${x.kg?(x.kg>0?'+':'−')+kg(Math.abs(x.kg))+' ('+(x.kg>0?'+':'−')+Math.abs(x.pct).toFixed(1)+'%)':'Same as muster'}</small></div><div class="kpi"><span class="eyebrow">Accepted</span><span class="v">${kg(acc)}</span><small class="muted">${pct(acc,rec)}% of weighed</small></div></div>${big?`<p class="note">The difference is more than ${S.settings.washTol}%, so a reason is needed.</p>`:''}${acc<0?'<div class="msg">Floaters and rejects are more than the cherry weighed.</div>':''}`;
   },
   nb(){
     const picks = [...document.querySelectorAll('input[name=nb-lot]:checked')].map(x=>({lot:x.value, kg:num('#nb-kg-'+x.value)}));
@@ -2079,7 +2087,7 @@ const ACT = {
   editJob(el){ S.ui.drawer={type:'job', code:el.dataset.v}; },
   saveJob(){ saveJobForm(); },
   approveSheet(el){ const sh=S.att[el.dataset.v]; sh.status='APPROVED'; sh.approvedAt=S.now; audit(sh,'Approved'); },
-  newWash(el){ const [e,d]=el.dataset.v.split('|'); const g=waitingWash([e]).find(x=>x.date===d); S.ui.drawer={type:'wash', estate:e, date:d, ids:g?g.ids:[]}; },
+  newWash(el){ const [e,d,vk]=el.dataset.v.split('|'); const g=waitingWash([e]).find(x=>x.date===d); const all=g?g.ids:[]; S.ui.drawer={type:'wash', estate:e, date:d, ids:all, f:vk===undefined?null:{ids:all.filter(id=>musterBy(id).variety===vk)}}; },
   saveWash(){
     const dr=S.ui.drawer; const ids=[...document.querySelectorAll('input[name=wentry]:checked')].map(x=>x.value);
     const rc=r1(num('#w-rc')), fl=r1(num('#w-fl')), rj=r1(num('#w-rj')); const why=document.getElementById('w-why').value.trim();
@@ -2215,6 +2223,8 @@ document.addEventListener('click', ev=>{
   fn(el); render(); runLive();
 });
 document.addEventListener('change', ev=>{
+  const wg = ev.target.closest('[data-wgrp]');
+  if(wg){ document.querySelectorAll('input[name=wentry]').forEach(e=>{ if(e.dataset.var===wg.dataset.wgrp) e.checked=wg.checked; }); LIVE.wash(); return; }
   const el = ev.target.closest('[data-change]');
   if(el && CHANGE[el.dataset.change]){ if(CHANGE[el.dataset.change](el)!==false){ render(); runLive(); } else save(); return; }
   const lv = ev.target.closest('[data-live]'); if(lv && LIVE[lv.dataset.live]) LIVE[lv.dataset.live]();
@@ -2222,7 +2232,7 @@ document.addEventListener('change', ev=>{
 document.addEventListener('input', ev=>{
   const kp = ev.target.closest('[data-keep]'); if(kp && KEEP[kp.dataset.keep]){ KEEP[kp.dataset.keep](kp.value); save(); return; }
   const lv = ev.target.closest('[data-live]'); if(!lv) return;
-  if(lv.id==='pk-count' || lv.id==='w-rc') lv.dataset.auto='0';
+  if(lv.id==='pk-count' || lv.id==='w-rc' || lv.id==='w-fl' || lv.id==='w-rj') lv.dataset.auto='0';
   if(lv.id && lv.id.startsWith('pk-kg-')){ const c=document.getElementById('pk-count'); if(c) c.dataset.auto='1'; }
   if(LIVE[lv.dataset.live]) LIVE[lv.dataset.live]();
 });
