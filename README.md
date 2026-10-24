@@ -2,7 +2,7 @@
 
 CEMMS is a multi-tenant web and mobile application for coffee estates. It covers the daily work from morning attendance through plucking (evening muster), washing and sorting, the three processing routes, and packing, with every packed bag traceable back to its harvest dates, divisions, subdivisions and workers.
 
-The first tenant runs two estates, Glazebrooke and Byson Valley.
+The first tenant runs two estates, Glazebrook and Byson Valley.
 
 ## Status
 
@@ -21,7 +21,7 @@ The first tenant runs two estates, Glazebrooke and Byson Valley.
 - **Estate portal:** dashboard, attendance register (Present, Half day, Absent, Leave, Off day, Holiday; reopening needs a reason), plucking, washing lots with the weight at washing checked against the muster, the processing board for Routes A (Pulping), B (Fermentation) and C (Natural) with trays picked by hand, a drying log, hold and split, quality check, packing into bags with labels and a weight check on every bag, and bag tracing.
 - **Reports:** a daily summary ready to paste into WhatsApp, outturn by route, variety and field, and plucker productivity with a pay preview.
 
-Divisions, acres, varieties and expected crop are the real Glazebrooke and Byson Valley figures. Workers, weights, batches and bags are sample data, kept only in the viewer's browser. Use **Reset sample data** to start again, and **+6 h** or **+1 day** to move the sample clock forward.
+Divisions, acres, varieties and expected crop are the real Glazebrook and Byson Valley figures. Workers, weights, batches and bags are sample data, kept only in the viewer's browser. Use **Reset sample data** to start again, and **+6 h** or **+1 day** to move the sample clock forward.
 
 To see a bag that holds two harvest dates, open **Trace a bag** and look up `BROOKAA13`.
 
