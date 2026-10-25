@@ -312,7 +312,7 @@ input.wt{width:6.5em}
 'use strict';
 
 /* ---------- Reference data: from the Division and Subdivision Import sheet ---------- */
-const VERSION = 7;
+const VERSION = 8;
 const STORE_KEY = 'cemms-prototype';
 const VARIETY = {CG:'Chandana Giri', S9:'Selection 9', YMG:'YMG', '':'Variety to confirm'};
 const LAND = {B:'Bearing', Y:'Young plants', R:'Rock', W:'Water', E:'Empty', O:'Other crop'};
@@ -781,7 +781,10 @@ function makeWash(e, d, at, ids, R, fl, rj, rc, why){
   return lot;
 }
 function simBatch(e, p, R){
-  const lots = p.lots.flatMap(x=>S.wash.filter(w=>w.estate===e && w.date==='2026-10-'+x));
+  const all = p.lots.flatMap(x=>S.wash.filter(w=>w.estate===e && w.date==='2026-10-'+x));
+  const tv = {}; all.forEach(l=>{ const k=lotVarKey(l); tv[k]=(tv[k]||0)+l.accepted; });
+  const dom = Object.keys(tv).sort((a,b)=>tv[b]-tv[a])[0];
+  const lots = all.filter(l=>lotVarKey(l)===dom);
   const code = 'B-'+e+'-2026-'+pad(++S.seq.batch[e],4);
   const b = {code, estate:e, route:p.route, recipe:p.recipe||'', inputs:lots.map(l=>({lot:l.code, kg:l.accepted})), stages:[], packedKg:0, createdAt:''};
   let t = lots[lots.length-1].date+'T14:00'; b.createdAt = t;
@@ -1161,7 +1164,7 @@ const HOWTO = {
     ['Floaters and rejects','Weigh the floaters removed in water and the rejects picked out by hand. Accepted weight is the weight at washing minus both.'],
     ['Hand over','Accepted kilograms wait under Not yet in a batch until a processing batch takes them.']]},
   processing:{title:'How processing is recorded', steps:[
-    ['New batch','Pick Route A (Pulping), B (Fermentation) or C (Natural), and the washing lots and kilograms to use. Lots from different days can be combined; each day’s share is kept for tracing.'],
+    ['New batch','Pick Route A (Pulping), B (Fermentation) or C (Natural), and the washing lots and kilograms to use. Lots of one variety from different days can be combined; each day’s share is kept for tracing. A batch never mixes varieties.'],
     ['Start a stage','Each stage starts with its equipment and a target time from Process settings: the pulper, a tank and recipe, a floor yard, or tray numbers picked by hand (the first free trays are suggested).'],
     ['Readings and log','Add pH and temperature during fermentation, and moisture daily during drying. Log turning, covering and rain on drying stages. The board flags stages past target, readings that are due and rain on uncovered coffee.'],
     ['Complete','Complete a stage with the weight out. After pulping, choose floor or tray drying.'],
@@ -1169,7 +1172,7 @@ const HOWTO = {
     ['Hold or split','Put a batch on hold with a reason, or split part of it onto other trays or another tank. Both parts keep the same share of every washing lot, so tracing still works.']]},
   packing:{title:'How packing is recorded', steps:[
     ['Ready','Batches approved at the quality check appear under Ready to pack with their harvest dates.'],
-    ['Choose','Pick one process and the batches and kilograms to pack. Batches from different harvest dates can go into one lot.'],
+    ['Choose','Pick one process and one variety, then the batches and kilograms to pack. Batches from different harvest dates can go into one lot; a lot never mixes varieties.'],
     ['Bags','Choose grade, bag type, weight per bag and number of bags, and whether to fill bags batch by batch or mix evenly.'],
     ['Labels','Each bag gets a code and a QR label showing its own harvest dates, fields and varieties.'],
     ['Weigh bags','Weigh each filled bag and enter its net weight in the packed lot. Bags under weight are flagged.']]}
@@ -1252,6 +1255,10 @@ function weighInPanel(e,d,sh,dm){
 
 const byVariety = ids=>{ const o={}; ids.forEach(id=>{ const m=musterBy(id); const x=(o[m.variety]=o[m.variety]||{ids:[], kg:0}); x.ids.push(id); x.kg+=m.net; }); return o; };
 const lotVarLabel = l=>{ const v=[...new Set(l.entries.map(id=>musterBy(id).variety))]; return v.length===1 ? VARIETY[v[0]] : 'Mixed: '+v.map(x=>VARIETY[x]).join(' + '); };
+const lotVarKey = l=>musterBy(l.entries[0]).variety;
+const batchVarKeys = b=>[...new Set(b.inputs.map(i=>lotVarKey(lotBy(i.lot))))];
+const batchVarLabel = b=>batchVarKeys(b).map(k=>VARIETY[k]).join(' + ');
+const packVarLabel = p=>Object.keys(traceSources(p.bags.flatMap(b=>b.sources)).vars).map(k=>VARIETY[k]).join(' + ');
 const WASH_WHY = ['Cherries spilled in transport','Scale difference between muster and washing','Muster weight entered wrongly','Cherries dried out while waiting'];
 const washDiff = l=>({kg:r1(l.received-l.musterKg), pct:l.musterKg>0 ? (l.received-l.musterKg)/l.musterKg*100 : 0});
 function diffCell(l){
@@ -1277,7 +1284,7 @@ function pProcessing(){
     return `<div class="col"><div class="col-h"><span>${k==='READY'?'Ready to pack':STAGE[k].label}</span><span class="muted">${items.length}</span></div>${items.map(card).join('')||'<small class="muted">None</small>'}</div>`; };
   const card = b=>{ const c=curStage(b); const st=bStatus(b); const m=batchMoisture(b); const el=c?hoursBetween(c.start,S.now):0; const tg=c?hoursBetween(c.start,c.plannedEnd):0;
     return `<button class="bcard" data-act="openBatch" data-v="${b.code}"><span class="code">${b.code}</span>
-      <small>${ROUTE[b.route].short}${b.recipe?' · '+b.recipe+' '+RECIPE[b.recipe].name:''} ${estTag(b.estate)}</small>
+      <small>${ROUTE[b.route].short}${b.recipe?' · '+b.recipe+' '+RECIPE[b.recipe].name:''} · ${esc(batchVarLabel(b))} ${estTag(b.estate)}</small>
       ${st==='READY'||st==='PART_PACKED'?`<small>${kg(bAvail(b))} to pack</small>`:`<small>${kg(c.inKg)} in · ${esc(c.res||'')}</small>`}
       ${st==='ACTIVE'?`<div class="barrow"><div class="bar"><i style="width:${Math.min(100,pct(el,tg))}%;${isOverdue(c)?'background:var(--bad)':''}"></i></div><small class="num">${dur(el)} of ${dur(tg)}</small></div>`:''}
       <div class="row">${b.hold?'<span class="chip bad">On hold</span>':''}${c&&c.status==='IN_PROGRESS'&&isCovered(c)?'<span class="chip info">Covered</span>':''}${!b.hold&&isOverdue(c)?'<span class="chip bad">Past target</span>':''}${readingDue(c)?'<span class="chip warn">Reading due</span>':''}${st==='AWAITING_QC'?'<span class="chip warn">Check moisture</span>':''}${m&&st!=='READY'?`<span class="chip">${m.value}% moisture</span>`:''}</div></button>`; };
@@ -1295,11 +1302,11 @@ function pPacking(){
   return `<div class="page-h"><div><h1>Packing</h1><p>Batches released by the quality check are packed into bags. Each bag records which batches it holds, so its label shows its own harvest dates.</p></div>
     <button class="btn btn-primary" data-act="newPack" ${ready.length?'':'disabled'}>New packed lot</button></div>
   ${howTo('packing')}
-  <section class="panel"><div class="panel-h"><h2>Ready to pack</h2></div><div class="tbl-wrap"><table class="data"><thead><tr><th>Batch</th><th>Process</th><th>Harvest dates</th><th class="r">Available</th><th></th></tr></thead><tbody>
-    ${ready.map(b=>`<tr><td class="mono">${b.code} ${estTag(b.estate)}</td><td>${esc(procLabel(b))}</td><td>${esc(datesLabel(batchHarvestDates(b)).replace('Harvested ',''))}</td><td class="r">${kg(bAvail(b))}</td><td class="r"><button class="btn" data-act="newPack" data-v="${b.code}">Pack</button></td></tr>`).join('')||'<tr><td colspan="5" class="muted">Nothing is ready. Approve a batch in Processing first.</td></tr>'}
+  <section class="panel"><div class="panel-h"><h2>Ready to pack</h2></div><div class="tbl-wrap"><table class="data"><thead><tr><th>Batch</th><th>Process</th><th>Variety</th><th>Harvest dates</th><th class="r">Available</th><th></th></tr></thead><tbody>
+    ${ready.map(b=>`<tr><td class="mono">${b.code} ${estTag(b.estate)}</td><td>${esc(procLabel(b))}</td><td>${esc(batchVarLabel(b))}</td><td>${esc(datesLabel(batchHarvestDates(b)).replace('Harvested ',''))}</td><td class="r">${kg(bAvail(b))}</td><td class="r"><button class="btn" data-act="newPack" data-v="${b.code}">Pack</button></td></tr>`).join('')||'<tr><td colspan="6" class="muted">Nothing is ready. Approve a batch in Processing first.</td></tr>'}
   </tbody></table></div></section>
-  <section class="panel"><div class="panel-h"><h2>Packed lots</h2></div><div class="tbl-wrap"><table class="data"><thead><tr><th>Lot</th><th>Packed</th><th>Process</th><th class="r">Bags</th><th class="r">Net</th><th>Harvest dates</th><th>Weighed after filling</th></tr></thead><tbody>
-    ${packs.map(p=>{ const T=traceSources(p.bags.flatMap(b=>b.sources)); return `<tr class="click" data-act="openPack" data-v="${p.code}"><td class="mono">${p.code}</td><td>${fd(p.at)} ${estTag(p.estate)}</td><td>${esc(p.process)}</td><td class="r">${p.bags.length} × ${BAGS[p.bagType].label.toLowerCase()} ${nf3.format(p.bagKg)} kg</td><td class="r">${kg(sum(p.bags,b=>b.kg))}</td><td>${esc(datesLabel(Object.keys(T.dates)).replace('Harvested ',''))}</td><td>${weighText(p)}</td></tr>`; }).join('')||'<tr><td colspan="7" class="muted">No packed lots yet.</td></tr>'}
+  <section class="panel"><div class="panel-h"><h2>Packed lots</h2></div><div class="tbl-wrap"><table class="data"><thead><tr><th>Lot</th><th>Packed</th><th>Process</th><th>Variety</th><th class="r">Bags</th><th class="r">Net</th><th>Harvest dates</th><th>Weighed after filling</th></tr></thead><tbody>
+    ${packs.map(p=>{ const T=traceSources(p.bags.flatMap(b=>b.sources)); return `<tr class="click" data-act="openPack" data-v="${p.code}"><td class="mono">${p.code}</td><td>${fd(p.at)} ${estTag(p.estate)}</td><td>${esc(p.process)}</td><td>${esc(packVarLabel(p))}</td><td class="r">${p.bags.length} × ${BAGS[p.bagType].label.toLowerCase()} ${nf3.format(p.bagKg)} kg</td><td class="r">${kg(sum(p.bags,b=>b.kg))}</td><td>${esc(datesLabel(Object.keys(T.dates)).replace('Harvested ',''))}</td><td>${weighText(p)}</td></tr>`; }).join('')||'<tr><td colspan="8" class="muted">No packed lots yet.</td></tr>'}
   </tbody></table></div></section>`;
 }
 function pTrace(){
@@ -1860,7 +1867,7 @@ function dBatch(d){
       <div class="row"><button class="btn" data-act="splitBatch" data-v="${b.code}">Split into a new batch</button></div>`:''}</section>`;
   }
   return dHead('Batch', `<span class="mono">${b.code}</span>`) + `
-  <div class="row">${statusChip(st)}<span class="chip">${ROUTE[b.route].label}</span>${b.recipe?`<span class="chip cherry">${b.recipe} ${RECIPE[b.recipe].name}</span>`:''}<span class="chip">${ESTATE[b.estate].short}</span></div>
+  <div class="row">${statusChip(st)}<span class="chip">${ROUTE[b.route].label}</span>${b.recipe?`<span class="chip cherry">${b.recipe} ${RECIPE[b.recipe].name}</span>`:''}<span class="chip">${ESTATE[b.estate].short}</span><span class="chip cherry">${esc(batchVarLabel(b))}</span></div>
   ${d.err?`<div class="msg" role="alert">${esc(d.err)}</div>`:''}${d.flash?`<div class="msg ok" role="status">${esc(d.flash)}</div>`:''}
   <section class="panel stack"><h3>What went in</h3>
     <p>${kg(bInKg(b))} of washed cherry · <b>${esc(datesLabel(dates))}</b></p>
@@ -1899,8 +1906,9 @@ function dNewBatch(d){
   ${d.route==='B'?`<div class="formgrid"><label class="f" for="nb-rec">Fermentation recipe<select id="nb-rec">${Object.entries(RECIPE).map(([k,r])=>`<option value="${k}">${k} · ${r.name} · ${r.hours} h</option>`).join('')}</select></label>
     <label class="f" for="nb-tank">Tank<select id="nb-tank">${TANKS.map(t=>`<option value="${t}" ${busy.has(t)?'disabled':''}>Tank ${t}${busy.has(t)?' (in use)':''}</option>`).join('')}</select></label></div>`:''}
   <h3>Washed coffee to use</h3>
+  <p class="note">A batch holds one variety only. Ticking a lot of another variety clears the first.</p>
   ${lots.length?`<div class="tbl-wrap"><table class="data"><thead><tr><th></th><th>Washing lot</th><th>Harvest day</th><th class="r">Available</th><th class="r">Use (kg)</th></tr></thead><tbody>
-  ${lots.map((l,i)=>`<tr><td><input type="checkbox" name="nb-lot" value="${l.code}" ${i===lots.length-1?'checked':''} data-live="nb" aria-label="Use ${l.code}"></td><td class="mono">${l.code}</td><td>${fd(l.date)}<br><small class="muted">${esc(lotVarLabel(l))}</small></td><td class="r">${kg(lotAvail(l))}</td><td class="r"><input type="number" id="nb-kg-${l.code}" value="${lotAvail(l)}" step="0.1" min="0" max="${lotAvail(l)}" data-live="nb"></td></tr>`).join('')}
+  ${lots.map((l,i)=>`<tr><td><input type="checkbox" name="nb-lot" value="${l.code}" data-var="${lotVarKey(l)}" ${i===lots.length-1?'checked':''} data-live="nb" aria-label="Use ${l.code}"></td><td class="mono">${l.code}</td><td>${fd(l.date)}<br><small class="muted">${esc(lotVarLabel(l))}</small></td><td class="r">${kg(lotAvail(l))}</td><td class="r"><input type="number" id="nb-kg-${l.code}" value="${lotAvail(l)}" step="0.1" min="0" max="${lotAvail(l)}" data-live="nb"></td></tr>`).join('')}
   </tbody></table></div>`:'<p class="muted">No washed coffee is waiting for this estate.</p>'}
   <div id="nb-prev"></div>
   ${d.route==='C'&&lots.length?`<h3>Trays</h3>${trayPicker('nb', lotAvail(lots[lots.length-1]))}`:''}
@@ -1921,9 +1929,9 @@ function dPack(d){
     ${S.ui.estate==='ALL'?`<label class="f" for="pk-e">Estate<select id="pk-e" data-change="pkEstate">${['GLZ','BYV'].map(x=>`<option value="${x}" ${x===e?'selected':''}>${ESTATE[x].short}</option>`).join('')}</select></label>`:''}
     <label class="f" for="pk-route">Process<select id="pk-route" data-change="pkRoute">${routesAvail.map(r=>`<option value="${r}" ${r===route?'selected':''}>${ROUTE[r].label}</option>`).join('')}</select></label>
   </div>
-  <p class="note">A packed lot holds one process, so its label states one process. Batches with different harvest dates can be packed together.</p>
-  <div class="tbl-wrap"><table class="data"><thead><tr><th></th><th>Batch</th><th>Harvest dates</th><th class="r">Available</th><th class="r">Use (kg)</th></tr></thead><tbody>
-  ${list.map(b=>`<tr><td><input type="checkbox" name="pk-b" value="${b.code}" ${(!pre||pre.code===b.code)?'checked':''} data-live="pk" aria-label="Use ${b.code}"></td><td class="mono">${b.code}</td><td>${esc(datesLabel(batchHarvestDates(b)).replace('Harvested ',''))}</td><td class="r">${kg(bAvail(b))}</td><td class="r"><input type="number" id="pk-kg-${b.code}" value="${bAvail(b)}" step="0.1" min="0" max="${bAvail(b)}" data-live="pk"></td></tr>`).join('')||'<tr><td colspan="5" class="muted">No batches ready for this process.</td></tr>'}
+  <p class="note">A packed lot holds one process and one variety, so its label states both. Batches with different harvest dates can be packed together. Ticking a batch of another variety clears the first.</p>
+  <div class="tbl-wrap"><table class="data"><thead><tr><th></th><th>Batch</th><th>Variety</th><th>Harvest dates</th><th class="r">Available</th><th class="r">Use (kg)</th></tr></thead><tbody>
+  ${list.map(b=>`<tr><td><input type="checkbox" name="pk-b" value="${b.code}" data-var="${batchVarKeys(b)[0]}" ${(pre ? pre.code===b.code : batchVarKeys(b)[0]===batchVarKeys(list[0])[0])?'checked':''} data-live="pk" aria-label="Use ${b.code}"></td><td class="mono">${b.code}</td><td>${esc(batchVarLabel(b))}</td><td>${esc(datesLabel(batchHarvestDates(b)).replace('Harvested ',''))}</td><td class="r">${kg(bAvail(b))}</td><td class="r"><input type="number" id="pk-kg-${b.code}" value="${bAvail(b)}" step="0.1" min="0" max="${bAvail(b)}" data-live="pk"></td></tr>`).join('')||'<tr><td colspan="6" class="muted">No batches ready for this process.</td></tr>'}
   </tbody></table></div>
   <div class="formgrid">
     <label class="f" for="pk-grade">Grade (meaning to confirm)<select id="pk-grade" data-live="pk">${GRADES.map(g=>`<option value="${g}">${g}</option>`).join('')}</select></label>
@@ -1973,7 +1981,8 @@ const LIVE = {
     const picks = [...document.querySelectorAll('input[name=nb-lot]:checked')].map(x=>({lot:x.value, kg:num('#nb-kg-'+x.value)}));
     const el = document.getElementById('nb-prev'); if(!el) return;
     const ds = [...new Set(picks.flatMap(p=>lotBy(p.lot).entries.map(id=>musterBy(id).date)))];
-    el.innerHTML = picks.length ? `<p><b>${kg(sum(picks,p=>p.kg))}</b> of washed cherry · ${esc(datesLabel(ds))}</p>` : '<p class="muted">Pick at least one washing lot.</p>';
+    const vk = [...new Set(picks.map(p=>lotVarKey(lotBy(p.lot))))].map(k=>VARIETY[k]).join(' + ');
+    el.innerHTML = picks.length ? `<p><b>${kg(sum(picks,p=>p.kg))}</b> of washed cherry · ${esc(vk)} · ${esc(datesLabel(ds))}</p>` : '<p class="muted">Pick at least one washing lot.</p>';
   },
   pe(){ const el=document.getElementById('pe-net'); if(!el) return; const less=Math.max(1,Math.round(num('#pe-b')))*num('#pe-t'); const n=r1(num('#pe-g')-less); el.textContent = num('#pe-g')>0 ? (n>0?kg(n)+' (less '+kg(less)+')':'Check the bags') : '–'; },
   fd(){ const el=document.getElementById('fd-prev'); if(!el||!S.ui.drawer||S.ui.drawer.type!=='field') return; const t=sum(S.ui.drawer.subs.map((s,i)=>parseFloat((document.getElementById('sd-ac-'+i)||{}).value)||0)); const a=num('#fd-acres'); el.textContent='Subdivisions: '+t+' of '+a+' acres'+(Math.abs(t-a)>0.001?' (should match)':''); },
@@ -1989,7 +1998,7 @@ const LIVE = {
     const grade = (document.getElementById('pk-grade')||{}).value || 'AA';
     const save = document.getElementById('pk-save');
     let err = '';
-    if(!picks.length) err = 'Pick at least one batch.'; else if(count<1) err = 'Enter the number of bags.'; else if(count*size>total+1e-6) err = `${count} bags of ${nf3.format(size)} kg need ${kg(count*size)}, but only ${kg(total)} is selected.`;
+    if(!picks.length) err = 'Pick at least one batch.'; else if(new Set(picks.map(p=>batchVarKeys(batchBy(p.code))[0])).size>1) err = 'A packed lot holds one variety only. Untick the other variety.'; else if(count<1) err = 'Enter the number of bags.'; else if(count*size>total+1e-6) err = `${count} bags of ${nf3.format(size)} kg need ${kg(count*size)}, but only ${kg(total)} is selected.`;
     if(save) save.disabled = !!err;
     if(err){ el.innerHTML = `<div class="msg">${esc(err)}</div>`; return; }
     const e = batchBy(picks[0].code).estate; const pfx = ESTATE[e].prefix+grade; let n = S.seq.bag[pfx]||10;
@@ -2105,7 +2114,9 @@ const ACT = {
   saveBatch(){
     const d=S.ui.drawer; const e=d.estate||estList()[0];
     const picks=[...document.querySelectorAll('input[name=nb-lot]:checked')].map(x=>({lot:x.value, kg:Math.min(r1(num('#nb-kg-'+x.value)), lotAvail(lotBy(x.value)))})).filter(p=>p.kg>0);
+    d.err='';
     if(!picks.length || !d.route) return;
+    if(new Set(picks.map(p=>lotVarKey(lotBy(p.lot)))).size>1){ d.err='A batch holds one variety only. Untick the other variety.'; return; }
     const code='B-'+e+'-2026-'+pad(++S.seq.batch[e],4);
     const recipe = d.route==='B' ? document.getElementById('nb-rec').value : '';
     const b={code, estate:e, route:d.route, recipe, inputs:picks, stages:[], packedKg:0, createdAt:S.now};
@@ -2167,6 +2178,7 @@ const ACT = {
     const picks=[...document.querySelectorAll('input[name=pk-b]:checked')].map(x=>({code:x.value, kg:Math.min(num('#pk-kg-'+x.value), bAvail(batchBy(x.value)))})).filter(p=>p.kg>0);
     const size=num('#pk-size'), count=Math.floor(num('#pk-count')); const total=sum(picks,p=>p.kg);
     if(!picks.length || count<1 || count*size>total+1e-6) return;
+    if(new Set(picks.map(p=>batchVarKeys(batchBy(p.code))[0])).size>1) return;
     const mode=document.querySelector('input[name=pk-mode]:checked').value; const grade=document.getElementById('pk-grade').value; const type=document.getElementById('pk-type').value;
     const lot=createPack({estate:batchBy(picks[0].code).estate, at:S.now, grade, bagType:type, bagKg:size, count, mode, batches:picks});
     S.ui.drawer={type:'packLot', code:lot.code}; S.ui.page='packing';
@@ -2226,8 +2238,8 @@ document.addEventListener('click', ev=>{
 document.addEventListener('change', ev=>{
   const wg = ev.target.closest('[data-wgrp]');
   if(wg){ document.querySelectorAll('input[name=wentry]').forEach(e=>{ if(e.dataset.var===wg.dataset.wgrp) e.checked=wg.checked; else if(wg.checked) e.checked=false; }); LIVE.wash(); return; }
-  const we = ev.target.closest('input[name=wentry]');
-  if(we && we.checked) document.querySelectorAll('input[name=wentry]').forEach(e=>{ if(e.dataset.var!==we.dataset.var) e.checked=false; });
+  const we = ev.target.closest('input[name=wentry],input[name=nb-lot],input[name=pk-b]');
+  if(we && we.checked) document.querySelectorAll('input[name='+we.name+']').forEach(e=>{ if(e.dataset.var!==we.dataset.var) e.checked=false; });
   const el = ev.target.closest('[data-change]');
   if(el && CHANGE[el.dataset.change]){ if(CHANGE[el.dataset.change](el)!==false){ render(); runLive(); } else save(); return; }
   const lv = ev.target.closest('[data-live]'); if(lv && LIVE[lv.dataset.live]) LIVE[lv.dataset.live]();
