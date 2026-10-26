@@ -2032,7 +2032,8 @@ function stageLine(b, st, compact){
   const m = lastReading(st,'MOISTURE'), ph = lastReading(st,'PH');
   return `<div class="tl ${done?'done':'live'}"><div class="row"><b>${STAGE[st.key].label}</b>${st.key==='FERMENTATION'?`<span class="chip">${b.recipe} ${RECIPE[b.recipe].name}</span>`:''}${!done&&isOverdue(st)?'<span class="chip bad">Past target</span>':''}${!done?'<span class="chip warn">In progress</span>':''}${st.decision?`<span class="chip ok">${st.decision==='APPROVED'?'Approved for packing':esc(st.decision)}</span>`:''}</div>
     <small class="muted">${fdt(st.start)} to ${done?fdt(st.end):'now'} · ${dur(h)}${st.key!=='QUALITY_CHECK'?' (target '+dur(tgt)+')':''}${st.res?' · '+esc(st.res):''}</small>
-    <small class="muted" style="display:block">${kg(st.inKg)} in${done?' · '+kg(st.outKg)+' out':''}${m?' · moisture '+m.value+'%':''}${ph?' · pH '+ph.value:''}${logSummary(st)?' · '+logSummary(st):''}${st.by&&!compact?' · '+esc(st.by):''}</small></div>`;
+    <small class="muted" style="display:block">${kg(st.inKg)} in${done?' · '+kg(st.outKg)+' out':''}${m?' · moisture '+m.value+'%':''}${ph?' · pH '+ph.value:''}${logSummary(st)?' · '+logSummary(st):''}${st.by&&!compact?' · '+esc(st.by):''}</small>
+    ${!compact && st.status==='COMPLETED' && st.readings.length ? `<details style="margin-top:6px"><summary class="muted" style="cursor:pointer;font-size:.82rem">All readings (${readingRows(st).length})</summary>${readingTable(st,false)}</details>` : ''}</div>`;
 }
 function moistureSpark(st){
   const rs = st.readings.filter(r=>r.metric==='MOISTURE'); if(rs.length<2) return '';
@@ -2114,13 +2115,31 @@ function dryLogForm(st){
       <label class="f" for="dl-note" style="flex:1 1 150px">Note<input type="text" id="dl-note" maxlength="80" placeholder="Optional"></label></div>
     <small class="muted">${isCovered(st)?'<span class="chip info">Covered now</span> ':''}${log.length?log.slice(-6).reverse().map(x=>esc(LOGK[x.kind]+' '+fdt(x.at)+(x.note?' ('+x.note+')':''))).join(' · '):'Nothing logged yet.'}</small>`;
 }
+const STAGE_METRICS = st=>st.key==='FERMENTATION' ? ['PH','BRIX','TEMP'] : ['MOISTURE'];
+const READ_LIMIT = {PH:[0,14], BRIX:[0,40], TEMP:[0,60], MOISTURE:[0,100]};
+const mFmt = (k,v)=>k==='PH' ? v.toFixed(2) : nf1.format(v);
+const mHead = k=>METRIC[k].label+(METRIC[k].unit?' ('+METRIC[k].unit+')':'');
+function readingRows(st){
+  const map = new Map();
+  for(const r of st.readings){ if(!map.has(r.at)) map.set(r.at, {at:r.at, v:{}, by:r.by}); const x = map.get(r.at); x.v[r.metric] = r.value; if(r.by==='Processing operator') x.by = r.by; }
+  return [...map.values()].sort((a,b)=>a.at<b.at?1:-1);
+}
+function readingTable(st, canRemove){
+  const rows = readingRows(st); if(!rows.length) return '<p class="muted">No readings yet.</p>';
+  const ms = [...new Set([...STAGE_METRICS(st), ...st.readings.map(r=>r.metric)])];
+  return `<div class="tbl-wrap" style="max-height:240px;overflow-y:auto"><table class="data"><thead><tr><th>Date and time</th>${ms.map(k=>`<th class="r">${mHead(k)}</th>`).join('')}<th></th></tr></thead><tbody>
+    ${rows.map(x=>`<tr><td>${fdt(x.at)}</td>${ms.map(k=>`<td class="r">${x.v[k]!=null?mFmt(k,x.v[k]):'–'}</td>`).join('')}<td class="r">${canRemove && x.by==='Processing operator'?`<button class="btn-link" data-act="delReading" data-v="${x.at}">Remove</button>`:''}</td></tr>`).join('')}</tbody></table></div>`;
+}
 function readingForm(st){
-  const metrics = st.key==='FERMENTATION' ? ['PH','BRIX','TEMP'] : ['MOISTURE'];
-  return `<div class="row" style="align-items:flex-end">
-    <label class="f" for="rd-m">Reading<select id="rd-m">${metrics.map(k=>`<option value="${k}">${METRIC[k].label}${METRIC[k].unit?' ('+METRIC[k].unit+')':''}</option>`).join('')}</select></label>
-    <label class="f" for="rd-v">Value<input type="number" id="rd-v" step="0.1"></label>
-    <button class="btn" data-act="addReading">Add reading at ${S.now.slice(11,16)}</button></div>
-    ${st.readings.length?`<small class="muted">${st.readings.slice(-4).map(r=>METRIC[r.metric].label+' '+r.value+METRIC[r.metric].unit+' at '+fdt(r.at)).join(' · ')}</small>`:''}`;
+  const d = S.ui.drawer; const dr = d.rdDraft || {}; const ms = STAGE_METRICS(st);
+  const step = {PH:'0.01', BRIX:'0.1', TEMP:'0.1', MOISTURE:'0.1'};
+  return `<div class="stack"><div class="formgrid">
+    <label class="f" for="rd-date">Date<input type="date" id="rd-date" value="${esc(dr.date||today())}" min="${dOf(st.start)}" max="${today()}"></label>
+    <label class="f" for="rd-time">Time<input type="time" id="rd-time" value="${esc(dr.time||S.now.slice(11,16))}"></label>
+    ${ms.map(k=>`<label class="f" for="rd-${k}">${mHead(k)}<input type="number" id="rd-${k}" step="${step[k]}" inputmode="decimal" value="${esc((dr.v||{})[k]||'')}"></label>`).join('')}
+  </div>
+  <div class="row"><button class="btn" data-act="addReading">Add reading</button><small class="muted">Pick when you took it. Fill one or more values.</small></div>
+  <h3>Readings</h3>${readingTable(st, true)}</div>`;
 }
 function dNewBatch(d){
   const es = estList(); const e = d.estate || es[0];
@@ -2349,9 +2368,24 @@ const ACT = {
     S.batches.push(b); reindex(); S.ui.drawer={type:'batch', code}; S.ui.page='processing';
   },
   addReading(){
-    const d=S.ui.drawer; const b=batchBy(d.code); const c=curStage(b); const metric=document.getElementById('rd-m').value; const v=parseFloat(document.getElementById('rd-v').value);
-    if(isNaN(v)) return; c.readings.push({at:S.now, metric, value:metric==='PH'?r2(v):r1(v), by:'Processing operator'});
+    const d = S.ui.drawer; const bt = batchBy(d.code); const c = curStage(bt); const ms = STAGE_METRICS(c);
+    const date = document.getElementById('rd-date').value, time = document.getElementById('rd-time').value;
+    const vals = {}; ms.forEach(k=>{ vals[k] = document.getElementById('rd-'+k).value; });
+    d.rdDraft = {date, time, v:vals}; d.err = ''; d.flash = '';
+    if(!date || !time){ d.err = 'Pick the date and time of the reading.'; return; }
+    const at = date+'T'+time;
+    if(toMs(at) > toMs(S.now)){ d.err = 'The reading time cannot be in the future.'; return; }
+    if(toMs(at) < toMs(c.start)){ d.err = 'This stage started on '+fdt(c.start)+'. Pick a later time.'; return; }
+    for(const k of ms){ const raw = vals[k]; if(raw==='') continue; const v = parseFloat(raw); const [lo,hi] = READ_LIMIT[k];
+      if(isNaN(v) || v<lo || v>hi){ d.err = METRIC[k].label+' should be between '+lo+' and '+hi+'.'; return; } }
+    let n = 0;
+    for(const k of ms){ const raw = vals[k]; if(raw==='') continue; const v = parseFloat(raw); const val = k==='PH' ? r2(v) : r1(v);
+      const ex = c.readings.find(x=>x.at===at && x.metric===k); if(ex){ ex.value = val; ex.by = 'Processing operator'; } else c.readings.push({at, metric:k, value:val, by:'Processing operator'}); n++; }
+    if(!n){ d.err = 'Enter at least one value.'; return; }
+    c.readings.sort((x,y)=>x.at<y.at?-1:x.at>y.at?1:0);
+    d.rdDraft = null; d.flash = 'Reading saved for '+fdt(at)+'.';
   },
+  delReading(el){ const d = S.ui.drawer; const c = curStage(batchBy(d.code)); d.err = ''; d.flash = ''; c.readings = c.readings.filter(r=>!(r.at===el.dataset.v && r.by==='Processing operator')); },
   completeStage(el){
     const b=batchBy(el.dataset.v); const c=curStage(b); const d=S.ui.drawer; d.err=''; d.flash='';
     const out=r1(num('#cs-out')); d.out=out; if(out<=0){ d.err='Enter the weight out.'; return; }
