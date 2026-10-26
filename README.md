@@ -19,11 +19,11 @@ The first tenant runs two estates, Glazebrooke and Byson Valley.
 
 - **Supervisor phone:** attendance roll call, field and job assignment, evening muster with a weight keypad, number of bags and an optional remark, and offline capture with sync.
 - **Estate portal:** dashboard, attendance register (Present, Half day, Absent, Leave, Off day, Holiday; each worker is Male or Female; reopening needs a reason), plucking, washing lots with the weight at washing checked against the muster, the processing board for Routes A (Pulping), B (Fermentation) and C (Natural) with trays picked by hand, a drying log, hold and split, quality check, packing into bags with labels and a weight check on every bag, and bag tracing.
-- **Sign-in and roles:** Admin sees every screen and the Users page; Supervisor sees the dashboard, attendance, plucking and the weather register for their own estate. Sample password for every user: `welcome`.
-- **Weather register:** two readings a day for each estate (temperature in °C and rain in mm), with the time chosen by the supervisor, on the portal and the phone app.
+- **Sign-in and roles:** Admin sees every screen and the Users page; Supervisor sees the dashboard, attendance, plucking and the daily log. Sample password for every user: `welcome`.
+- **Daily log:** readings for both estates (temperature, rain, fermentation room temperature) with the date, time, estate, kind, data and remarks, on the portal and the phone app. Admin adds new kinds under Masters.
 - **Reports:** a daily summary ready to paste into WhatsApp, outturn by route, variety and field, and plucker productivity with a pay preview.
 
-Divisions, acres, varieties and expected crop are the real Glazebrooke and Byson Valley figures. Workers, weights, batches and bags are sample data, kept only in the viewer's browser. Use **Reset sample data** to start again, and **+6 h** or **+1 day** to move the sample clock forward.
+Divisions, acres, varieties and expected crop are the real Glazebrooke and Byson Valley figures. Workers, weights, batches and bags are sample data, kept only in the viewer's browser. The clock shows the real time and the sample data is dated to today. Use **Reset** to start the sample again.
 
 To see a bag that holds two harvest dates, open **Trace a bag** and look up `BROOKAA13`.
 
