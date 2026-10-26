@@ -327,6 +327,10 @@ td.miss{color:var(--bad)}
 .powered a:hover{text-decoration:underline;text-underline-offset:3px}
 .powered svg{height:22px;width:auto;display:block}
 .powered .tech{color:#129FA0}
+.powered.on-dark{margin-top:20px;color:#F3ECE0}
+.powered.on-dark a{color:#FFFFFF}
+.powered.on-dark .tech{color:#5FD8D2}
+.powered.on-dark .ou-one{fill:#E6ECF5}
 .ou-one{fill:#0B1B3F}
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .ou-one{fill:#E6ECF5}}
 :root[data-theme="dark"] .ou-one{fill:#E6ECF5}
@@ -1611,13 +1615,17 @@ function seedUsers(){
   out.push({id:'U'+(out.length+1), name:'S. Kumar', username:'s.kumar', role:'SUPERVISOR', estates:[EST_KEYS[0]], active:false, password:'welcome', lastSignIn:'2026-10-12T06:30'});
   return out;
 }
+function poweredBy(dark){
+  const g = dark ? 'ou-g2' : 'ou-g';
+  return `<div class="powered${dark?' on-dark':''}"><span>Powered by</span><a href="https://oneuptech.co" target="_blank" rel="noopener" aria-label="OneUp Tech"><svg viewBox="0 0 120 100" role="img" aria-hidden="true"><defs><linearGradient id="${g}" x1="0" y1="1" x2="0.6" y2="0"><stop offset="0" stop-color="#1F86DA"/><stop offset="1" stop-color="#14A2A6"/></linearGradient></defs><path class="ou-one" d="M8 30 L34 6 L52 6 L52 94 L31 94 L31 34 L8 34 Z"/><path fill="url(#${g})" d="M60 30 L60 64 A28 28 0 0 0 116 64 L116 6 L96 22 L96 64 A8 8 0 0 1 80 64 L80 30 Z"/></svg><span>OneUp <span class="tech">Tech</span></span></a></div>`;
+}
 function renderLogin(){
   const dr = S.ui.loginDraft || {u:'', p:''};
   const samples = S.users.filter(u=>u.active!==false).slice(0,3);
   return `<div class="login"><section class="login-hero"><img class="bg" src="${IMG_HERO}" alt="Misty mountain ridges above the coffee estate"><div class="shade"></div>
     <div class="inner"><img class="logo" src="${IMG_LOGO}" alt="Glazebrooke Coffee Estate">
       <div><p class="quote">Where bisons roam and birds soar, our coffee finds its soul.</p>
-      <p class="sub">Muster roll, plucking, processing and packing for ${EST_KEYS.map(e=>ESTATE[e].short).join(' and ')}, in one place.</p></div></div></section>
+      <p class="sub">Muster roll, plucking, processing and packing for ${EST_KEYS.map(e=>ESTATE[e].short).join(' and ')}, in one place.</p>${poweredBy(true)}</div></div></section>
     <section class="login-form"><form data-submit="login" class="stack" style="max-width:380px;width:100%">
       <div><span class="eyebrow">CEMMS</span><h1>Sign in</h1><p class="muted">You will see the screens that your role allows.</p></div>
       <label class="f" for="lg-u">Username<input type="text" id="lg-u" value="${esc(dr.u)}" autocomplete="username" autocapitalize="none"></label>
@@ -1626,7 +1634,7 @@ function renderLogin(){
       <button class="btn btn-primary" type="submit" style="height:46px">Sign in</button>
       <div class="login-samples"><small class="muted">Sample sign-ins for this prototype. Every password is <span class="mono">welcome</span>.</small>
         <div class="row">${samples.map(u=>`<button class="btn" type="button" data-act="fillLogin" data-u="${esc(u.username)}">${esc(ROLE_LABEL[u.role])}: ${esc(u.name)}</button>`).join('')}</div></div>
-      <div class="powered"><span>Powered by</span><a href="https://oneuptech.co" target="_blank" rel="noopener" aria-label="OneUp Tech"><svg viewBox="0 0 120 100" role="img" aria-hidden="true"><defs><linearGradient id="ou-g" x1="0" y1="1" x2="0.6" y2="0"><stop offset="0" stop-color="#1F86DA"/><stop offset="1" stop-color="#14A2A6"/></linearGradient></defs><path class="ou-one" d="M8 30 L34 6 L52 6 L52 94 L31 94 L31 34 L8 34 Z"/><path fill="url(#ou-g)" d="M60 30 L60 64 A28 28 0 0 0 116 64 L116 6 L96 22 L96 64 A8 8 0 0 1 80 64 L80 30 Z"/></svg><span>OneUp <span class="tech">Tech</span></span></a></div>
+      ${poweredBy(false)}
     </form></section></div>`;
 }
 function doLogin(){
