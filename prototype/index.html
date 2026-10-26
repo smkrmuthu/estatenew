@@ -322,6 +322,11 @@ input[type=time]{font:inherit;font-size:.92rem;color:var(--fg);background:var(--
 .wxv b{font-family:var(--display);font-size:1.5rem;font-weight:600}
 .swatch{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-1px}
 td.miss{color:var(--bad)}
+.chip.fem{background:transparent;color:var(--fg);padding-left:2px}
+.chip.fem::before{content:"";width:7px;height:7px;border-radius:50%;flex:none;background:#9B4A85}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .chip.fem::before{background:#D58FBE}}
+:root[data-theme="dark"] .chip.fem::before{background:#D58FBE}
+.chip.sm{padding:1px 6px 1px 2px;font-weight:600}
 @media (max-width:560px){ input[type=time]{font-size:16px;height:42px} .who{display:none} .login-hero .inner{padding:28px 24px} }
 @media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
 </style>
@@ -1003,7 +1008,7 @@ function fAttendance(e,d){
     const where = r.job ? fieldName(r.div)+' · '+(JOB[r.job]||r.job) : 'No field yet';
     const tri = ['P','H','A'].map(s=>`<button data-act="mark" data-w="${w.id}" data-v="${s}" class="${r.st===s?'on-'+s:''}" aria-pressed="${r.st===s}" ${locked?'disabled':''} title="${{P:'Present, full day',H:'Half day',A:'Absent'}[s]}">${{P:'P',H:'½',A:'A'}[s]}</button>`).join('');
     const editing = f.assign===w.id && !locked;
-    return `<div class="wrow"><div class="who"><span class="mono">${w.id}</span> ${esc(w.name)} <span class="muted">· ${w.gender||'–'}</span>
+    return `<div class="wrow"><div class="who"><span class="mono">${w.id}</span> ${esc(w.name)} ${genderChip(w,true)}${w.type==='Casual'?'<span class="chip warn sm">Casual</span>':''}
         <small>${esc(where)} ${r.sync==='pending'?'<span class="chip bad">not synced</span>':''} ${locked?'':`<button class="btn-link" data-act="assign" data-w="${w.id}">Change</button>`}</small></div>
       <div class="tri" role="group" aria-label="Attendance for ${esc(w.name)}" aria-disabled="${locked}">${tri}</div></div>
       ${editing?assignEditor(e,w.id,r):''}`;
@@ -1559,6 +1564,9 @@ const GENDER = {'Muthu Selvan':'M','Lakshmi':'F','Selvi':'F','Ravi Kumar':'M','M
 const GENDER_LABEL = {M:'Male', F:'Female'};
 const genderOf = w=>GENDER_LABEL[w.gender]||'Not set';
 function genderCount(sh){ const c={M:0, F:0, none:0}; for(const [wid,r] of Object.entries(sh.rows)){ if(!working(r.st)) continue; const w=workerBy(wid); if(w&&w.gender==='M') c.M++; else if(w&&w.gender==='F') c.F++; else c.none++; } return c; }
+const genderChip = (w,short)=>w.gender ? `<span class="chip ${w.gender==='F'?'fem':'info'}${short?' sm':''}" ${short?`title="${GENDER_LABEL[w.gender]}"`:''}>${short?w.gender:GENDER_LABEL[w.gender]}</span>` : '<span class="chip warn">Not set</span>';
+const typeChip = w=>`<span class="chip ${w.type==='Casual'?'warn':'zero'}">${esc(w.type||'Permanent')}</span>`;
+const workerTags = w=>genderChip(w)+typeChip(w)+(w.active===false?'<span class="chip">Inactive</span>':'');
 const genderText = c=>`${c.F} women, ${c.M} men working`+(c.none?`, ${c.none} not set`:'');
 /* ===== Sign-in, roles and users ===== */
 const EST_KEYS = Object.keys(ESTATE);
@@ -1782,7 +1790,7 @@ function pAttendance(){
   const rows = ws.map(w=>{ const r=sh.rows[w.id]; const on=working(r.st); const noPluck = on && isHarvestJob(r.job) && !bearingSubs(DIV[r.div]).length;
     return `<tr class="${sel[w.id]?'sel':''}">
       <td><input type="checkbox" data-change="attSel" data-w="${w.id}" ${sel[w.id]?'checked':''} ${locked?'disabled':''} aria-label="Select ${esc(w.name)}"></td>
-      <td><span class="mono">${w.id}</span> ${esc(w.name)}<br><small class="muted">${genderOf(w)} · ${esc(w.type||'Permanent')}${w.active===false?' · inactive':''}</small></td>
+      <td><span class="mono">${w.id}</span> ${esc(w.name)}<div class="row" style="gap:0 10px;margin-top:2px">${workerTags(w)}</div></td>
       <td><div class="seg4" role="group" aria-label="Status for ${esc(w.name)}">${Object.keys(ST_LABEL).map(s=>`<button data-act="attMark" data-w="${w.id}" data-v="${s}" class="${r.st===s?'on-'+s:''}${s==='O'||s==='F'?' wide':''}" aria-pressed="${r.st===s}" ${locked?'disabled':''} title="${ST_LABEL[s]}">${ST_SHORT[s]}</button>`).join('')}</div></td>
       <td>${on||!r.st?`<select data-change="attField" data-w="${w.id}" aria-label="Field for ${esc(w.name)}" ${locked?'disabled':''}>${fieldOptions(e, r.div)}</select>${noPluck?'<br><small class="chip bad">No coffee to pluck here</small>':''}`:'<span class="muted">–</span>'}</td>
       <td>${on||!r.st?`<select data-change="attJob" data-w="${w.id}" aria-label="Job for ${esc(w.name)}" ${locked?'disabled':''}>${jobOptions(r.job)}</select>`:'<span class="muted">–</span>'}</td>
@@ -1855,7 +1863,7 @@ function pMasters(){
     body = es.map(e=>{ const ws=S.workers.filter(w=>w.estate===e); return `<section class="panel"><div class="panel-h"><h2>${ESTATE[e].name}</h2><small class="muted">${ws.filter(w=>w.active!==false).length} active workers</small></div>
       <div class="tbl-wrap"><table class="data"><thead><tr><th>ID</th><th>Name</th><th>Gender</th><th>Type</th><th class="r">Days worked this season</th><th>Last field</th><th>Status</th><th></th></tr></thead><tbody>
       ${ws.map(w=>{ let dw=0, last=''; for(const sh of Object.values(S.att)) if(sh.estate===e && sh.rows[w.id]){ const r=sh.rows[w.id]; if(r.st==='P') dw+=1; if(r.st==='H') dw+=.5; } const lr=prevAssignment(e, addDays(today(),1), w.id); last=lr?fieldName(lr.div):'';
-        return `<tr><td class="mono">${w.id}</td><td>${esc(w.name)}</td><td>${w.gender?genderOf(w):'<span class="chip warn">Not set</span>'}</td><td>${esc(w.type||'Permanent')}</td><td class="r">${dw}</td><td>${esc(last)}</td><td>${w.active===false?'<span class="chip">Inactive</span>':'<span class="chip ok">Active</span>'}</td><td class="r"><button class="btn-link" data-act="editWorker" data-v="${w.id}">Edit</button></td></tr>`; }).join('')}
+        return `<tr><td class="mono">${w.id}</td><td>${esc(w.name)}</td><td>${genderChip(w)}</td><td>${typeChip(w)}</td><td class="r">${dw}</td><td>${esc(last)}</td><td>${w.active===false?'<span class="chip">Inactive</span>':'<span class="chip ok">Active</span>'}</td><td class="r"><button class="btn-link" data-act="editWorker" data-v="${w.id}">Edit</button></td></tr>`; }).join('')}
       </tbody></table></div></section>`; }).join('');
   } else {
     body = `<section class="panel"><div class="tbl-wrap"><table class="data"><thead><tr><th>Code</th><th>Job</th><th>Counts as plucking</th><th>Status</th><th></th></tr></thead><tbody>
