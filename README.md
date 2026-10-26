@@ -19,6 +19,8 @@ The first tenant runs two estates, Glazebrooke and Byson Valley.
 
 - **Supervisor phone:** attendance roll call, field and job assignment, evening muster with a weight keypad, number of bags and an optional remark, and offline capture with sync.
 - **Estate portal:** dashboard, attendance register (Present, Half day, Absent, Leave, Off day, Holiday; reopening needs a reason), plucking, washing lots with the weight at washing checked against the muster, the processing board for Routes A (Pulping), B (Fermentation) and C (Natural) with trays picked by hand, a drying log, hold and split, quality check, packing into bags with labels and a weight check on every bag, and bag tracing.
+- **Sign-in and roles:** Admin sees every screen and the Users page; Supervisor sees the dashboard, attendance, plucking and the weather register for their own estate. Sample password for every user: `welcome`.
+- **Weather register:** two readings a day for each estate (temperature in °C and rain in mm), with the time chosen by the supervisor, on the portal and the phone app.
 - **Reports:** a daily summary ready to paste into WhatsApp, outturn by route, variety and field, and plucker productivity with a pay preview.
 
 Divisions, acres, varieties and expected crop are the real Glazebrooke and Byson Valley figures. Workers, weights, batches and bags are sample data, kept only in the viewer's browser. Use **Reset sample data** to start again, and **+6 h** or **+1 day** to move the sample clock forward.
