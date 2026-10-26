@@ -1097,7 +1097,7 @@ function fSync(){
 }
 
 /* ===== Portal ===== */
-const PAGES = [['dashboard','Dashboard','grid'],['attendance','Attendance','users'],['plucking','Plucking','leaf'],['dailylog','Daily log','cloud'],['washing','Washing','drop'],['processing','Processing','layers'],['packing','Packing','box'],['reports','Reports','chart'],['trace','Trace a bag','search'],['masters','Masters','map'],['users','Users','user'],['setup','Process settings','sliders']];
+const PAGES = [['dashboard','Dashboard','grid'],['attendance','Attendance','users'],['dailylog','Daily log','cloud'],['plucking','Plucking','leaf'],['washing','Washing','drop'],['processing','Processing','layers'],['packing','Packing','box'],['reports','Reports','chart'],['trace','Trace a bag','search'],['masters','Masters','map'],['users','Users','user'],['setup','Process settings','sliders']];
 function renderPortal(){
   if(!canPage(S.ui.page)) S.ui.page = 'dashboard';
   const counts = navCounts();
