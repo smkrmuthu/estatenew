@@ -322,6 +322,14 @@ input[type=time]{font:inherit;font-size:.92rem;color:var(--fg);background:var(--
 .wxv b{font-family:var(--display);font-size:1.5rem;font-weight:600}
 .swatch{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-1px}
 td.miss{color:var(--bad)}
+.powered{display:flex;align-items:center;gap:8px;margin-top:6px;color:var(--muted);font-size:.8rem}
+.powered a{display:inline-flex;align-items:center;gap:7px;color:var(--fg);font-weight:600;text-decoration:none}
+.powered a:hover{text-decoration:underline;text-underline-offset:3px}
+.powered svg{height:22px;width:auto;display:block}
+.powered .tech{color:#129FA0}
+.ou-one{fill:#0B1B3F}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .ou-one{fill:#E6ECF5}}
+:root[data-theme="dark"] .ou-one{fill:#E6ECF5}
 .chip.fem{background:transparent;color:var(--fg);padding-left:2px}
 .chip.fem::before{content:"";width:7px;height:7px;border-radius:50%;flex:none;background:#9B4A85}
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .chip.fem::before{background:#D58FBE}}
@@ -1618,6 +1626,7 @@ function renderLogin(){
       <button class="btn btn-primary" type="submit" style="height:46px">Sign in</button>
       <div class="login-samples"><small class="muted">Sample sign-ins for this prototype. Every password is <span class="mono">welcome</span>.</small>
         <div class="row">${samples.map(u=>`<button class="btn" type="button" data-act="fillLogin" data-u="${esc(u.username)}">${esc(ROLE_LABEL[u.role])}: ${esc(u.name)}</button>`).join('')}</div></div>
+      <div class="powered"><span>Powered by</span><a href="https://oneuptech.co" target="_blank" rel="noopener" aria-label="OneUp Tech"><svg viewBox="0 0 120 100" role="img" aria-hidden="true"><defs><linearGradient id="ou-g" x1="0" y1="1" x2="0.6" y2="0"><stop offset="0" stop-color="#1F86DA"/><stop offset="1" stop-color="#14A2A6"/></linearGradient></defs><path class="ou-one" d="M8 30 L34 6 L52 6 L52 94 L31 94 L31 34 L8 34 Z"/><path fill="url(#ou-g)" d="M60 30 L60 64 A28 28 0 0 0 116 64 L116 6 L96 22 L96 64 A8 8 0 0 1 80 64 L80 30 Z"/></svg><span>OneUp <span class="tech">Tech</span></span></a></div>
     </form></section></div>`;
 }
 function doLogin(){
