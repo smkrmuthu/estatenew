@@ -33,6 +33,6 @@ TypeScript throughout, hosted only on Cloudflare: a Hono API on Workers; one SQL
 
 ## Phases
 
-- **Phase 1A, live 1 November 2026:** sign-in and roles, estates, fields (Coffee or Pepper), workers, CSV import, Attendance, Weigh-in, Daily log, offline sync.
-- **Phase 1B:** washing, processing (Routes A, B and C), packing, tracing and reports; Pepper normal drying, packing and delivery.
-- **Phase 2:** roasting and delivery.
+- **Phase 1A, live 1 November 2026:** sign-in and roles, estates, fields (Coffee, Pepper or both; pepper grows in the coffee fields), workers, CSV import, Attendance, Weigh-in (crop picked per entry), Daily log, offline sync.
+- **Phase 1B:** washing, processing (Routes A, B and C), packing, tracing and reports; Pepper light open drying for a set number of days.
+- **Phase 2:** coffee roasting and delivery, and pepper packing and delivery.
