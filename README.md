@@ -8,10 +8,10 @@ The first tenant runs two estates, Glazebrooke and Byson Valley.
 
 | Area | State |
 |---|---|
-| Architecture and technical design | Draft, waiting on owner answers to the open questions |
+| Architecture and technical design | Revised 27 October 2026 for Cloudflare and a phased go-live; some owner answers still open |
 | Owner process confirmation | Sent to the estate owner; answers coming in |
 | Clickable prototype | Ready for owner review (this repository) |
-| Application code | Not started |
+| Application code | Starting 28 October 2026; Phase 1A (attendance, Daily log, weigh-in) goes live 1 November 2026 |
 
 ## Prototype
 
@@ -29,4 +29,10 @@ To see a bag that holds two harvest dates, open **Trace a bag** and look up `BRO
 
 ## Planned stack
 
-TypeScript throughout: NestJS API, Next.js web portal, React Native (Expo) field app with offline SQLite, and PostgreSQL with row-level security for tenant isolation. The full reasoning is in the architecture document, which lives in Google Drive.
+TypeScript throughout, hosted only on Cloudflare: a Hono API on Workers; one SQLite database per tenant in a Durable Object, plus a D1 control database for tenants, users and sessions; R2 for files and nightly backups; Queues and Cron Triggers for background work. The portal and the supervisor phone app are one React (Vite) installable web app that works offline with IndexedDB. A native Android app comes later. Production will be at estate.oneuptech.co. The full reasoning is in the architecture document, which lives in Google Drive.
+
+## Phases
+
+- **Phase 1A, live 1 November 2026:** sign-in and roles, estates, fields (Coffee or Pepper), workers, CSV import, Attendance, Weigh-in, Daily log, offline sync.
+- **Phase 1B:** washing, processing (Routes A, B and C), packing, tracing and reports; Pepper normal drying, packing and delivery.
+- **Phase 2:** roasting and delivery.
