@@ -1288,7 +1288,18 @@
                     "anyOf": [
                       {
                         "type": "string",
-                        "enum": ["PERMANENT", "CASUAL", "CONTRACT"]
+                        "enum": ["PERMANENT", "CASUAL", "CONTRACT", "NORTH_INDIAN"]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "area": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 120
                       },
                       {
                         "type": "null"
@@ -1374,7 +1385,18 @@
                     "anyOf": [
                       {
                         "type": "string",
-                        "enum": ["PERMANENT", "CASUAL", "CONTRACT"]
+                        "enum": ["PERMANENT", "CASUAL", "CONTRACT", "NORTH_INDIAN"]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "area": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 120
                       },
                       {
                         "type": "null"

@@ -26,3 +26,8 @@ coverage/
 
 # Locally kept environment secrets (move to a password manager)
 .secrets.*
+
+# Real estate data stays out of git
+imports-local/
+*.xls
+*.xlsx

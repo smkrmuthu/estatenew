@@ -49,7 +49,7 @@ export interface ReferenceCache {
 }
 
 export type Gender = "MALE" | "FEMALE";
-export type EmploymentType = "PERMANENT" | "CASUAL" | "CONTRACT";
+export type EmploymentType = "PERMANENT" | "CASUAL" | "CONTRACT" | "NORTH_INDIAN";
 export type LandUse = "BEARING" | "YOUNG" | "ROCK" | "WATER" | "EMPTY" | "OTHER_CROP";
 
 export interface ReferenceData {
@@ -70,7 +70,17 @@ export interface ReferenceData {
   }[];
   varieties: { id: string; code: string; name: string; crop: string }[];
   jobTypes: { id: string; code: string; name: string; countsAsPlucking?: boolean; active?: boolean; version?: number }[];
-  workers: { id: string; estateId: string; employeeCode: string; name: string; gender?: Gender | null; employmentType?: EmploymentType | null; active?: boolean; version?: number }[];
+  workers: {
+    id: string;
+    estateId: string;
+    employeeCode: string;
+    name: string;
+    gender?: Gender | null;
+    employmentType?: EmploymentType | null;
+    area?: string | null;
+    active?: boolean;
+    version?: number;
+  }[];
   logKinds: {
     id: string;
     code: string;

@@ -36,6 +36,12 @@ describe("parseImport", () => {
       { estateCode: "GLZ", employeeCode: "W2", name: "Bob", employmentType: null, gender: null },
     ]);
     expect(r.errors.map((e) => e.column)).toEqual(["employment_type", "gender"]);
+    const n = parseImport("workers", "estate_code,employee_code,name,employment_type,area\nGLZ,W1,Ann,North Indian,Bihar\nGLZ,W2,Bob,,\n");
+    expect(n.errors).toEqual([]);
+    expect(n.rows.map((x) => x.value)).toEqual([
+      { estateCode: "GLZ", employeeCode: "W1", name: "Ann", employmentType: "NORTH_INDIAN", area: "Bihar" },
+      { estateCode: "GLZ", employeeCode: "W2", name: "Bob", employmentType: null, area: null },
+    ]);
     expect(parseImport("workers", "estate_code,employee_code,name\nGLZ,W1,Ann\n").rows[0]?.value).toEqual({ estateCode: "GLZ", employeeCode: "W1", name: "Ann" });
   });
   it("reports row errors, duplicates and formula injection", () => {

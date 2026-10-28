@@ -11,7 +11,7 @@ type Tab = "fields" | "workers" | "jobs" | "logkinds";
 type Target = { tab: Tab; id?: string } | null;
 
 const LAND_LABEL: Record<LandUse, string> = { BEARING: "Bearing", YOUNG: "Young plants", ROCK: "Rock", WATER: "Water", EMPTY: "Empty", OTHER_CROP: "Other crop" };
-const TYPE_LABEL: Record<EmploymentType, string> = { PERMANENT: "Permanent", CASUAL: "Casual", CONTRACT: "Contract" };
+const TYPE_LABEL: Record<EmploymentType, string> = { PERMANENT: "Permanent", CASUAL: "Casual", CONTRACT: "Contract", NORTH_INDIAN: "North Indian" };
 const GENDER_LABEL: Record<Gender, string> = { MALE: "Male", FEMALE: "Female" };
 const acres = (c: number | null | undefined) => (c === null || c === undefined ? "–" : (c / 100).toLocaleString("en-IN", { maximumFractionDigits: 2 }));
 const msg = (e: unknown) => (e instanceof ApiError ? e.message : "Could not reach the server.");
@@ -90,6 +90,7 @@ function WorkerForm({ data, id, estateId, done }: { data: ReferenceData; id?: st
   const [name, setName] = useState(w?.name ?? "");
   const [gender, setGender] = useState<string>(w?.gender ?? "");
   const [type, setType] = useState<string>(w?.employmentType ?? "PERMANENT");
+  const [area, setArea] = useState(w?.area ?? "");
   const [active, setActive] = useState(w?.active !== false);
   const { busy, error, setError, save } = useSaver(done);
   return (
@@ -102,15 +103,18 @@ function WorkerForm({ data, id, estateId, done }: { data: ReferenceData; id?: st
           api(w ? `/workers/${w.id}` : "/workers", {
             method: w ? "PUT" : "POST",
             ...(w ? { headers: { "if-match": String(w.version ?? 1) } } : {}),
-            body: { estateId: estate, name: name.trim(), gender: gender || null, employmentType: type || null, active },
+            body: { estateId: estate, name: name.trim(), gender: gender || null, employmentType: type || null, area: area.trim() || null, active },
           }),
         );
       }}
     >
       <EstateSelect estates={data.estates} value={estate} onChange={setEstate} locked={!!w} />
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Field label="Name" htmlFor="w-name">
           <Input id="w-name" value={name} onChange={(e) => setName(e.target.value)} />
+        </Field>
+        <Field label="Area (where from)" htmlFor="w-area">
+          <Input id="w-area" value={area} maxLength={120} onChange={(e) => setArea(e.target.value)} />
         </Field>
         <Field label="Gender" htmlFor="w-gender">
           <Select id="w-gender" value={gender} onChange={(e) => setGender(e.target.value)}>
@@ -178,6 +182,7 @@ function Workers({ data, canWrite, open, pick }: { data: ReferenceData; canWrite
                     </Th>
                     <Th>Code</Th>
                     <Th>Name</Th>
+                    <Th>Area</Th>
                     <Th>Gender</Th>
                     <Th>Type</Th>
                     <Th>Status</Th>
@@ -190,6 +195,7 @@ function Workers({ data, canWrite, open, pick }: { data: ReferenceData; canWrite
                       <Td>{canWrite(e.id) && <SelectBox label={`Select ${w.name}`} checked={pick.sel.has(w.id)} onChange={() => pick.toggle(w.id)} />}</Td>
                       <Td className="whitespace-nowrap font-mono">{w.employeeCode}</Td>
                       <Td>{w.name}</Td>
+                      <Td>{w.area || <span className="text-muted">Not set</span>}</Td>
                       <Td>{w.gender ? GENDER_LABEL[w.gender] : <span className="text-muted">Not set</span>}</Td>
                       <Td>{w.employmentType ? <Chip tone={w.employmentType === "PERMANENT" ? "plain" : "warn"}>{TYPE_LABEL[w.employmentType]}</Chip> : <span className="text-muted">Not set</span>}</Td>
                       <Td>{statusChip(w.active)}</Td>

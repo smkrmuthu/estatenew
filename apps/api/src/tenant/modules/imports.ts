@@ -219,8 +219,15 @@ function plan(ctx: TenantContext, kind: ImportKind, csv: string): { ops: Op[]; e
           continue;
         }
         const employmentType = v.employmentType as WorkerRow["employmentType"];
-        // Only a file that has the employment_type column changes it; otherwise it stays as it is.
-        const values = { estateId: estate.id, employeeCode: v.employeeCode as string, name: v.name as string, ...(employmentType !== undefined ? { employmentType } : {}) };
+        // Only a file that has the employment_type or area column changes it; otherwise it stays as it is.
+        const area = v.area as WorkerRow["area"];
+        const values = {
+          estateId: estate.id,
+          employeeCode: v.employeeCode as string,
+          name: v.name as string,
+          ...(employmentType !== undefined ? { employmentType } : {}),
+          ...(area !== undefined ? { area } : {}),
+        };
         if (!existing) {
           const row = { id: uuidv7(), tenantId, ...values, active: true, ...base };
           ops.push({ row: r.row, key: r.key, action: "create", changes: [], apply: (d) => d.insert(workers).values(row).run() });

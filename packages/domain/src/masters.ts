@@ -13,7 +13,7 @@ export const LAND_USES = ["BEARING", "YOUNG", "ROCK", "WATER", "EMPTY", "OTHER_C
 export type LandUse = (typeof LAND_USES)[number];
 
 /** How a worker is employed (OC-109). Optional on a worker. */
-export const EMPLOYMENT_TYPES = ["PERMANENT", "CASUAL", "CONTRACT"] as const;
+export const EMPLOYMENT_TYPES = ["PERMANENT", "CASUAL", "CONTRACT", "NORTH_INDIAN"] as const;
 export type EmploymentType = (typeof EMPLOYMENT_TYPES)[number];
 
 export const IMPORT_KINDS = ["estates", "fields", "varieties", "job_types", "workers"] as const;
@@ -61,6 +61,8 @@ export interface WorkerRow {
   name: string;
   /** undefined: the file has no employment_type column, so leave the worker as is. null: column present but blank. */
   employmentType?: EmploymentType | null;
+  /** Where the worker comes from (village or state). undefined: no area column in the file, so leave it as is. */
+  area?: string | null;
   gender?: Gender | null;
 }
 
@@ -72,7 +74,7 @@ const COLUMNS: Record<ImportKind, { required: string[]; optional: string[] }> = 
   varieties: { required: ["code", "name", "crop"], optional: [] },
   job_types: { required: ["code", "name"], optional: [] },
   // Gender is deliberately not imported (OC-99 open; collect only for a confirmed need).
-  workers: { required: ["estate_code", "employee_code", "name"], optional: ["employment_type", "gender"] },
+  workers: { required: ["estate_code", "employee_code", "name"], optional: ["employment_type", "area", "gender"] },
 };
 
 export function importTemplate(kind: ImportKind): string {
@@ -153,10 +155,11 @@ export function parseImport<K extends ImportKind>(kind: K, csvText: string): Par
       case "workers": {
         const r: WorkerRow = { estateCode: code("estate_code"), employeeCode: code("employee_code"), name: name("name") };
         if (header.includes("employment_type")) {
-          const t = get("employment_type").toUpperCase();
-          if (t && !(EMPLOYMENT_TYPES as readonly string[]).includes(t)) err("employment_type", "Use PERMANENT, CASUAL or CONTRACT");
+          const t = get("employment_type").toUpperCase().replace(/\s+/g, "_");
+          if (t && !(EMPLOYMENT_TYPES as readonly string[]).includes(t)) err("employment_type", "Use PERMANENT, CASUAL, CONTRACT or NORTH_INDIAN");
           r.employmentType = (t || null) as EmploymentType | null;
         }
+        if (header.includes("area")) r.area = get("area") || null;
         if (header.includes("gender")) {
           const g = get("gender").toUpperCase();
           const full = g === "M" ? "MALE" : g === "F" ? "FEMALE" : g;

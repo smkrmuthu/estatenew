@@ -50,6 +50,30 @@ describe("imports", () => {
     expect(bad.errors).toEqual([expect.objectContaining({ row: 2, column: "employment_type" })]);
   });
 
+  it("imports North Indian workers and their area, and leaves the area alone when the column is absent", async () => {
+    const s = await setupTenant();
+    const imp = async (csv: string) => {
+      const pre = (await api("/imports/preview", { token: s.owner.token, body: { kind: "workers", csv } })).body;
+      if (pre.errors.length) return pre;
+      return (await api("/imports/commit", { token: s.owner.token, body: { kind: "workers", csv, previewHash: pre.previewHash } })).body;
+    };
+    const rows = async () =>
+      Object.fromEntries(
+        ((await api("/reference", { token: s.owner.token })).body.workers as { employeeCode: string; employmentType: string | null; area: string | null }[]).map((w) => [
+          w.employeeCode,
+          [w.employmentType, w.area],
+        ]),
+      );
+    await imp("estate_code,employee_code,name,employment_type,area\nGLZ,N1,Sanjay,North Indian,Bihar\nGLZ,N2,Vellaian,Permanent,Keeraikadu\n");
+    expect(await rows()).toMatchObject({ N1: ["NORTH_INDIAN", "Bihar"], N2: ["PERMANENT", "Keeraikadu"] });
+    await imp("estate_code,employee_code,name\nGLZ,N1,Sanjay K\n");
+    expect(await rows()).toMatchObject({ N1: ["NORTH_INDIAN", "Bihar"] });
+    await imp("estate_code,employee_code,name,area\nGLZ,N1,Sanjay K,\n");
+    expect(await rows()).toMatchObject({ N1: ["NORTH_INDIAN", null] });
+    const made = await api("/workers", { token: s.owner.token, body: { estateId: s.estate.id, name: "Roshini", employmentType: "NORTH_INDIAN", area: "Bihar", active: true } });
+    expect(made.body).toMatchObject({ employmentType: "NORTH_INDIAN", area: "Bihar" });
+  });
+
   it("rejects formula injection and unknown columns", async () => {
     const s = await setupTenant();
     const res = (await api("/imports/preview", { token: s.owner.token, body: { kind: "workers", csv: "estate_code,employee_code,name,phone\nGLZ,W1,=HYPERLINK(1),9\n" } })).body;

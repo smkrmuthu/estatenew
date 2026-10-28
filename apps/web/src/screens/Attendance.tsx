@@ -460,10 +460,11 @@ export function Attendance() {
                     <span className="font-mono text-sm text-muted">{w.employeeCode}</span> {w.name}
                     {w.employmentType && (
                       <span className={`ml-2 rounded-full px-2 py-0.5 align-middle text-xs font-medium ${w.employmentType === "PERMANENT" ? "bg-surface-2 text-muted" : "bg-warn/15 text-warn"}`}>
-                        {w.employmentType === "PERMANENT" ? "Permanent" : w.employmentType === "CASUAL" ? "Casual" : "Contract"}
+                        {w.employmentType === "PERMANENT" ? "Permanent" : w.employmentType === "CASUAL" ? "Casual" : w.employmentType === "CONTRACT" ? "Contract" : "North Indian"}
                       </span>
                     )}
                   </p>
+                  {w.area && <p className="text-xs text-muted">{w.area}</p>}
                   <div className="text-sm">
                     <span className="mr-2 inline-flex gap-1">
                       <button type="button" className="min-h-8 px-1 text-xs font-medium text-roast hover:underline" aria-label={`History of ${w.name}`} onClick={() => setHistoryFor(w.id)}>

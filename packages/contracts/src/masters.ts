@@ -32,6 +32,8 @@ export const workerInput = z.object({
   name,
   gender: z.enum(GENDERS).nullable().optional(),
   employmentType: z.enum(EMPLOYMENT_TYPES).nullable().optional(),
+  /** Where the worker comes from, for example a village or state. */
+  area: z.string().trim().max(120).nullable().optional(),
   active: z.boolean().default(true),
 });
 export const logKindInput = z.object({

@@ -23,4 +23,5 @@ All additions are optional columns or a new table (tenant migration 0002), so ex
 ## Consequences
 
 - Items still open with the estate: OC-99 (gender use), AQ-24 and OC-69 (subdivisions), OC-74 and OC-75 (elevation, expected crop), OC-100 (log kinds).
-- Importing workers accepts optional `employment_type` and `gender` columns; fields import is unchanged and does not touch subdivisions.
+- Worker types are Permanent, Casual, Contract and North Indian (the estate records North Indian beside Permanent in its daily sheet, 28 October 2026). A worker also has an optional Area (where the worker comes from). Tenant migration 0003 widens the type and adds the area.
+- Importing workers accepts optional `employment_type`, `area` and `gender` columns; fields import is unchanged and does not touch subdivisions.
