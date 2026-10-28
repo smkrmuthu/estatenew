@@ -2119,6 +2119,10 @@
                     "type": "string",
                     "minLength": 3,
                     "maxLength": 500
+                  },
+                  "shift": {
+                    "type": "string",
+                    "enum": ["DAY", "NIGHT"]
                   }
                 },
                 "required": ["action"]

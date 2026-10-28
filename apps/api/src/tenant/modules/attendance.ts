@@ -1,5 +1,5 @@
 import type { AttendanceRecordPayload } from "@cemms/contracts";
-import { type AttendanceStatusDef, DEFAULT_ATTENDANCE_STATUSES, editRequiresCorrection, normalizeAttendanceRecord, type SheetState, transitionSheet, uuidv7 } from "@cemms/domain";
+import { type AttendanceStatusDef, DEFAULT_ATTENDANCE_STATUSES, editRequiresCorrection, normalizeAttendanceRecord, type SheetState, type Shift, transitionSheet, uuidv7 } from "@cemms/domain";
 import { and, desc, eq, lt, ne } from "drizzle-orm";
 import { AppError } from "../../core/errors";
 import { assertFound, type Db, staleVersion, type TenantContext } from "../context";
@@ -13,14 +13,14 @@ export function enabledStatuses(db: Db): AttendanceStatusDef[] {
   return DEFAULT_ATTENDANCE_STATUSES.map((s) => ({ ...s, active: enabled.includes(s.code) }));
 }
 
-function sheetFor(db: Db, ctx: TenantContext, estateId: string, businessDate: string, create: boolean) {
+function sheetFor(db: Db, ctx: TenantContext, estateId: string, businessDate: string, shift: Shift, create: boolean) {
   const found = db
     .select()
     .from(attendanceSheets)
-    .where(and(eq(attendanceSheets.estateId, estateId), eq(attendanceSheets.businessDate, businessDate)))
+    .where(and(eq(attendanceSheets.estateId, estateId), eq(attendanceSheets.businessDate, businessDate), eq(attendanceSheets.shift, shift)))
     .get();
   if (found || !create) return found;
-  const row = { id: uuidv7(), tenantId: ctx.scope.tenantId, estateId, businessDate, state: "DRAFT" as SheetState, version: 1, createdAt: ctx.nowIso(), updatedAt: ctx.nowIso() };
+  const row = { id: uuidv7(), tenantId: ctx.scope.tenantId, estateId, businessDate, shift, state: "DRAFT" as SheetState, version: 1, createdAt: ctx.nowIso(), updatedAt: ctx.nowIso() };
   db.insert(attendanceSheets).values(row).run();
   return { ...row, submittedAt: null, submittedBy: null, approvedAt: null, approvedBy: null, returnedReason: null };
 }
@@ -55,8 +55,9 @@ export function applyAttendanceRecord(ctx: TenantContext, db: Db, meta: ApplyMet
   const estate = getEstate(db, meta.estateId);
   checkCaptureDate(ctx, estate, payload.businessDate, meta.capturedAt, "attendance.correct");
   activeWorker(db, payload.workerId, estate.id);
+  const shift: Shift = payload.shift ?? "DAY";
   const normalized = validateRecord(db, estate.id, payload);
-  // A worker shared by several estates cannot be present in two estates on one day (the duplicate-attendance policy is not confirmed yet).
+  // A worker shared by several estates cannot be present in two estates in the same shift of one day (the duplicate-attendance policy is not confirmed yet).
   if (normalized.presence === "PRESENT") {
     const elsewhere = db
       .select()
@@ -65,6 +66,7 @@ export function applyAttendanceRecord(ctx: TenantContext, db: Db, meta: ApplyMet
         and(
           eq(attendanceRecords.businessDate, payload.businessDate),
           eq(attendanceRecords.workerId, payload.workerId),
+          eq(attendanceRecords.shift, shift),
           eq(attendanceRecords.presence, "PRESENT"),
           ne(attendanceRecords.estateId, estate.id),
         ),
@@ -72,18 +74,20 @@ export function applyAttendanceRecord(ctx: TenantContext, db: Db, meta: ApplyMet
       .get();
     if (elsewhere) {
       const where = db.select().from(estates).where(eq(estates.id, elsewhere.estateId)).get();
-      throw new AppError(409, "WORKER_ELSEWHERE", `This worker is already marked present in ${where?.name ?? "another estate"} on this day`, { workerId: "Already present in another estate" });
+      throw new AppError(409, "WORKER_ELSEWHERE", `This worker is already marked present in ${where?.name ?? "another estate"} for this ${shift === "NIGHT" ? "night" : "day"}`, {
+        workerId: "Already present in another estate",
+      });
     }
   }
-  const sheet = sheetFor(db, ctx, estate.id, payload.businessDate, true);
+  const sheet = sheetFor(db, ctx, estate.id, payload.businessDate, shift, true);
   if (!sheet) throw new Error("sheet missing");
   if (editRequiresCorrection(sheet.state)) throw new AppError(409, "SHEET_LOCKED", "This day's attendance has been submitted. A manager must correct it.");
   const now = ctx.nowIso();
   const byId = db.select().from(attendanceRecords).where(eq(attendanceRecords.id, meta.entityId)).get();
-  const data = { ...normalized, businessDate: payload.businessDate, workerId: payload.workerId };
+  const data = { ...normalized, businessDate: payload.businessDate, shift, workerId: payload.workerId };
 
   if (byId) {
-    if (byId.workerId !== payload.workerId || byId.businessDate !== payload.businessDate || byId.estateId !== estate.id) {
+    if (byId.workerId !== payload.workerId || byId.businessDate !== payload.businessDate || byId.shift !== shift || byId.estateId !== estate.id) {
       throw new AppError(422, "ENTITY_MISMATCH", "This record belongs to another worker or day");
     }
     if (byId.version !== meta.baseVersion) return openConflict(ctx, db, meta, byId, data, "Changed on another device since this phone last synced");
@@ -98,7 +102,9 @@ export function applyAttendanceRecord(ctx: TenantContext, db: Db, meta: ApplyMet
   const sameWorker = db
     .select()
     .from(attendanceRecords)
-    .where(and(eq(attendanceRecords.estateId, estate.id), eq(attendanceRecords.businessDate, payload.businessDate), eq(attendanceRecords.workerId, payload.workerId)))
+    .where(
+      and(eq(attendanceRecords.estateId, estate.id), eq(attendanceRecords.businessDate, payload.businessDate), eq(attendanceRecords.shift, shift), eq(attendanceRecords.workerId, payload.workerId)),
+    )
     .get();
   if (sameWorker) return openConflict(ctx, db, meta, sameWorker, data, "This worker already has attendance for this day from another entry");
   const row = {
@@ -144,10 +150,10 @@ function openConflict(ctx: TenantContext, db: Db, meta: ApplyMeta, server: typeo
   return { kind: "conflict", entityId: server.id, version: server.version, conflictId, message };
 }
 
-export function applySheetSubmit(ctx: TenantContext, db: Db, meta: ApplyMeta, businessDate: string): ApplyOutcome {
+export function applySheetSubmit(ctx: TenantContext, db: Db, meta: ApplyMeta, businessDate: string, shift: Shift = "DAY"): ApplyOutcome {
   ctx.require("attendance.submit", meta.estateId);
   getEstate(db, meta.estateId);
-  const sheet = sheetFor(db, ctx, meta.estateId, businessDate, true);
+  const sheet = sheetFor(db, ctx, meta.estateId, businessDate, shift, true);
   if (!sheet) throw new Error("sheet missing");
   if (sheet.state !== "DRAFT") throw new AppError(409, "SHEET_STATE", "This day's attendance was already submitted");
   const count = db.select().from(attendanceRecords).where(eq(attendanceRecords.sheetId, sheet.id)).all().length;
@@ -163,20 +169,20 @@ export function applySheetSubmit(ctx: TenantContext, db: Db, meta: ApplyMeta, bu
   };
   db.update(attendanceSheets).set(after).where(eq(attendanceSheets.id, sheet.id)).run();
   ctx.audit(db, { action: "attendance.sheet.submit", entityType: "attendance_sheet", entityId: sheet.id, estateId: sheet.estateId, before: sheet, after, mutationId: meta.mutationId });
-  ctx.emit(db, "attendance.sheet.submitted", "attendance_sheet", sheet.id, { estateId: sheet.estateId, businessDate });
+  ctx.emit(db, "attendance.sheet.submitted", "attendance_sheet", sheet.id, { estateId: sheet.estateId, businessDate, shift });
   return { kind: "accepted", entityId: sheet.id, version: after.version };
 }
 
-export function getSheet(ctx: TenantContext, estateId: string, businessDate: string) {
+export function getSheet(ctx: TenantContext, estateId: string, businessDate: string, shift: Shift = "DAY") {
   ctx.require("attendance.read", estateId);
   getEstate(ctx.db, estateId);
-  const sheet = sheetFor(ctx.db, ctx, estateId, businessDate, false);
+  const sheet = sheetFor(ctx.db, ctx, estateId, businessDate, shift, false);
   const records = sheet ? ctx.db.select().from(attendanceRecords).where(eq(attendanceRecords.sheetId, sheet.id)).all() : [];
   // Each day starts from the previous recorded day's field and job (process text, OC-1).
   const previous = ctx.db
     .select()
     .from(attendanceSheets)
-    .where(and(eq(attendanceSheets.estateId, estateId), lt(attendanceSheets.businessDate, businessDate)))
+    .where(and(eq(attendanceSheets.estateId, estateId), eq(attendanceSheets.shift, shift), lt(attendanceSheets.businessDate, businessDate)))
     .orderBy(desc(attendanceSheets.businessDate))
     .limit(1)
     .get();
@@ -193,9 +199,9 @@ export function getSheet(ctx: TenantContext, estateId: string, businessDate: str
     .from(syncConflicts)
     .where(and(eq(syncConflicts.estateId, estateId), eq(syncConflicts.state, "OPEN")))
     .all()
-    .filter((c) => JSON.parse(c.serverJson).businessDate === businessDate);
+    .filter((c) => JSON.parse(c.serverJson).businessDate === businessDate && (JSON.parse(c.serverJson).shift ?? "DAY") === shift);
   return {
-    sheet: sheet ?? { id: null, estateId, businessDate, state: "DRAFT" as SheetState, version: 0 },
+    sheet: sheet ?? { id: null, estateId, businessDate, shift, state: "DRAFT" as SheetState, version: 0 },
     records,
     prefill: { fromDate: previous?.businessDate ?? null, assignments: prefill },
     statuses: enabledStatuses(ctx.db),
@@ -204,10 +210,10 @@ export function getSheet(ctx: TenantContext, estateId: string, businessDate: str
   };
 }
 
-export function sheetAction(ctx: TenantContext, estateId: string, businessDate: string, action: "approve" | "return", reason?: string) {
+export function sheetAction(ctx: TenantContext, estateId: string, businessDate: string, action: "approve" | "return", reason?: string, shift: Shift = "DAY") {
   ctx.require("attendance.approve", estateId);
   return ctx.tx((db) => {
-    const sheet = assertFound(sheetFor(db, ctx, estateId, businessDate, false), "Attendance sheet");
+    const sheet = assertFound(sheetFor(db, ctx, estateId, businessDate, shift, false), "Attendance sheet");
     let state: SheetState;
     try {
       state = transitionSheet(sheet.state, action, reason);
@@ -220,7 +226,7 @@ export function sheetAction(ctx: TenantContext, estateId: string, businessDate: 
       .from(syncConflicts)
       .where(and(eq(syncConflicts.estateId, estateId), eq(syncConflicts.state, "OPEN")))
       .all()
-      .filter((c) => JSON.parse(c.serverJson).businessDate === businessDate);
+      .filter((c) => JSON.parse(c.serverJson).businessDate === businessDate && (JSON.parse(c.serverJson).shift ?? "DAY") === shift);
     if (action === "approve" && open.length) throw new AppError(409, "CONFLICTS_OPEN", "Resolve the conflicting entries for this day first");
     const now = ctx.nowIso();
     const after = {
@@ -232,7 +238,7 @@ export function sheetAction(ctx: TenantContext, estateId: string, businessDate: 
     };
     db.update(attendanceSheets).set(after).where(eq(attendanceSheets.id, sheet.id)).run();
     ctx.audit(db, { action: `attendance.sheet.${action}`, entityType: "attendance_sheet", entityId: sheet.id, estateId, reason: reason ?? null, before: sheet, after });
-    ctx.emit(db, `attendance.sheet.${action === "approve" ? "approved" : "returned"}`, "attendance_sheet", sheet.id, { estateId, businessDate });
+    ctx.emit(db, `attendance.sheet.${action === "approve" ? "approved" : "returned"}`, "attendance_sheet", sheet.id, { estateId, businessDate, shift });
     return after;
   });
 }

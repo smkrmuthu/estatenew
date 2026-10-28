@@ -13,7 +13,7 @@ type Handler = (ctx: TenantContext, db: Db, meta: ApplyMeta, payload: never) => 
 
 const HANDLERS: Record<MutationKind, Handler> = {
   "attendance_record:upsert": applyAttendanceRecord as Handler,
-  "attendance_sheet:submit": ((ctx, db, meta, p: { businessDate: string }) => applySheetSubmit(ctx, db, meta, p.businessDate)) as Handler,
+  "attendance_sheet:submit": ((ctx, db, meta, p: { businessDate: string; shift?: "DAY" | "NIGHT" }) => applySheetSubmit(ctx, db, meta, p.businessDate, p.shift)) as Handler,
   "muster_entry:create": applyMusterCreate as Handler,
   "muster_entry:void": ((ctx, db, meta, p: { reason: string }) => applyMusterVoid(ctx, db, meta, p.reason)) as Handler,
   "dailylog_entry:create": applyDailyLogCreate as Handler,

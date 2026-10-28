@@ -179,7 +179,7 @@ export function tenantRoutes(app: Hono<AppEnv>) {
       auth: "bearer",
       permission: "attendance.read",
     },
-    call("attendance.sheet", day),
+    call("attendance.sheet", (c) => ({ ...day(c), shift: c.req.query("shift") })),
   );
   route(
     app,

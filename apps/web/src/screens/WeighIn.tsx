@@ -95,7 +95,7 @@ export function WeighIn() {
   });
   const attendance = useQuery({
     queryKey: ["sheet", estateId, date],
-    queryFn: () => api<{ records: { workerId: string; fieldId: string | null; statusCode?: string }[] }>(`/estates/${estateId}/attendance/${date}`),
+    queryFn: () => api<{ records: { workerId: string; fieldId: string | null; statusCode?: string; shift?: string }[] }>(`/estates/${estateId}/attendance/${date}`),
     enabled: app.online && !!estateId && app.can("attendance.read"),
   });
   const localAttendance = useLive(
@@ -105,9 +105,11 @@ export function WeighIn() {
   );
   /** The field a worker was marked present on this morning: this phone's mark first, then the server's. */
   const attendanceField = (id: string): string | null => {
-    const l = localAttendance.find((r) => (r.data as { workerId?: string }).workerId === id)?.data as { statusCode?: string; fieldId?: string | null } | undefined;
+    const l = localAttendance.find((r) => (r.data as { workerId?: string; shift?: string }).workerId === id && ((r.data as { shift?: string }).shift ?? "DAY") === "DAY")?.data as
+      | { statusCode?: string; fieldId?: string | null }
+      | undefined;
     if (l?.statusCode === "PRESENT" && l.fieldId) return l.fieldId;
-    return attendance.data?.records.find((r) => r.workerId === id && r.statusCode === "PRESENT")?.fieldId ?? null;
+    return attendance.data?.records.find((r) => r.workerId === id && (r.shift ?? "DAY") === "DAY" && r.statusCode === "PRESENT")?.fieldId ?? null;
   };
   const local = useLive(
     () => db.records.where("[tenantId+entityType+estateId+businessDate]").equals([tenantId, "muster_entry", estateId, date]).toArray(),

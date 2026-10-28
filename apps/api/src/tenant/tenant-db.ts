@@ -16,7 +16,7 @@ import {
   varietyInput,
   workerInput,
 } from "@cemms/contracts";
-import { type GateStatus, isBusinessDate, uuidv7 } from "@cemms/domain";
+import { type GateStatus, isBusinessDate, SHIFTS, uuidv7 } from "@cemms/domain";
 import { eq, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/durable-sqlite";
 import { z } from "zod";
@@ -36,6 +36,8 @@ import { pushMutations } from "./modules/sync";
 import * as schema from "./schema";
 
 const day = z.object({ estateId: z.string(), businessDate: z.string().refine(isBusinessDate, "Use a date like 2026-11-01") });
+/** An attendance register is per estate, day and shift (Day when not given). */
+const attendanceDay = day.extend({ shift: z.enum(SHIFTS).optional() });
 const withId = <T extends z.ZodTypeAny>(body: T) => z.object({ id: z.string(), body });
 const withIdVersion = <T extends z.ZodTypeAny>(body: T) => z.object({ id: z.string().optional(), baseVersion: z.number().int().optional(), body });
 
@@ -83,10 +85,10 @@ const OPS = {
     run: (c: TenantContext, i: { id: string; body: { status: GateStatus; answer: string; approver: string; decidedOn: string; source: string } }) => settingsModule.recordGate(c, i.id, i.body),
   },
   "admin.readiness": { input: z.object({}), run: (c: TenantContext) => settingsModule.readiness(c) },
-  "attendance.sheet": { input: day, run: (c: TenantContext, i: z.infer<typeof day>) => attendance.getSheet(c, i.estateId, i.businessDate) },
+  "attendance.sheet": { input: attendanceDay, run: (c: TenantContext, i: z.infer<typeof attendanceDay>) => attendance.getSheet(c, i.estateId, i.businessDate, i.shift) },
   "attendance.sheetAction": {
     input: day.extend({ body: sheetActionSchema }),
-    run: (c: TenantContext, i: z.infer<typeof day> & { body: z.infer<typeof sheetActionSchema> }) => attendance.sheetAction(c, i.estateId, i.businessDate, i.body.action, i.body.reason),
+    run: (c: TenantContext, i: z.infer<typeof day> & { body: z.infer<typeof sheetActionSchema> }) => attendance.sheetAction(c, i.estateId, i.businessDate, i.body.action, i.body.reason, i.body.shift),
   },
   "attendance.correct": { input: withId(attendanceCorrection), run: (c: TenantContext, i: { id: string; body: z.infer<typeof attendanceCorrection> }) => attendance.correctRecord(c, i.id, i.body) },
   "conflicts.list": { input: z.object({ estateId: z.string() }), run: (c: TenantContext, i: { estateId: string }) => attendance.listConflicts(c, i.estateId) },

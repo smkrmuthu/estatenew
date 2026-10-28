@@ -3,6 +3,10 @@
 export type Presence = "PRESENT" | "ABSENT" | "LEAVE" | "OFF";
 export type DayFraction = "FULL" | "HALF";
 
+/** A day has a Day register and a Night register (night watchers); each is submitted and approved on its own. */
+export const SHIFTS = ["DAY", "NIGHT"] as const;
+export type Shift = (typeof SHIFTS)[number];
+
 export interface AttendanceStatusDef {
   code: string;
   label: string;

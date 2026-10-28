@@ -17,8 +17,14 @@ export function dailySummary(ctx: TenantContext, estateId: string, businessDate:
   const sheet = db
     .select()
     .from(attendanceSheets)
-    .where(and(eq(attendanceSheets.estateId, estateId), eq(attendanceSheets.businessDate, businessDate)))
+    .where(and(eq(attendanceSheets.estateId, estateId), eq(attendanceSheets.businessDate, businessDate), eq(attendanceSheets.shift, "DAY")))
     .get();
+  const nightSheet = db
+    .select()
+    .from(attendanceSheets)
+    .where(and(eq(attendanceSheets.estateId, estateId), eq(attendanceSheets.businessDate, businessDate), eq(attendanceSheets.shift, "NIGHT")))
+    .get();
+  const nightRecords = nightSheet ? db.select().from(attendanceRecords).where(eq(attendanceRecords.sheetId, nightSheet.id)).all() : [];
   const records = sheet ? db.select().from(attendanceRecords).where(eq(attendanceRecords.sheetId, sheet.id)).all() : [];
   const fieldName = new Map(
     db
@@ -108,6 +114,7 @@ export function dailySummary(ctx: TenantContext, estateId: string, businessDate:
     basis: "server-accepted" as const,
     attendance: {
       sheetState: sheet?.state ?? "NOT_STARTED",
+      night: { sheetState: nightSheet?.state ?? "NOT_STARTED", present: nightRecords.filter((r) => r.presence === "PRESENT").length },
       marked: records.length,
       activeWorkers,
       present: records.filter((r) => r.presence === "PRESENT").length,
@@ -155,7 +162,7 @@ export function dashboard(ctx: TenantContext, estateId: string, businessDate: st
     .from(attendanceSheets)
     .where(and(eq(attendanceSheets.estateId, estateId), gte(attendanceSheets.businessDate, from), lte(attendanceSheets.businessDate, businessDate)))
     .all();
-  const today = sheets.find((s) => s.businessDate === businessDate);
+  const today = sheets.find((s) => s.businessDate === businessDate && s.shift === "DAY");
   const todayRecords = today ? db.select().from(attendanceRecords).where(eq(attendanceRecords.sheetId, today.id)).all() : [];
   const activeWorkers = db
     .select()
@@ -242,7 +249,7 @@ export function dashboard(ctx: TenantContext, estateId: string, businessDate: st
     attention: {
       sheetsAwaitingApproval: sheets
         .filter((s) => s.state === "SUBMITTED")
-        .map((s) => ({ date: s.businessDate, submittedBy: s.submittedBy }))
+        .map((s) => ({ date: s.businessDate, shift: s.shift, submittedBy: s.submittedBy }))
         .sort((a, b) => a.date.localeCompare(b.date)),
       openConflicts,
       devicesWaiting: waiting.length,
@@ -404,6 +411,7 @@ export function workerHistory(ctx: TenantContext, estateId: string, workerId: st
     worker: { id: worker.id, name: worker.name, employeeCode: worker.employeeCode },
     records: rows.map((r) => ({
       businessDate: r.businessDate,
+      shift: r.shift,
       statusCode: r.statusCode,
       dayFraction: r.dayFraction,
       field: r.fieldId ? (fieldName.get(r.fieldId) ?? null) : null,

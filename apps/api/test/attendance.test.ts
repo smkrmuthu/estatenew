@@ -12,6 +12,37 @@ const present = (s: Awaited<ReturnType<typeof setupTenant>>, workerId: string, e
   ...extra,
 });
 
+describe("attendance shifts", () => {
+  it("keeps a Day row and a Night row for the same worker, each with its own register and submit", async () => {
+    const s = await setupTenant();
+    const d = today();
+    const night = { businessDate: d, shift: "NIGHT", workerId: s.w1.id, statusCode: "PRESENT", dayFraction: "FULL", fieldId: s.f1.id, jobTypeId: s.plk.id };
+    const day = await mutation(s.supervisor.deviceId, s.estate.id, "attendance_record", "upsert", present(s, s.w1.id));
+    const nt = await mutation(s.supervisor.deviceId, s.estate.id, "attendance_record", "upsert", night);
+    const res = await push(s.supervisor, [day, nt]);
+    expect(res.body.results.map((r: { status: string }) => r.status)).toEqual(["accepted", "accepted"]);
+
+    const dayRegister = (await api(`/estates/${s.estate.id}/attendance/${d}`, { token: s.supervisor.token })).body;
+    const nightRegister = (await api(`/estates/${s.estate.id}/attendance/${d}?shift=NIGHT`, { token: s.supervisor.token })).body;
+    expect(dayRegister.records.map((r: { shift: string }) => r.shift)).toEqual(["DAY"]);
+    expect(nightRegister.records.map((r: { shift: string }) => r.shift)).toEqual(["NIGHT"]);
+
+    // Submitting the Day register leaves the Night register open.
+    const submit = await mutation(s.supervisor.deviceId, s.estate.id, "attendance_sheet", "submit", { businessDate: d });
+    expect((await push(s.supervisor, [submit])).body.results[0].status).toBe("accepted");
+    const nightChange = await mutation(s.supervisor.deviceId, s.estate.id, "attendance_record", "upsert", { ...night, remarks: "Rain" }, { entityId: nt.entityId, baseVersion: 1 });
+    expect((await push(s.supervisor, [nightChange])).body.results[0].status).toBe("accepted");
+    expect((await api(`/estates/${s.estate.id}/attendance/${d}?shift=NIGHT`, { token: s.supervisor.token })).body.sheet.state).toBe("DRAFT");
+
+    // A second Night row for the same worker is a conflict, not a silent overwrite.
+    const again = await mutation(s.supervisor.deviceId, s.estate.id, "attendance_record", "upsert", { ...night, statusCode: "ABSENT", dayFraction: null, fieldId: null, jobTypeId: null });
+    expect((await push(s.supervisor, [again])).body.results[0].status).toBe("conflict");
+
+    const bad = await api(`/estates/${s.estate.id}/attendance/${d}?shift=EVENING`, { token: s.supervisor.token });
+    expect(bad.status).toBeGreaterThanOrEqual(400);
+  });
+});
+
 describe("attendance", () => {
   it("captures offline records, submits, approves and corrects with a reason and full history", async () => {
     const s = await setupTenant();

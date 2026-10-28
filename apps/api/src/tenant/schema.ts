@@ -125,6 +125,9 @@ export const attendanceSheets = sqliteTable("attendance_sheets", {
   tenantId: text("tenant_id").notNull(),
   estateId: text("estate_id").notNull(),
   businessDate: text("business_date").notNull(),
+  shift: text("shift", { enum: ["DAY", "NIGHT"] })
+    .notNull()
+    .default("DAY"),
   state: text("state", { enum: ["DRAFT", "SUBMITTED", "APPROVED"] }).notNull(),
   submittedAt: text("submitted_at"),
   submittedBy: text("submitted_by"),
@@ -150,6 +153,9 @@ export const attendanceRecords = sqliteTable("attendance_records", {
   estateId: text("estate_id").notNull(),
   sheetId: text("sheet_id").notNull(),
   businessDate: text("business_date").notNull(),
+  shift: text("shift", { enum: ["DAY", "NIGHT"] })
+    .notNull()
+    .default("DAY"),
   workerId: text("worker_id").notNull(),
   statusCode: text("status_code").notNull(),
   presence: text("presence").notNull(),

@@ -65,11 +65,13 @@ export function Attendance() {
   const [bulkField, setBulkField] = useState("");
   const [bulkJob, setBulkJob] = useState("");
   const [bulkStatus, setBulkStatus] = useState("P");
+  /** Day register or Night register (night watchers). Each is marked, submitted and approved on its own. */
+  const [shift, setShift] = useState<"DAY" | "NIGHT">("DAY");
   const tenantId = session.user.tenantId;
 
   const sheet = useQuery({
-    queryKey: ["sheet", estateId, date],
-    queryFn: () => api<SheetResponse>(`/estates/${estateId}/attendance/${date}`),
+    queryKey: ["sheet", estateId, date, shift],
+    queryFn: () => api<SheetResponse>(`/estates/${estateId}/attendance/${date}?shift=${shift}`),
     enabled: app.online && !!estateId,
     refetchInterval: 60_000,
   });
@@ -90,7 +92,7 @@ export function Attendance() {
           entityId: r.id,
           estateId,
           businessDate: date,
-          data: { businessDate: date, workerId: r.workerId, statusCode: r.statusCode, dayFraction: r.dayFraction, fieldId: r.fieldId, jobTypeId: r.jobTypeId, remarks: r.remarks },
+          data: { businessDate: date, shift, workerId: r.workerId, statusCode: r.statusCode, dayFraction: r.dayFraction, fieldId: r.fieldId, jobTypeId: r.jobTypeId, remarks: r.remarks },
           status: local?.status === "conflict" ? "conflict" : "accepted",
           serverVersion: r.version,
           nextBase: r.version,
@@ -98,19 +100,20 @@ export function Attendance() {
           updatedAt: new Date().toISOString(),
         });
       }
-      await setMeta(`prefill:${estateId}:${date}`, data.prefill);
-      await setMeta(`sheet:${estateId}:${date}`, data.sheet.state);
+      await setMeta(`prefill:${estateId}:${date}:${shift}`, data.prefill);
+      await setMeta(`sheet:${estateId}:${date}:${shift}`, data.sheet.state);
       await setMeta(`statuses:${estateId}`, data.statuses);
     });
   }, [sheet.data, tenantId, estateId, date]);
 
-  const local = useLive(
+  const localAll = useLive(
     () => db.records.where("[tenantId+entityType+estateId+businessDate]").equals([tenantId, "attendance_record", estateId, date]).toArray(),
     [tenantId, estateId, date],
     [] as LocalRecord[],
   );
-  const prefill = useLive(() => getMeta<Prefill>(`prefill:${estateId}:${date}`), [estateId, date], undefined);
-  const cachedState = useLive(() => getMeta<SheetResponse["sheet"]["state"]>(`sheet:${estateId}:${date}`), [estateId, date], undefined);
+  const local = useMemo(() => localAll.filter((r) => ((r.data.shift as string | undefined) ?? "DAY") === shift), [localAll, shift]);
+  const prefill = useLive(() => getMeta<Prefill>(`prefill:${estateId}:${date}:${shift}`), [estateId, date, shift], undefined);
+  const cachedState = useLive(() => getMeta<SheetResponse["sheet"]["state"]>(`sheet:${estateId}:${date}:${shift}`), [estateId, date, shift], undefined);
   const cachedStatuses = useLive(() => getMeta<StatusDef[]>(`statuses:${estateId}`), [estateId], undefined);
   const sheetState = sheet.data?.sheet.state ?? cachedState ?? "DRAFT";
   const statuses = sheet.data?.statuses ?? cachedStatuses ?? DEFAULT_STATUSES;
@@ -164,6 +167,7 @@ export function Attendance() {
     const present = change.statusCode === "PRESENT";
     const payload = {
       businessDate: date,
+      shift,
       workerId,
       statusCode: change.statusCode,
       dayFraction: present ? (change.dayFraction ?? prev.dayFraction ?? a?.dayFraction ?? "FULL") : null,
@@ -243,7 +247,7 @@ export function Attendance() {
 
   async function submitDay() {
     const extra = counts.none ? ` ${counts.none} workers are not marked and will be left out.` : "";
-    if (!window.confirm(`Submit attendance for ${date}? After this, changes need a manager.${extra}`)) return;
+    if (!window.confirm(`Submit ${shift === "NIGHT" ? "night " : ""}attendance for ${date}? After this, changes need a manager.${extra}`)) return;
     await queueChange({
       tenantId,
       userId: session.user.id,
@@ -253,8 +257,8 @@ export function Attendance() {
       estateId,
       businessDate: date,
       entityId: uuidv7(),
-      payload: { businessDate: date },
-      label: `Submit attendance ${date}`,
+      payload: { businessDate: date, shift },
+      label: `Submit ${shift === "NIGHT" ? "night " : ""}attendance ${date}`,
       keepRecord: false,
     });
     setMessage({ tone: "ok", text: "Submission saved on this phone. It reaches the office when the phone syncs." });
@@ -264,7 +268,7 @@ export function Attendance() {
 
   async function managerAction(action: "approve" | "return") {
     try {
-      await api(`/estates/${estateId}/attendance/${date}/actions`, { body: { action, ...(action === "return" ? { reason: returnReason } : {}) } });
+      await api(`/estates/${estateId}/attendance/${date}/actions`, { body: { action, shift, ...(action === "return" ? { reason: returnReason } : {}) } });
       setMessage({ tone: "ok", text: action === "approve" ? "Attendance approved." : "Sent back to the supervisor." });
       setReturnReason("");
       void qc.invalidateQueries({ queryKey: ["sheet", estateId, date] });
@@ -292,8 +296,27 @@ export function Attendance() {
     <div className="flex flex-col gap-4">
       <div>
         <h1>Attendance</h1>
+        <fieldset className="mt-2 m-0 inline-flex min-w-0 gap-1 rounded-lg border border-line bg-surface p-1">
+          <legend className="sr-only">Register</legend>
+          {(["DAY", "NIGHT"] as const).map((s) => (
+            <button
+              key={s}
+              type="button"
+              aria-pressed={shift === s}
+              onClick={() => {
+                setShift(s);
+                setSelected(new Set());
+                setDrafts({});
+              }}
+              className={`min-h-10 rounded-md px-4 text-sm font-semibold ${shift === s ? "bg-roast text-roast-ink" : "text-muted"}`}
+            >
+              {s === "DAY" ? "Day" : "Night"}
+            </button>
+          ))}
+        </fieldset>
         <p className="mt-1 max-w-3xl text-sm text-muted">
-          One register per estate per day. Each worker gets a status, a field from the field list and a job. It starts with the previous day's fields and jobs, so only changes need entering.
+          One register per estate per day, plus a Night register for night watchers. Each worker gets a status, a field from the field list and a job. It starts with the previous day's fields and
+          jobs, so only changes need entering.
         </p>
       </div>
 
@@ -302,7 +325,7 @@ export function Attendance() {
           <span className="rounded-full bg-bg px-2 py-1 text-xs font-semibold">{sheetState === "DRAFT" ? "Draft" : sheetState === "SUBMITTED" ? "Submitted" : "Approved"}</span>
           <small className="text-muted">
             {counts.P} present · {counts.H} half day · {counts.A} absent or leave{counts.O ? ` · ${counts.O} off or holiday` : ""}
-            {counts.none ? (
+            {counts.none && shift === "DAY" ? (
               <>
                 {" · "}
                 <b className="text-ink">{counts.none} not marked</b>
@@ -322,7 +345,7 @@ export function Attendance() {
           )}
           {canCapture && app.can("attendance.submit") && (
             <Button onClick={submitDay} disabled={counts.P + counts.H + counts.A + counts.O === 0}>
-              {counts.none ? `Submit (${counts.none} not marked)` : "Submit for approval"}
+              {counts.none && shift === "DAY" ? `Submit (${counts.none} not marked)` : "Submit for approval"}
             </Button>
           )}
           {app.can("attendance.approve") && app.online && sheetState === "SUBMITTED" && (

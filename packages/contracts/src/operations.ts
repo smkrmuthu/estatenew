@@ -1,9 +1,13 @@
-import { MAX_SYNC_BATCH, SYNC_SCHEMA_VERSION } from "@cemms/domain";
+import { MAX_SYNC_BATCH, SHIFTS, SYNC_SCHEMA_VERSION } from "@cemms/domain";
 import { z } from "zod";
 import { businessDate, crop, entityType, id, isoInstant, kgString, reason, remarks } from "./common";
 
+/** Optional so changes queued before shifts existed still count as the Day register. */
+const shift = z.enum(SHIFTS).optional();
+
 export const attendanceRecordPayload = z.object({
   businessDate,
+  shift,
   workerId: id,
   statusCode: z.string().max(20),
   dayFraction: z.enum(["FULL", "HALF"]).nullish(),
@@ -13,7 +17,7 @@ export const attendanceRecordPayload = z.object({
 });
 export type AttendanceRecordPayload = z.infer<typeof attendanceRecordPayload>;
 
-export const attendanceSheetSubmitPayload = z.object({ businessDate });
+export const attendanceSheetSubmitPayload = z.object({ businessDate, shift });
 
 export const musterEntryPayload = z.object({
   businessDate,
@@ -73,8 +77,8 @@ export const MUTATION_PAYLOADS = {
 } as const;
 export type MutationKind = keyof typeof MUTATION_PAYLOADS;
 
-export const sheetAction = z.object({ action: z.enum(["approve", "return"]), reason: reason.optional() });
-export const attendanceCorrection = attendanceRecordPayload.omit({ businessDate: true, workerId: true }).extend({ reason, baseVersion: z.number().int().min(1) });
+export const sheetAction = z.object({ action: z.enum(["approve", "return"]), reason: reason.optional(), shift });
+export const attendanceCorrection = attendanceRecordPayload.omit({ businessDate: true, workerId: true, shift: true }).extend({ reason, baseVersion: z.number().int().min(1) });
 export const musterCorrection = musterEntryPayload.omit({ businessDate: true, workerId: true }).extend({ reason, baseVersion: z.number().int().min(1) });
 export const dailyLogCorrection = z.object({ value: z.string().trim().min(1).max(200), remarks, reason, baseVersion: z.number().int().min(1) });
 export const conflictResolution = z.object({ keep: z.enum(["server", "incoming"]), reason });
