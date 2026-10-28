@@ -169,7 +169,7 @@ function Users() {
       await api("/admin/users", { body: { username: form.username, displayName: form.displayName, password: form.password, grants } });
       setNote({
         tone: "ok",
-        text: `Added ${form.username}. Temporary password: ${form.password} (they choose their own at first sign-in${owner || form.role === "ESTATE_MANAGER" ? " and set up an authenticator app" : ""}).`,
+        text: `Added ${form.username}. Temporary password: ${form.password} (they choose their own at first sign-in${owner ? "; in production they also set up an authenticator app" : ""}).`,
       });
       setForm({ ...blank, password: tempPassword() });
       void refresh();
@@ -249,7 +249,7 @@ function Users() {
               </Button>
             </div>
           </Field>
-          <Field label="Role" htmlFor="u-role" hint={form.role === "OWNER" || form.role === "ESTATE_MANAGER" ? "Needs an authenticator app at sign-in" : undefined}>
+          <Field label="Role" htmlFor="u-role" hint={form.role === "OWNER" ? "In production the owner also uses an authenticator app" : undefined}>
             <Select id="u-role" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
               <option value="FIELD_SUPERVISOR">Field supervisor: attendance, weigh-in, daily log</option>
               <option value="ESTATE_MANAGER">Estate manager: also approvals, corrections, lists</option>

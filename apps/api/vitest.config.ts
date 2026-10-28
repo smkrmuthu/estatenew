@@ -10,6 +10,8 @@ export default defineConfig(async () => {
         miniflare: {
           bindings: {
             TEST_MIGRATIONS: migrations,
+            // Production enforces the owner's authenticator; tests exercise that path.
+            MFA_ROLES: "OWNER,PLATFORM_ADMIN",
             // Test-only secrets; real ones are set with `wrangler secret put`.
             JWT_SECRET: "test-only-jwt-secret-0123456789abcdef0123456789",
             MFA_ENC_KEY: "dGVzdC1vbmx5LTMyLWJ5dGUta2V5LWZvci1tZmEtISE=",

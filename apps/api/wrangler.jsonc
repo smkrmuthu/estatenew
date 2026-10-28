@@ -29,7 +29,9 @@
   "vars": {
     "ENVIRONMENT": "development",
     "APP_ORIGIN": "http://localhost:5173",
-    "LOCATION_HINT": "apac"
+    "LOCATION_HINT": "apac",
+    // Roles forced to use an authenticator app. Empty = not forced (an account that set one up still uses it).
+    "MFA_ROLES": ""
   },
   "env": {
     "staging": {
@@ -54,7 +56,7 @@
         { "name": "API_LIMIT", "namespace_id": "4202", "simple": { "limit": 600, "period": 60 } }
       ],
       "triggers": { "crons": ["30 20 * * *"] },
-      "vars": { "ENVIRONMENT": "staging", "APP_ORIGIN": "https://glazebrooke-staging.oneuptech.co", "LOCATION_HINT": "apac" }
+      "vars": { "ENVIRONMENT": "staging", "APP_ORIGIN": "https://glazebrooke-staging.oneuptech.co", "LOCATION_HINT": "apac", "MFA_ROLES": "" }
     },
     "production": {
       "name": "cemms-api",
@@ -78,7 +80,7 @@
         { "name": "API_LIMIT", "namespace_id": "4302", "simple": { "limit": 600, "period": 60 } }
       ],
       "triggers": { "crons": ["30 20 * * *"] },
-      "vars": { "ENVIRONMENT": "production", "APP_ORIGIN": "https://glazebrooke.oneuptech.co", "LOCATION_HINT": "apac" }
+      "vars": { "ENVIRONMENT": "production", "APP_ORIGIN": "https://glazebrooke.oneuptech.co", "LOCATION_HINT": "apac", "MFA_ROLES": "OWNER,PLATFORM_ADMIN" }
     }
   }
 }

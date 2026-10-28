@@ -1,4 +1,4 @@
-import { requiresMfa } from "@cemms/domain";
+import { parseMfaRoles, requiresMfa } from "@cemms/domain";
 import { eq } from "drizzle-orm";
 import type { MiddlewareHandler } from "hono";
 import { controlDb } from "../control/db";
@@ -35,7 +35,7 @@ export const requireAuth: MiddlewareHandler<AppEnv> = async (c, next) => {
   if (t?.status !== "ACTIVE") throw unauthorized();
   if (!d || d.revokedAt || d.tenantId !== claims.tid) throw unauthorized();
   const grants = grantsOf(grantRows.filter((g) => g.tenantId === claims.tid));
-  if (requiresMfa(grants) && !s.mfaVerified) throw new AppError(401, "MFA_REQUIRED", "Sign in again with your authenticator code");
+  if (requiresMfa(grants, parseMfaRoles(c.env.MFA_ROLES)) && !s.mfaVerified) throw new AppError(401, "MFA_REQUIRED", "Sign in again with your authenticator code");
   c.set("auth", { user: u, tenant: t, session: s, grants });
   await next();
 };

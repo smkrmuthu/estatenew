@@ -46,8 +46,22 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   AUDITOR: [...READ, "reports.workerDetail", "audit.read"],
 };
 
-/** Roles that must use multi-factor sign-in. */
-export const MFA_REQUIRED_ROLES: ReadonlySet<Role> = new Set(["PLATFORM_ADMIN", "OWNER", "ESTATE_MANAGER"]);
+/**
+ * Roles that must use an authenticator app, by default: only the Owner (and platform staff).
+ * Estate managers and field staff sign in with a password only (owner decision, 28 October 2026).
+ * Each environment chooses which roles are enforced with the MFA_ROLES setting; production turns on OWNER.
+ */
+export const MFA_REQUIRED_ROLES: ReadonlySet<Role> = new Set(["PLATFORM_ADMIN", "OWNER"]);
+
+/** Parse a comma separated role list (for example "OWNER,PLATFORM_ADMIN"). An empty value means no role is forced. */
+export function parseMfaRoles(value: string | undefined): ReadonlySet<Role> {
+  const out = new Set<Role>();
+  for (const part of (value ?? "").split(",")) {
+    const role = part.trim().toUpperCase();
+    if ((ROLES as readonly string[]).includes(role)) out.add(role as Role);
+  }
+  return out;
+}
 
 export interface Grant {
   role: Role;
@@ -79,6 +93,6 @@ export function estatesWith(grants: readonly Grant[], permission: Permission): "
   return [...ids];
 }
 
-export function requiresMfa(grants: readonly Grant[]): boolean {
-  return grants.some((g) => MFA_REQUIRED_ROLES.has(g.role));
+export function requiresMfa(grants: readonly Grant[], roles: ReadonlySet<Role> = MFA_REQUIRED_ROLES): boolean {
+  return grants.some((g) => roles.has(g.role));
 }

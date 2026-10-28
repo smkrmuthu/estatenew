@@ -13,6 +13,7 @@ import {
   isBusinessDate,
   isUuidV7,
   normalizeAttendanceRecord,
+  parseMfaRoles,
   parseReading,
   requiresMfa,
   resolveSetting,
@@ -47,10 +48,15 @@ describe("permissions", () => {
     expect(can(a, "audit.read", "E1")).toBe(true);
     expect(can(a, "attendance.capture", "E1")).toBe(false);
   });
-  it("owners and managers need MFA, supervisors do not", () => {
+  it("only owners need MFA by default; managers and supervisors do not", () => {
     expect(requiresMfa([{ role: "OWNER", estateId: null }])).toBe(true);
-    expect(requiresMfa([{ role: "ESTATE_MANAGER", estateId: "E1" }])).toBe(true);
+    expect(requiresMfa([{ role: "ESTATE_MANAGER", estateId: "E1" }])).toBe(false);
     expect(requiresMfa(sup)).toBe(false);
+  });
+  it("each environment chooses the enforced roles; empty means none", () => {
+    expect([...parseMfaRoles("OWNER, platform_admin,nonsense")].sort()).toEqual(["OWNER", "PLATFORM_ADMIN"]);
+    expect(requiresMfa([{ role: "OWNER", estateId: null }], parseMfaRoles(""))).toBe(false);
+    expect(requiresMfa([{ role: "ESTATE_MANAGER", estateId: "E1" }], parseMfaRoles("ESTATE_MANAGER"))).toBe(true);
   });
 });
 

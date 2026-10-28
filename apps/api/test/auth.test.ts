@@ -31,6 +31,20 @@ describe("authentication", () => {
     expect(ok.user.grants).toEqual([{ role: "OWNER", estateId: null }]);
   });
 
+  it("managers and supervisors sign in with a password only; no authenticator is asked for", async () => {
+    const s = await setupTenant();
+    const made = await api("/admin/users", {
+      token: s.owner.token,
+      body: { username: "mgr1", displayName: "Manager", password: "manager-password-1", grants: [{ role: "ESTATE_MANAGER", estateId: null }] },
+    });
+    expect(made.status).toBe(201);
+    const res = await api("/auth/login", { body: { tenant: s.code, username: "mgr1", password: "manager-password-1", deviceId: uuidv7() } });
+    expect(res.status).toBe(200);
+    expect(res.body.accessToken).toBeTruthy();
+    expect(res.body.mfa).toBeUndefined();
+    expect((await api("/auth/me", { token: res.body.accessToken })).status).toBe(200);
+  });
+
   it("rotates refresh tokens and revokes the session when a spent token is reused", async () => {
     const s = await setupTenant();
     const csrf = { "x-cemms-csrf": "1", origin: ORIGIN };

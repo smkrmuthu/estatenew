@@ -16,7 +16,7 @@ Worker identities and attendance (personal data), weigh-in weights (drive pay la
 | Supervisor acts outside their estate or role | Estate-scoped grants checked in the tenant service for every operation, including each sync item | Built and tested |
 | Token forgery, replay, theft | HS256 JWT with audience, 15-minute life, session/device/user/tenant re-checked each request; refresh token httpOnly SameSite=Strict, hashed at rest, rotated, reuse revokes the session | Built and tested |
 | Password guessing | PBKDF2-SHA256, 6 chained rounds of 100k (ADR-0009); same response for unknown user and wrong password; lockout after 5; per-IP and per-user rate limits | Built and tested |
-| Owner or manager account takeover | TOTP MFA required for Owner, Estate Manager, Platform Admin; replay of a used code refused | Built and tested (enrolment at first sign-in) |
+| Owner account takeover | TOTP MFA required for Owner and Platform Admin in production (`MFA_ROLES`); managers and field staff use password only; replay of a used code refused | Built and tested (enrolment at first sign-in) |
 | CSRF on cookie endpoints | Refresh/logout need `X-CEMMS-CSRF` and same origin; API uses bearer header; cross-origin browser requests refused | Built and tested |
 | Duplicate or replayed sync uploads | `(device_id, mutation_id)` stored with the result; payload hash checked; mutation id reuse for other data refused | Built and tested |
 | Device used by another person, or lost | Mutations must come from the session's device; device revoke blocks sign-in and sync; session lifetime bounded (12 h default, OC-101 open); no tokens in IndexedDB | Built; local PIN lock not built (see limitations) |

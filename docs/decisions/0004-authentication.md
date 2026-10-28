@@ -10,6 +10,6 @@
 - CSRF: refresh and logout need the `X-CEMMS-CSRF: 1` header and a same-origin `Origin`. API calls use the Bearer header, not cookies.
 - Lockout: 5 failed sign-ins lock the account for 15 minutes; also rate limited per IP and username.
 - Every request re-checks that the session is not revoked and the user is active (fail closed).
-- MFA: TOTP (RFC 6238) is required for Owner and Platform Admin; enrolment happens at first sign-in.
+- MFA: TOTP (RFC 6238). Which roles are forced is the `MFA_ROLES` setting of each environment: production enforces `OWNER,PLATFORM_ADMIN`; development and staging enforce none. Estate managers and field staff never need an authenticator (owner decision, 28 October 2026). An account that has already set one up keeps using it. Enrolment happens at first sign-in.
 - Session lifetime: 12 hours absolute by default (`auth.offlineSessionHours`). Longer offline windows (OC-101, up to 7 days) stay blocked until the owner confirms.
 - Devices: each browser install registers a device id; sessions are bound to it and can be revoked.

@@ -1,5 +1,5 @@
 import type { LoginRequest, SessionResponse } from "@cemms/contracts";
-import { type Grant, type Role, requiresMfa, uuidv7 } from "@cemms/domain";
+import { type Grant, parseMfaRoles, type Role, requiresMfa, uuidv7 } from "@cemms/domain";
 import { and, eq, isNull } from "drizzle-orm";
 import { type ControlDb, controlDb } from "../control/db";
 import { devices, platformAudit, refreshTokens, sessions, tenants, userGrants, users } from "../control/schema";
@@ -84,7 +84,8 @@ export async function login(env: Env, input: LoginRequest, requestId: string, si
   if (grants.length === 0) throw new AppError(403, "NO_ACCESS", "This user has no access yet. Ask the owner to give access.");
 
   let mfaVerified = false;
-  if (requiresMfa(grants)) {
+  // An account that already set up an authenticator keeps using it, whatever the environment enforces.
+  if (requiresMfa(grants, parseMfaRoles(env.MFA_ROLES)) || user.mfaEnabled) {
     if (!user.mfaEnabled) {
       let secret = user.mfaSecretEnc ? await decryptSecret(user.mfaSecretEnc, env.MFA_ENC_KEY) : null;
       if (!secret) {
