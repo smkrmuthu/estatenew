@@ -1,6 +1,6 @@
 import { computeWeighIn, formatKg, parseKg, WeightError } from "@cemms/domain";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useApp } from "../app-context";
 import { Button, Card, Field, Input, KpiStrip, Notice, Select, StatusBadge } from "../components/ui";
 import { api } from "../lib/api";
@@ -48,12 +48,31 @@ export function WeighIn() {
   const [remarks, setRemarks] = useState("");
   const [saved, setSaved] = useState<string | null>(null);
   const [steps, setSteps] = useState(false);
+  const [fieldFromAttendance, setFieldFromAttendance] = useState(false);
 
   const workers = useMemo(() => (ref?.workers ?? []).filter((w) => w.estateId === estateId), [ref, estateId]);
   const fields = useMemo(() => (ref?.fields ?? []).filter((f) => f.estateId === estateId), [ref, estateId]);
   const field = fields.find((f) => f.id === fieldId);
   const crops = field?.crops ?? ["COFFEE"];
   const varieties = (ref?.varieties ?? []).filter((v) => v.crop === crop && (!field?.varietyIds.length || field.varietyIds.includes(v.id)));
+  // The field decides the variety: its bearing subdivisions carry one each (A, B, ...). One variety is filled in; several must be picked.
+  const choices = useMemo(() => {
+    const byVariety = new Map<string, { id: string; name: string; letters: string[] }>();
+    for (const s of field?.subdivisions ?? []) {
+      const v = (ref?.varieties ?? []).find((x) => x.id === s.varietyId);
+      if (s.landUse !== "BEARING" || !v || v.crop !== crop) continue;
+      const cur = byVariety.get(v.id) ?? { id: v.id, name: v.name, letters: [] };
+      cur.letters.push(s.label);
+      byVariety.set(v.id, cur);
+    }
+    return [...byVariety.values()];
+  }, [field, ref, crop]);
+  const needsVariety = choices.length > 1;
+  const choiceLabel = (c: { name: string; letters: string[] }) => `${c.name} (${c.letters.join(", ")})`;
+  useEffect(() => {
+    if (choices.length === 1) setVarietyId(choices[0]?.id ?? "");
+    else if (choices.length > 1) setVarietyId((cur) => (choices.some((c) => c.id === cur) ? cur : ""));
+  }, [choices]);
   const matches = workers.filter((w) => workerSearch && `${w.name} ${w.employeeCode}`.toLowerCase().includes(workerSearch.toLowerCase())).slice(0, 8);
   const worker = workers.find((w) => w.id === workerId);
 
@@ -72,6 +91,22 @@ export function WeighIn() {
     queryFn: () => api<ServerEntry[]>(`/estates/${estateId}/muster/${date}`),
     enabled: app.online && !!estateId && app.can("muster.read"),
   });
+  const attendance = useQuery({
+    queryKey: ["sheet", estateId, date],
+    queryFn: () => api<{ records: { workerId: string; fieldId: string | null; statusCode?: string }[] }>(`/estates/${estateId}/attendance/${date}`),
+    enabled: app.online && !!estateId && app.can("attendance.read"),
+  });
+  const localAttendance = useLive(
+    () => db.records.where("[tenantId+entityType+estateId+businessDate]").equals([tenantId, "attendance_record", estateId, date]).toArray(),
+    [tenantId, estateId, date],
+    [] as LocalRecord[],
+  );
+  /** The field a worker was marked present on this morning: this phone's mark first, then the server's. */
+  const attendanceField = (id: string): string | null => {
+    const l = localAttendance.find((r) => (r.data as { workerId?: string }).workerId === id)?.data as { statusCode?: string; fieldId?: string | null } | undefined;
+    if (l?.statusCode === "PRESENT" && l.fieldId) return l.fieldId;
+    return attendance.data?.records.find((r) => r.workerId === id && r.statusCode === "PRESENT")?.fieldId ?? null;
+  };
   const local = useLive(
     () => db.records.where("[tenantId+entityType+estateId+businessDate]").equals([tenantId, "muster_entry", estateId, date]).toArray(),
     [tenantId, estateId, date],
@@ -105,7 +140,11 @@ export function WeighIn() {
       businessDate: date,
       workerId: worker.id,
       fieldId: field.id,
-      subdivision: null,
+      // The subdivision letter is recorded only when exactly one bearing subdivision carries the chosen variety.
+      subdivision: (() => {
+        const c = choices.find((x) => x.id === varietyId);
+        return c && c.letters.length === 1 ? (c.letters[0] ?? null) : null;
+      })(),
       crop,
       varietyId: varietyId || null,
       grossKg: gross,
@@ -234,7 +273,21 @@ export function WeighIn() {
               <ul className="mt-1 rounded-xl border border-line bg-surface" aria-label="Matching workers">
                 {matches.map((w) => (
                   <li key={w.id}>
-                    <button type="button" className="min-h-11 w-full px-3 text-left hover:bg-bg" onClick={() => setWorkerId(w.id)}>
+                    <button
+                      type="button"
+                      className="min-h-11 w-full px-3 text-left hover:bg-bg"
+                      onClick={() => {
+                        setWorkerId(w.id);
+                        const f = attendanceField(w.id);
+                        if (f) {
+                          setFieldId(f);
+                          setFieldFromAttendance(true);
+                          const ff = fields.find((x) => x.id === f);
+                          if (ff && !ff.crops.includes(crop)) setCrop(ff.crops[0] ?? "COFFEE");
+                          setVarietyId("");
+                        }
+                      }}
+                    >
                       {w.name} <span className="text-muted">· {w.employeeCode}</span>
                     </button>
                   </li>
@@ -242,12 +295,13 @@ export function WeighIn() {
               </ul>
             )}
           </Field>
-          <Field label="Field" htmlFor="field">
+          <Field label="Field" htmlFor="field" hint={fieldFromAttendance && fieldId && fieldId === (worker ? attendanceField(worker.id) : null) ? "Field from this morning's attendance" : undefined}>
             <Select
               id="field"
               value={fieldId}
               onChange={(e) => {
                 setFieldId(e.target.value);
+                setFieldFromAttendance(false);
                 const f = fields.find((x) => x.id === e.target.value);
                 if (f && !f.crops.includes(crop)) setCrop(f.crops[0] ?? "COFFEE");
                 setVarietyId("");
@@ -280,16 +334,35 @@ export function WeighIn() {
               ))}
             </div>
           </fieldset>
-          <Field label="Variety (optional)" htmlFor="variety">
-            <Select id="variety" value={varietyId} onChange={(e) => setVarietyId(e.target.value)}>
-              <option value="">Not recorded</option>
-              {varieties.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.name}
-                </option>
-              ))}
-            </Select>
-          </Field>
+          {choices.length === 1 ? (
+            <Field label="Variety" htmlFor="variety" hint="Set by the field">
+              <p id="variety" className="flex min-h-12 items-center font-medium">
+                {choiceLabel(choices[0] as (typeof choices)[number])}
+              </p>
+            </Field>
+          ) : needsVariety ? (
+            <Field label="Variety" htmlFor="variety" hint="This field has more than one variety. Pick which one this was.">
+              <Select id="variety" value={varietyId} onChange={(e) => setVarietyId(e.target.value)}>
+                <option value="">Pick the variety…</option>
+                {choices.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {choiceLabel(c)}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          ) : (
+            <Field label="Variety (optional)" htmlFor="variety">
+              <Select id="variety" value={varietyId} onChange={(e) => setVarietyId(e.target.value)}>
+                <option value="">Not recorded</option>
+                {varieties.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          )}
           <Field label="Gross weight (kg)" htmlFor="gross" error={preview.error ?? undefined}>
             <Input
               id="gross"
@@ -324,7 +397,7 @@ export function WeighIn() {
           <p className="text-lg">
             Net: <strong className="text-2xl">{preview.net ?? "–"}</strong> kg
           </p>
-          <Button size="lg" disabled={!canCapture || !worker || !field || !preview.net} onClick={save}>
+          <Button size="lg" disabled={!canCapture || !worker || !field || !preview.net || (needsVariety && !varietyId)} onClick={save}>
             Save weigh-in
           </Button>
         </div>
