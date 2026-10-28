@@ -3,11 +3,13 @@ import { z } from "zod";
 import { id } from "./common";
 
 export const loginRequest = z.object({
+  /** Not needed on a tenant's own site address (the address decides the tenant). */
   tenant: z
     .string()
     .trim()
     .toLowerCase()
-    .regex(/^[a-z0-9-]{2,40}$/, "Enter your estate group code"),
+    .regex(/^[a-z0-9-]{2,40}$/, "Enter your estate group code")
+    .optional(),
   username: z.string().trim().toLowerCase().min(2).max(60),
   password: z.string().min(1).max(200),
   deviceId: id,

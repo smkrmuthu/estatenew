@@ -12,7 +12,7 @@ export interface Res<T = any> {
   headers: Headers;
 }
 
-export async function api<T = any>(path: string, init: { method?: string; body?: unknown; token?: string; headers?: Record<string, string>; cookie?: string } = {}): Promise<Res<T>> {
+export async function api<T = any>(path: string, init: { method?: string; body?: unknown; token?: string; headers?: Record<string, string>; cookie?: string; host?: string } = {}): Promise<Res<T>> {
   const headers: Record<string, string> = { ...(init.headers ?? {}) };
   if (init.body !== undefined) headers["content-type"] = "application/json";
   if (init.token) headers.authorization = `Bearer ${init.token}`;
@@ -20,7 +20,7 @@ export async function api<T = any>(path: string, init: { method?: string; body?:
   // Each call looks like its own client so the per-IP sign-in limit does not trip between tests.
   headers["cf-connecting-ip"] ??= `10.${counter % 250}.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}`;
   const res = await exports.default.fetch(
-    new Request(`http://localhost/api/v1${path}`, {
+    new Request(`http://${init.host ?? "localhost"}/api/v1${path}`, {
       method: init.method ?? (init.body === undefined ? "GET" : "POST"),
       headers,
       body: init.body === undefined ? undefined : JSON.stringify(init.body),

@@ -5,6 +5,7 @@ import { controlDb } from "../control/db";
 import { devices, sessions, tenants, userGrants, users } from "../control/schema";
 import { verifyJwt } from "../core/crypto";
 import { AppError, unauthorized } from "../core/errors";
+import { siteOrigin } from "../core/site";
 import type { AppEnv } from "../core/types";
 import { grantsOf } from "./service";
 
@@ -15,7 +16,7 @@ import { grantsOf } from "./service";
 export const requireAuth: MiddlewareHandler<AppEnv> = async (c, next) => {
   const header = c.req.header("authorization") ?? "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : "";
-  const claims = token ? await verifyJwt(token, c.env.JWT_SECRET, c.env.APP_ORIGIN) : null;
+  const claims = token ? await verifyJwt(token, c.env.JWT_SECRET, siteOrigin(c)) : null;
   if (!claims) throw unauthorized();
   const db = controlDb(c.env);
   const [session, user, tenant, device, grantRows] = await db.batch([

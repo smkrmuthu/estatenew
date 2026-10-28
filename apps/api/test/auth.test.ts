@@ -76,6 +76,12 @@ describe("authentication", () => {
     expect((await api("/auth/me", { token: otherAud })).status).toBe(401);
   });
 
+  it("a token only works on the address it was issued for", async () => {
+    const s = await setupTenant();
+    expect((await api("/auth/me", { token: s.supervisor.token })).status).toBe(200);
+    expect((await api("/auth/me", { token: s.supervisor.token, host: "other-tenant.example.com" })).status).toBe(401);
+  });
+
   it("disabling a user ends their sessions at once", async () => {
     const s = await setupTenant();
     const users = (await api("/admin/users", { token: s.owner.token })).body as { id: string; username: string }[];

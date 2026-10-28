@@ -29,7 +29,7 @@ To see a bag that holds two harvest dates, open **Trace a bag** and look up `BRO
 
 ## Planned stack
 
-TypeScript throughout, hosted only on Cloudflare: a Hono API on Workers; one SQLite database per tenant in a Durable Object, plus a D1 control database for tenants, users and sessions; R2 for files and nightly backups; Queues and Cron Triggers for background work. The portal and the supervisor phone app are one React (Vite) installable web app that works offline with IndexedDB. A native Android app comes later. Production will be at estate.oneuptech.co. The full reasoning is in the architecture document, which lives in Google Drive.
+TypeScript throughout, hosted only on Cloudflare: a Hono API on Workers; one SQLite database per tenant in a Durable Object, plus a D1 control database for tenants, users and sessions; R2 for files and nightly backups; Queues and Cron Triggers for background work. The portal and the supervisor phone app are one React (Vite) installable web app that works offline with IndexedDB. A native Android app comes later. Glazebrooke runs on glazebrooke-staging.oneuptech.co (all new features, synthetic data) and goes live on glazebrooke.oneuptech.co after validation. Each tenant has its own address, so users sign in with just a user name and password. The full reasoning is in the architecture document, which lives in Google Drive.
 
 ## Phases
 

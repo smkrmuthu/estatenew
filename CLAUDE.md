@@ -20,7 +20,7 @@ Build and maintain CEMMS, a multi-tenant coffee-estate operations platform. The 
 - Drizzle ORM; versioned SQL migrations for D1 and tenant DBs.
 - React + Vite PWA for portal and supervisor phone use; Tailwind, shadcn/ui, TanStack Query/Table; Dexie/IndexedDB for offline drafts and durable outbox. Native Expo is deferred.
 - Cloudflare Queues, Cron, R2, KV (short-lived non-authoritative cache), WAF and rate limiting.
-- Production `estate.oneuptech.co`; staging `estate-staging.oneuptech.co`; only create/use new `cemms-*` resources. Leave older `estate` and `estate-demo` Workers and databases untouched.
+- Glazebrooke production `glazebrooke.oneuptech.co`; staging `glazebrooke-staging.oneuptech.co` (owner decision, 28 October 2026; ADR-0010). Each tenant has its own address mapped in `tenant_domains`. Only create/use new `cemms-*` resources. Leave older `estate` and `estate-demo` Workers and databases untouched.
 - Asia-Pacific placement is not India-only residency. Do not claim otherwise; a PostgreSQL-in-India/Hyperdrive path requires explicit approval and design.
 
 Do not introduce NestJS, AWS, Redis, PostgreSQL row-level security, Expo, or SQLite on the phone unless an approved architecture decision supersedes this file.
@@ -40,7 +40,7 @@ Do not introduce NestJS, AWS, Redis, PostgreSQL row-level security, Expo, or SQL
 - Enforce permissions in middleware, services and repository/data access. A request may open only its authenticated tenant's DB. Never share a tenant DB handle across requests without immutable scope.
 - Test cross-tenant access attempts on every endpoint, export, sync route and public trace route.
 - Least-privilege, estate-scoped roles: Platform Admin, Owner, Estate Manager, Field Supervisor, Processing Operator, Quality Officer, Packing Operator, Auditor. Owners/admins require MFA.
-- Apply the specified auth baseline: WebCrypto PBKDF2-SHA256 at 600,000 iterations, 15-minute access JWT, rotating refresh tokens with reuse detection, throttling/lockout, revocation, and device binding. Never store long-lived bearer tokens in IndexedDB/localStorage. Supervisor offline-session length is unconfirmed and must be configurable/gated.
+- Apply the specified auth baseline: WebCrypto PBKDF2-SHA256 at 600,000 iterations as six chained rounds of 100,000 (Workers limit; ADR-0009), 15-minute access JWT, rotating refresh tokens with reuse detection, throttling/lockout, revocation, and device binding. Never store long-lived bearer tokens in IndexedDB/localStorage. Supervisor offline-session length is unconfirmed and must be configurable/gated.
 - TLS 1.2+, managed secrets, strict CORS/CSP, safe cookies/CSRF controls, input/output validation, abuse limits, dependency scanning, OWASP ASVS Level 2 target.
 - Public QR is strict allowlist data and must never expose worker names or personal data. Logs must redact credentials, tokens and worker PII.
 

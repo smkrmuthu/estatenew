@@ -69,7 +69,7 @@ export async function api<T = unknown>(path: string, init: { method?: string; bo
   return (await parse(res)) as T;
 }
 
-export async function signIn(body: { tenant: string; username: string; password: string; deviceId: string; deviceLabel?: string; totp?: string }) {
+export async function signIn(body: { tenant?: string; username: string; password: string; deviceId: string; deviceLabel?: string; totp?: string }) {
   const res = await fetch("/api/v1/auth/login", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   const data = await parse(res);
   if (data?.accessToken) setAccess(data as SessionResponse);

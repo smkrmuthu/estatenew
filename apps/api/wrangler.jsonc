@@ -34,7 +34,7 @@
   "env": {
     "staging": {
       "name": "cemms-api-staging",
-      "routes": [{ "pattern": "estate-staging.oneuptech.co/api/*", "zone_name": "oneuptech.co" }],
+      "routes": [{ "pattern": "glazebrooke-staging.oneuptech.co/api/*", "zone_name": "oneuptech.co" }],
       "durable_objects": { "bindings": [{ "name": "TENANT_DB", "class_name": "TenantDb" }] },
       "d1_databases": [
         {
@@ -54,11 +54,11 @@
         { "name": "API_LIMIT", "namespace_id": "4202", "simple": { "limit": 600, "period": 60 } }
       ],
       "triggers": { "crons": ["30 20 * * *"] },
-      "vars": { "ENVIRONMENT": "staging", "APP_ORIGIN": "https://estate-staging.oneuptech.co", "LOCATION_HINT": "apac" }
+      "vars": { "ENVIRONMENT": "staging", "APP_ORIGIN": "https://glazebrooke-staging.oneuptech.co", "LOCATION_HINT": "apac" }
     },
     "production": {
       "name": "cemms-api",
-      "routes": [{ "pattern": "estate.oneuptech.co/api/*", "zone_name": "oneuptech.co" }],
+      "routes": [{ "pattern": "glazebrooke.oneuptech.co/api/*", "zone_name": "oneuptech.co" }],
       "durable_objects": { "bindings": [{ "name": "TENANT_DB", "class_name": "TenantDb" }] },
       "d1_databases": [
         {
@@ -78,7 +78,7 @@
         { "name": "API_LIMIT", "namespace_id": "4302", "simple": { "limit": 600, "period": 60 } }
       ],
       "triggers": { "crons": ["30 20 * * *"] },
-      "vars": { "ENVIRONMENT": "production", "APP_ORIGIN": "https://estate.oneuptech.co", "LOCATION_HINT": "apac" }
+      "vars": { "ENVIRONMENT": "production", "APP_ORIGIN": "https://glazebrooke.oneuptech.co", "LOCATION_HINT": "apac" }
     }
   }
 }

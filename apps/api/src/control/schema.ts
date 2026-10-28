@@ -92,3 +92,9 @@ export const platformAudit = sqliteTable("platform_audit", {
   requestId: text("request_id"),
   detailJson: text("detail_json"),
 });
+
+export const tenantDomains = sqliteTable("tenant_domains", {
+  domain: text("domain").primaryKey(),
+  tenantId: text("tenant_id").notNull(),
+  createdAt: text("created_at").notNull(),
+});

@@ -7,11 +7,11 @@
   "env": {
     "staging": {
       "name": "cemms-web-staging",
-      "routes": [{ "pattern": "estate-staging.oneuptech.co", "custom_domain": true }]
+      "routes": [{ "pattern": "glazebrooke-staging.oneuptech.co", "custom_domain": true }]
     },
     "production": {
       "name": "cemms-web",
-      "routes": [{ "pattern": "estate.oneuptech.co", "custom_domain": true }]
+      "routes": [{ "pattern": "glazebrooke.oneuptech.co", "custom_domain": true }]
     }
   }
 }

@@ -10,6 +10,7 @@ import { hashPassword, verifyPassword } from "../core/crypto";
 import { AppError } from "../core/errors";
 import { clientIp, rateLimit, readJson } from "../core/http";
 import { route } from "../core/registry";
+import { siteOrigin, tenantForHost } from "../core/site";
 import type { AppEnv } from "../core/types";
 
 const cookieOptions = (c: Context<AppEnv>, expires: Date) => ({
@@ -35,18 +36,25 @@ export function authRoutes(app: Hono<AppEnv>) {
   route(app, { method: "post", path: "/auth/login", summary: "Sign in", tag: "auth", auth: "none", body: loginRequest }, async (c) => {
     const body = loginRequest.parse(await readJson(c));
     const limiter = c.env.LOGIN_LIMIT;
-    if (limiter && !(await limiter.limit({ key: `user:${body.tenant}/${body.username}` })).success) throw new AppError(429, "RATE_LIMITED", "Too many attempts. Wait a minute and try again.");
-    const result = await login(c.env, body, c.get("requestId"));
+    if (limiter && !(await limiter.limit({ key: `user:${body.tenant ?? new URL(c.req.url).hostname}/${body.username}` })).success)
+      throw new AppError(429, "RATE_LIMITED", "Too many attempts. Wait a minute and try again.");
+    const result = await login(c.env, body, c.get("requestId"), { url: c.req.url, origin: siteOrigin(c) });
     if (result.kind === "mfa") return c.json(result.body, 200);
     setCookie(c, REFRESH_COOKIE, result.refreshToken, cookieOptions(c, result.refreshExpires));
     return c.json(result.body);
+  });
+
+  route(app, { method: "get", path: "/site", summary: "Which tenant this address belongs to (so sign-in needs no group code)", tag: "auth", auth: "none" }, async (c) => {
+    const tenant = await tenantForHost(c.env, c.req.url);
+    c.header("cache-control", "no-store");
+    return c.json({ tenant: tenant && tenant.status === "ACTIVE" ? { code: tenant.code, name: tenant.name } : null });
   });
 
   route(app, { method: "post", path: "/auth/refresh", summary: "Get a new access token (rotates the refresh cookie)", tag: "auth", auth: "refresh-cookie" }, async (c) => {
     requireCsrf(c);
     const token = getCookie(c, REFRESH_COOKIE);
     if (!token) throw new AppError(401, "UNAUTHENTICATED", "Sign in again");
-    const issued = await refresh(c.env, token, c.get("requestId"));
+    const issued = await refresh(c.env, token, c.get("requestId"), { url: c.req.url, origin: siteOrigin(c) });
     setCookie(c, REFRESH_COOKIE, issued.refreshToken, cookieOptions(c, issued.refreshExpires));
     return c.json(issued.body);
   });

@@ -13,3 +13,4 @@ Each decision records its source, approver and date. Business decisions come onl
 | [ADR-0007](0007-quantities.md) | Weights stored as integer grams; no float business arithmetic | Accepted | Implementation brief | Engineering | 2026-10-28 |
 | [ADR-0008](0008-configuration-gates.md) | Unconfirmed behaviour lives in tenant settings marked proposed; production refuses to activate them | Accepted | Implementation brief | Engineering | 2026-10-28 |
 | [ADR-0009](0009-chained-pbkdf2.md) | Six chained 100k PBKDF2 rounds (Workers caps one call at 100k) | Accepted | Staging deploy finding | Project owner | 2026-10-28 |
+| [ADR-0010](0010-site-address-decides-tenant.md) | Each tenant has its own address (Glazebrooke: glazebrooke-staging / glazebrooke.oneuptech.co); no group code on sign-in | Accepted | Project owner | Project owner | 2026-10-28 |

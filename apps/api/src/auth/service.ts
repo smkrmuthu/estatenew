@@ -5,6 +5,7 @@ import { type ControlDb, controlDb } from "../control/db";
 import { devices, platformAudit, refreshTokens, sessions, tenants, userGrants, users } from "../control/schema";
 import { base32Encode, decryptSecret, dummyPasswordHash, encryptSecret, randomBytes, randomToken, sha256Hex, signJwt, verifyPassword, verifyTotp } from "../core/crypto";
 import { AppError, unauthorized } from "../core/errors";
+import { tenantForHost } from "../core/site";
 import { tenantStub } from "../core/tenant-stub";
 
 export const ACCESS_TOKEN_SECONDS = 15 * 60;
@@ -35,9 +36,26 @@ export type LoginOutcome =
   | { kind: "session"; body: SessionResponse; refreshToken: string; refreshExpires: Date }
   | { kind: "mfa"; body: { mfa: "required" | "enrol"; secret?: string; otpauthUri?: string } };
 
-export async function login(env: Env, input: LoginRequest, requestId: string): Promise<LoginOutcome> {
+/** Where the request came from: tokens are bound to the origin, the host decides the tenant. */
+export interface Site {
+  url: string;
+  origin: string;
+}
+
+export async function login(env: Env, input: LoginRequest, requestId: string, site: Site): Promise<LoginOutcome> {
   const db = controlDb(env);
-  const tenant = await db.select().from(tenants).where(eq(tenants.code, input.tenant)).get();
+  // On a tenant's own address the address decides the tenant; elsewhere the group code is needed.
+  const hostTenant = await tenantForHost(env, site.url);
+  if (!hostTenant && !input.tenant) throw new AppError(422, "TENANT_REQUIRED", "Enter your estate group code", { tenant: "Required" });
+  const tenant = hostTenant
+    ? input.tenant && input.tenant !== hostTenant.code
+      ? undefined
+      : hostTenant
+    : await db
+        .select()
+        .from(tenants)
+        .where(eq(tenants.code, input.tenant ?? ""))
+        .get();
   const user = tenant
     ? await db
         .select()
@@ -95,7 +113,8 @@ export async function login(env: Env, input: LoginRequest, requestId: string): P
   }
 
   const device = await db.select().from(devices).where(eq(devices.id, input.deviceId)).get();
-  if (device && (device.tenantId !== tenant.id || device.revokedAt)) throw new AppError(403, "DEVICE_REVOKED", "This device cannot be used. Ask the owner.");
+  if (device && device.tenantId !== tenant.id) throw new AppError(403, "DEVICE_OTHER_TENANT", "This device is registered to another estate group.");
+  if (device?.revokedAt) throw new AppError(403, "DEVICE_REVOKED", "This device cannot be used. Ask the owner.");
   if (device)
     await db
       .update(devices)
@@ -115,7 +134,7 @@ export async function login(env: Env, input: LoginRequest, requestId: string): P
   };
   await db.insert(sessions).values(session);
   await db.update(users).set({ failedAttempts: 0, lockedUntil: null }).where(eq(users.id, user.id));
-  const issued = await issueTokens(env, db, session, user, tenant, grants);
+  const issued = await issueTokens(env, db, session, user, tenant, grants, site.origin);
   await audit(db, { actor: user.id, action: "auth.login", tenantId: tenant.id, userId: user.id, requestId, detail: { sessionId: session.id, deviceId: input.deviceId } });
   return { kind: "session", ...issued };
 }
@@ -127,10 +146,11 @@ async function issueTokens(
   user: typeof users.$inferSelect,
   tenant: typeof tenants.$inferSelect,
   grants: Grant[],
+  audience: string,
 ) {
   const nowSec = Math.floor(Date.now() / 1000);
   const exp = Math.min(nowSec + ACCESS_TOKEN_SECONDS, Math.floor(new Date(session.expiresAt).getTime() / 1000));
-  const accessToken = await signJwt({ sub: user.id, tid: tenant.id, sid: session.id, did: session.deviceId, iat: nowSec, exp, iss: "cemms", aud: env.APP_ORIGIN }, env.JWT_SECRET);
+  const accessToken = await signJwt({ sub: user.id, tid: tenant.id, sid: session.id, did: session.deviceId, iat: nowSec, exp, iss: "cemms", aud: audience }, env.JWT_SECRET);
   const refreshToken = randomToken(32);
   await db.insert(refreshTokens).values({ tokenHash: await sha256Hex(refreshToken), sessionId: session.id, createdAt: new Date().toISOString(), expiresAt: session.expiresAt });
   const body: SessionResponse = {
@@ -143,7 +163,7 @@ async function issueTokens(
 }
 
 /** Rotate the refresh token. Presenting a spent token revokes the whole session. */
-export async function refresh(env: Env, token: string, requestId: string) {
+export async function refresh(env: Env, token: string, requestId: string, site: Site) {
   const db = controlDb(env);
   const row = await db
     .select()
@@ -165,6 +185,8 @@ export async function refresh(env: Env, token: string, requestId: string) {
     db.select().from(devices).where(eq(devices.id, session.deviceId)).get(),
   ]);
   if (user?.status !== "ACTIVE" || !tenant || tenant.status !== "ACTIVE" || !device || device.revokedAt) throw unauthorized();
+  const hostTenant = await tenantForHost(env, site.url);
+  if (hostTenant && hostTenant.id !== tenant.id) throw unauthorized();
   // Mark spent only if still unspent: a concurrent second use loses and counts as reuse.
   const marked = await db
     .update(refreshTokens)
@@ -176,7 +198,7 @@ export async function refresh(env: Env, token: string, requestId: string) {
     throw unauthorized("Your session was ended for safety. Sign in again.");
   }
   const grants = grantsOf(await db.select().from(userGrants).where(eq(userGrants.userId, user.id)).all());
-  return issueTokens(env, db, session, user, tenant, grants);
+  return issueTokens(env, db, session, user, tenant, grants, site.origin);
 }
 
 export async function revokeSession(env: Env, sessionId: string, reason: string) {

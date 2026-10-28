@@ -44,18 +44,22 @@ Not run: browser end-to-end suite (Playwright), load test, OWASP ZAP scan, stagi
 | Coffee and pepper weigh-in, server-side totals, idempotency, correction audit | Met in API; correction screen not built (API only) |
 | Configurable Daily log | Met; which readings is still open (OC-100) |
 | Daily summary separates synced and pending | Met |
-| Staging acceptance by owner, accessibility and small-screen review, restore/rollback drill, no critical/high findings, manual production gate | **Not met**: staging is live at estate-staging.oneuptech.co with a synthetic tenant; owner acceptance, restore drill and scans still to do |
+| Staging acceptance by owner, accessibility and small-screen review, restore/rollback drill, no critical/high findings, manual production gate | **Not met**: staging is live at glazebrooke-staging.oneuptech.co (tenant `glazebrooke`, synthetic workers and fields); owner acceptance, restore drill and scans still to do |
 
 ## Go-live (1 November 2026) readiness
 
 Not ready to promise. The code for the Phase 1A flows exists and is tested locally, but these must happen first:
 
-1. **Production resources** (needs your go-ahead): D1 `cemms-control-production`, R2, queues, secrets and `estate.oneuptech.co`. Staging is done. The Workers Paid plan is needed (each sign-in uses about 50 ms CPU).
+1. **Production resources** (needs your go-ahead): D1 `cemms-control-production`, R2, queues, secrets and `glazebrooke.oneuptech.co`. Staging is done. The Workers Paid plan is needed (each sign-in uses about 50 ms CPU).
 2. **Owner answers or explicit acceptance of interim behaviour** for the 25 open questions that block production (see `docs/owner-confirmations.md`, for example OC-7 approver, OC-8 attendance types, OC-17/18/19/87 weigh-in rules, OC-86 back-entry, OC-101 offline session, OC-103 duplicates).
 3. **Real master data** (OC-15): estates, fields with crops and varieties, job types, workers in the CSV templates.
 4. **Staging acceptance** on real phones (Android Chrome and iOS Safari), including airplane-mode capture, and a restore drill.
 
 If these cannot all finish by 31 October, the safe plan is: staging on 30–31 October, owner acceptance, production on the first day the gates are cleared; paper registers in the meantime, typed in later through the manager back-entry path.
+
+## Glazebrooke addresses (28 October)
+
+All features are developed on `glazebrooke-staging.oneuptech.co` and go live on `glazebrooke.oneuptech.co` after validation. The address decides the tenant, so sign-in asks only for user name and password (ADR-0010). Other tenants come later on their own addresses with no code change.
 
 ## Staging finding (28 October)
 
