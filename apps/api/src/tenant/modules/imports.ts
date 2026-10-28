@@ -1,4 +1,4 @@
-import { type CsvError, type ImportKind, parseImport, sha256Hex, uuidv7 } from "@cemms/domain";
+import { type CsvError, type ImportKind, parseImport, sha256Hex, uuidv7, type WorkerRow } from "@cemms/domain";
 import { and, eq } from "drizzle-orm";
 import { AppError } from "../../core/errors";
 import type { Db, TenantContext } from "../context";
@@ -211,7 +211,9 @@ function plan(ctx: TenantContext, kind: ImportKind, csv: string): { ops: Op[]; e
           errors.push({ row: r.row, column: "employee_code", message: "This worker belongs to an estate you cannot change" });
           continue;
         }
-        const values = { estateId: estate.id, employeeCode: v.employeeCode as string, name: v.name as string };
+        const employmentType = v.employmentType as WorkerRow["employmentType"];
+        // Only a file that has the employment_type column changes it; otherwise it stays as it is.
+        const values = { estateId: estate.id, employeeCode: v.employeeCode as string, name: v.name as string, ...(employmentType !== undefined ? { employmentType } : {}) };
         if (!existing) {
           const row = { id: uuidv7(), tenantId, ...values, active: true, ...base };
           ops.push({ row: r.row, key: r.key, action: "create", changes: [], apply: (d) => d.insert(workers).values(row).run() });

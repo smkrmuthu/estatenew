@@ -654,6 +654,30 @@
                       }
                     ]
                   },
+                  "elevationM": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9000
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "expectedCherryKg": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 10000000
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
                   "crops": {
                     "minItems": 1,
                     "type": "array",
@@ -671,12 +695,42 @@
                       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
                     }
                   },
+                  "subdivisions": {
+                    "maxItems": 26,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "landUse": {
+                          "type": "string",
+                          "enum": ["BEARING", "YOUNG", "ROCK", "WATER", "EMPTY", "OTHER_CROP"]
+                        },
+                        "varietyId": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "areaCentiAcres": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 10000000
+                        }
+                      },
+                      "required": ["landUse", "areaCentiAcres"]
+                    }
+                  },
                   "active": {
                     "default": true,
                     "type": "boolean"
                   }
                 },
-                "required": ["estateId", "code", "name", "crops"]
+                "required": ["estateId", "name", "crops"]
               }
             }
           }
@@ -747,6 +801,30 @@
                       }
                     ]
                   },
+                  "elevationM": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9000
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "expectedCherryKg": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 10000000
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
                   "crops": {
                     "minItems": 1,
                     "type": "array",
@@ -764,12 +842,42 @@
                       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
                     }
                   },
+                  "subdivisions": {
+                    "maxItems": 26,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "landUse": {
+                          "type": "string",
+                          "enum": ["BEARING", "YOUNG", "ROCK", "WATER", "EMPTY", "OTHER_CROP"]
+                        },
+                        "varietyId": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "areaCentiAcres": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 10000000
+                        }
+                      },
+                      "required": ["landUse", "areaCentiAcres"]
+                    }
+                  },
                   "active": {
                     "default": true,
                     "type": "boolean"
                   }
                 },
-                "required": ["estateId", "code", "name", "crops"]
+                "required": ["estateId", "name", "crops"]
               }
             }
           }
@@ -932,6 +1040,10 @@
                     "minLength": 1,
                     "maxLength": 120
                   },
+                  "countsAsPlucking": {
+                    "default": false,
+                    "type": "boolean"
+                  },
                   "active": {
                     "default": true,
                     "type": "boolean"
@@ -992,6 +1104,10 @@
                     "minLength": 1,
                     "maxLength": 120
                   },
+                  "countsAsPlucking": {
+                    "default": false,
+                    "type": "boolean"
+                  },
                   "active": {
                     "default": true,
                     "type": "boolean"
@@ -1046,12 +1162,34 @@
                     "minLength": 1,
                     "maxLength": 120
                   },
+                  "gender": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": ["MALE", "FEMALE"]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "employmentType": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": ["PERMANENT", "CASUAL", "CONTRACT"]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
                   "active": {
                     "default": true,
                     "type": "boolean"
                   }
                 },
-                "required": ["estateId", "employeeCode", "name"]
+                "required": ["estateId", "name"]
               }
             }
           }
@@ -1110,12 +1248,34 @@
                     "minLength": 1,
                     "maxLength": 120
                   },
+                  "gender": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": ["MALE", "FEMALE"]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "employmentType": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": ["PERMANENT", "CASUAL", "CONTRACT"]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
                   "active": {
                     "default": true,
                     "type": "boolean"
                   }
                 },
-                "required": ["estateId", "employeeCode", "name"]
+                "required": ["estateId", "name"]
               }
             }
           }
@@ -1480,6 +1640,18 @@
                       }
                     ]
                   },
+                  "expectedPerDay": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 48
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
                   "active": {
                     "default": true,
                     "type": "boolean"
@@ -1578,6 +1750,18 @@
                         "type": "integer",
                         "minimum": -9007199254740991,
                         "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "expectedPerDay": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 48
                       },
                       {
                         "type": "null"

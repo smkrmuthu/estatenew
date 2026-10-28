@@ -4,7 +4,7 @@ Generated from `docs/owner-confirmations.json` (updated 2026-10-28). Do not edit
 
 Rules: a ticked box or written comment from the owner is confirmed; a blank is open. Proposed defaults from the architecture document or the prototype are never treated as answers. Items marked **Blocks production** must be confirmed before the affected behaviour is switched on for a live tenant.
 
-- Confirmed: 11
+- Confirmed: 12
 - Answered, meaning unclear: 2
 - Open: 105
 - Open and blocking production activation: 25
@@ -118,6 +118,7 @@ Rules: a ticked box or written comment from the owner is confirmed; a blank is o
 | OC-63 | Supervisors already have Android smartphones, or the estate will provide them. |  | Open | 1A | Yes | Any current phone browser that can install the web app; tested on Android Chrome and iOS Safari. |
 | OC-64 | Which languages should the application show? (for example English, Kannada, Tamil, Malayalam, Hindi) |  | Open | 1A |  | English only. |
 | OC-65 | Glazebrooke and Byson Valley will be managed in the same application, under one owner login. |  | Open | 1A |  | Both estates sit in one tenant; an Owner sees both. |
+| OC-109 | Is each worker recorded as Permanent, Casual or Contract? | Permanent, Casual or Contract per worker | Confirmed | 1A |  | Optional field on a worker, default Permanent in the form; shown in Masters and on the attendance register; not used in pay or reports. Recorded from the project lead's instruction; the estate owner has not yet answered on the form. |
 
 ## Later phases
 
@@ -131,12 +132,12 @@ Rules: a ticked box or written comment from the owner is confirmed; a blank is o
 | ID | Question | Owner answer | Status | Phase | Blocks production | Interim behaviour |
 |---|---|---|---|---|---|---|
 | OC-68 | Do Glazebrooke and Byson Valley share one washing, fermentation, drying and packing area? If not, please say where each estate processes its coffee. |  | Open | 1B |  | Not used in Phase 1A. Keep configurable; do not activate proposed defaults. |
-| OC-69 | Are divisions split into smaller parts (subdivisions) with their own codes, such as SD1 and SD2? If yes, please share the list with the variety and elevation of each. |  | Open | 1A |  | Subdivision is optional on fields and weigh-ins; no codes generated. |
+| OC-69 | Are divisions split into smaller parts (subdivisions) with their own codes, such as SD1 and SD2? If yes, please share the list with the variety and elevation of each. |  | Open | 1A |  | Fields can have optional subdivisions (A, B, C by order) with land use, at most one variety and acres, as in the prototype form (project lead instruction, 28 Oct 2026). Bearing subdivisions need a variety; acres must add up to the field. No codes beyond the letter; weigh-ins are still per field. Meaning and ownership of subdivisions still open (AQ-24). |
 | OC-70 | Are cherries from each subdivision kept separate from plucking until packing? |  | Open | 1B |  | Not used in Phase 1A. Keep configurable; do not activate proposed defaults. |
 | OC-71 | Orange Kadu is 7 acres, but its varieties add up to 6 acres (3 Chandana Giri and 3 Selection 9). Which is correct, and which variety are the 3 acres of young plants? |  | Open | 1B |  | Not used in Phase 1A. Keep configurable; do not activate proposed defaults. |
 | OC-72 | In No 49, are the 8 acres of young plants Chandana Giri and the 2 bearing acres Selection 9? |  | Open | 1B |  | Not used in Phase 1A. Keep configurable; do not activate proposed defaults. |
 | OC-73 | Is Chandana Giri the variety also spelled Chandragiri? |  | Open | 1B |  | Not used in Phase 1A. Keep configurable; do not activate proposed defaults. |
-| OC-74 | Can you give the elevation of each division or subdivision? |  | Open | 1B |  | Not used in Phase 1A. Keep configurable; do not activate proposed defaults. |
+| OC-74 | Can you give the elevation of each division or subdivision? |  | Open | 1B |  | Elevation (m) is an optional number on a field, shown only. Not used in Phase 1A logic. |
 | OC-75 | Which months does the plucking season run, and is the expected crop updated during the season? |  | Open | 1B |  | Not used in Phase 1A. Keep configurable; do not activate proposed defaults. |
 | OC-76 | In the example flow, what do the fermentation types GBF1 (Pineapple), GBF2 (Avocado) and GBT1 (Apple) mean? Is fruit added, or is it the flavour aimed for? |  | Open | 1B |  | Not used in Phase 1A. Keep configurable; do not activate proposed defaults. |
 | OC-77 | What does the dry type Wats mean in the example flow? |  | Open | 1B |  | Not used in Phase 1A. Keep configurable; do not activate proposed defaults. |
@@ -166,7 +167,7 @@ Rules: a ticked box or written comment from the owner is confirmed; a blank is o
 | OC-96 | When flavours are mixed, the fermentation time is the average of the flavours’ times by share. Is that right, or is the time chosen by hand for each mix? Average / by hand: ______ |  | Open | 1B |  | Not used in Phase 1A. Keep configurable; do not activate proposed defaults. |
 | OC-97 | Which fermentation flavours does the estate use, how many hours does each take, and who may change this list? Flavours and hours: ______ |  | Open | 1B |  | Not used in Phase 1A. Keep configurable; do not activate proposed defaults. |
 | OC-98 | After pulping, coffee may rest in the same place for about 2 days before drying. Is 2 days right, and where does it rest (for example the pulping floor, in bags or in a tank)? Days: ______ Place: ______ |  | Open | 1B |  | Not used in Phase 1A. Keep configurable; do not activate proposed defaults. |
-| OC-99 | Each worker is marked Male or Female. Which tasks or rates depend on it? |  | Open | 1A | Yes | Gender is not collected or used. |
+| OC-99 | Each worker is marked Male or Female. Which tasks or rates depend on it? |  | Open | 1A | Yes | Optional Male/Female field on a worker (project lead instruction, 28 Oct 2026). Shown in Masters and as a women/men count on the attendance register; not used for tasks, pay or rates and not exported to public trace. Estate-owner answer still open. |
 | OC-100 | Temperature and rain are recorded twice a day for both estates by the same supervisor, from one place in each estate. Are other readings needed, or other places? |  | Open | 1A | Yes | Daily log kinds are configuration. Temperature (°C) and Rain (mm) twice a day are seeded only in development and staging fixtures; production kinds are created by the tenant admin after confirmation. |
 | OC-101 | A supervisor's phone may be without internet for up to 7 days before it needs a full sign-in again. |  | Open | 1A | Yes | Offline capture works while the device session is valid (default 12 hours, configurable). Longer windows up to 7 days are blocked until confirmed. |
 | OC-102 | Attendance, Daily log and weigh-in entries made without internet may appear in the office reports only after the phone syncs. Until then the phone shows each entry as waiting. |  | Open | 1A | Yes | Reports count only server-accepted records and show separately how many entries devices reported as waiting. |

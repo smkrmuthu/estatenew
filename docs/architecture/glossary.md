@@ -5,7 +5,7 @@
 | Tenant | One customer (an estate group). Has its own database. The first tenant runs Glazebrooke and Byson Valley. |
 | Estate | A property inside a tenant. Roles are granted per estate. |
 | Field | A planted area of an estate. The first tenant calls it a Division (setting `terminology.field`). Can carry Coffee, Pepper or both. |
-| Subdivision | Optional finer part of a field (OC-69, AQ-24 open). Free text on weigh-ins for now. |
+| Subdivision | Optional part of a field with one land use, at most one variety and acres, lettered A, B, C (OC-69, AQ-24 open). Not on weigh-ins yet. |
 | Crop | COFFEE or PEPPER, chosen on each weigh-in. |
 | Variety | A cultivar of a crop (for example Chandana Giri, Selection 9). List and spellings are open (OC-14, OC-73). |
 | Attendance sheet | One estate's attendance for one business date. States: DRAFT, SUBMITTED, APPROVED. |

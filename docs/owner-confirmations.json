@@ -1114,6 +1114,24 @@
       "decidedOn": null
     },
     {
+      "id": "OC-109",
+      "number": 109,
+      "section": "People, phones and languages",
+      "question": "Is each worker recorded as Permanent, Casual or Contract?",
+      "ownerAnswer": "Permanent, Casual or Contract per worker",
+      "status": "confirmed",
+      "phase": "1A",
+      "blocksProductionActivation": false,
+      "affects": [
+        "workers.employmentType"
+      ],
+      "interimBehavior": "Optional field on a worker, default Permanent in the form; shown in Masters and on the attendance register; not used in pay or reports. Recorded from the project lead's instruction; the estate owner has not yet answered on the form.",
+      "configKeys": [],
+      "source": "Project lead instruction in the build session, 28 Oct 2026 (prototype New worker form)",
+      "approver": "Muthu Kumar (project lead)",
+      "decidedOn": "2026-10-28"
+    },
+    {
       "id": "OC-66",
       "number": 66,
       "section": "Later phases",
@@ -1177,7 +1195,7 @@
       "affects": [
         "organization.subdivisions"
       ],
-      "interimBehavior": "Subdivision is optional on fields and weigh-ins; no codes generated.",
+      "interimBehavior": "Fields can have optional subdivisions (A, B, C by order) with land use, at most one variety and acres, as in the prototype form (project lead instruction, 28 Oct 2026). Bearing subdivisions need a variety; acres must add up to the field. No codes beyond the letter; weigh-ins are still per field. Meaning and ownership of subdivisions still open (AQ-24).",
       "configKeys": [
         "organization.subdivisions.enabled"
       ],
@@ -1259,7 +1277,7 @@
       "phase": "1B",
       "blocksProductionActivation": false,
       "affects": [],
-      "interimBehavior": "Not used in Phase 1A. Keep configurable; do not activate proposed defaults.",
+      "interimBehavior": "Elevation (m) is an optional number on a field, shown only. Not used in Phase 1A logic.",
       "configKeys": [],
       "source": "Coffee Estate Application - Process Confirmation for Estate Owner (23 Oct 2026), answers as exported 27 Oct 2026",
       "approver": null,
@@ -1677,7 +1695,7 @@
       "affects": [
         "privacy.workerGender"
       ],
-      "interimBehavior": "Gender is not collected or used.",
+      "interimBehavior": "Optional Male/Female field on a worker (project lead instruction, 28 Oct 2026). Shown in Masters and as a women/men count on the attendance register; not used for tasks, pay or rates and not exported to public trace. Estate-owner answer still open.",
       "configKeys": [],
       "source": "Coffee Estate Application - Process Confirmation for Estate Owner (23 Oct 2026), answers as exported 27 Oct 2026",
       "approver": null,

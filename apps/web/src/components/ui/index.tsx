@@ -1,5 +1,5 @@
 // Small shadcn-style primitives (copied-in components, styled with Tailwind tokens).
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from "react";
+import { type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, useEffect, useRef } from "react";
 import type { LocalStatus } from "../../lib/db";
 
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(" ");
@@ -119,5 +119,62 @@ export function Notice({ tone = "info", children }: { tone?: "info" | "warn" | "
     >
       {children}
     </div>
+  );
+}
+
+/** Slide-over panel for forms, like the prototype's drawer. Escape and the scrim close it. */
+export function Drawer({ title, subtitle, onClose, children }: { title: ReactNode; subtitle: ReactNode; onClose: () => void; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const prev = document.activeElement as HTMLElement | null;
+    ref.current?.focus();
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      prev?.focus?.();
+    };
+  }, [onClose]);
+  return (
+    <div className="fixed inset-0 z-40 flex justify-end">
+      <button type="button" aria-label="Close" tabIndex={-1} className="absolute inset-0 bg-ink/40" onClick={onClose} />
+      <div
+        ref={ref}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-label={String(subtitle)}
+        className="relative flex h-full w-full max-w-xl flex-col gap-4 overflow-y-auto border-l border-line bg-surface p-5 shadow-xl"
+      >
+        <header className="flex items-start justify-between gap-3 border-b border-line pb-3">
+          <div>
+            <p className="text-[0.8rem] text-muted">{subtitle}</p>
+            <h2 className="text-xl">{title}</h2>
+          </div>
+          <Button variant="secondary" size="sm" onClick={onClose}>
+            Close
+          </Button>
+        </header>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/** Small status pill used in tables. */
+export function Chip({ tone = "plain", children }: { tone?: "plain" | "ok" | "warn" | "bad" | "info"; children: ReactNode }) {
+  return (
+    <span
+      className={cx(
+        "inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium",
+        tone === "plain" && "bg-surface-2 text-muted",
+        tone === "ok" && "bg-ok/15 text-ok",
+        tone === "warn" && "bg-warn/15 text-warn",
+        tone === "bad" && "bg-bad/15 text-bad",
+        tone === "info" && "bg-info/15 text-info",
+      )}
+    >
+      {children}
+    </span>
   );
 }

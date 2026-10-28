@@ -35,6 +35,10 @@ Last updated: 28 October 2026 (staging deployed).
 
 Not run: browser end-to-end suite (Playwright), load test, OWASP ZAP scan, staging restore drill. These need staging (see below).
 
+## Masters and Users (28 October, interim: ADR-0011)
+
+Masters has Fields, Workers, Jobs and Log kinds tabs with Add and Edit side forms like the prototype; Users is its own page with last sign-in. New optional data: worker gender and type (Permanent, Casual, Contract), field elevation, expected cherry and subdivisions, job "counts as plucking", log kind "expected per day". Server allocates employee codes (`GLZ-001`) and field codes (`GLZ-01`). Tenant migration 0002 adds the columns and table. Not yet: weigh-in does not follow "counts as plucking"; no CSV import for subdivisions; gender, subdivisions, elevation and expected crop wait on owner answers (OC-99, AQ-24, OC-74, OC-75).
+
 ## Prototype pages not built yet
 
 Washing, Processing, Packing, Trace a bag and Process settings from the prototype are Phase 1B and are not in the menu. Plucking is the Weigh-in page (it also covers pepper). Masters and Users are inside Manage. Daily log "expected readings per day" is not shown because the reading list is open (OC-100).

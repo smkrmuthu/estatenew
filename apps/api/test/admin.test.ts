@@ -24,10 +24,36 @@ describe("imports", () => {
     expect(audit.length).toBeGreaterThanOrEqual(1);
   });
 
-  it("rejects formula injection and a gender column", async () => {
+  it("imports worker type, keeps it when the column is absent, and refuses unknown values", async () => {
     const s = await setupTenant();
-    const res = (await api("/imports/preview", { token: s.owner.token, body: { kind: "workers", csv: "estate_code,employee_code,name,gender\nGLZ,W1,=HYPERLINK(1),F\n" } })).body;
-    expect(res.errors.map((e: { column: string }) => e.column)).toEqual(["gender"]);
+    const imp = async (csv: string) => {
+      const pre = (await api("/imports/preview", { token: s.owner.token, body: { kind: "workers", csv } })).body;
+      if (pre.errors.length) return pre;
+      return (await api("/imports/commit", { token: s.owner.token, body: { kind: "workers", csv, previewHash: pre.previewHash } })).body;
+    };
+    const types = async () =>
+      Object.fromEntries(
+        ((await api("/reference", { token: s.owner.token })).body.workers as { employeeCode: string; employmentType: string | null }[]).map((w) => [w.employeeCode, w.employmentType]),
+      );
+
+    expect(await types()).toMatchObject({ W001: null, W002: null });
+    await imp("estate_code,employee_code,name,employment_type\nGLZ,W001,Worker A,permanent\nGLZ,W002,Worker B,Casual\nGLZ,W003,Worker C,CONTRACT\n");
+    expect(await types()).toMatchObject({ W001: "PERMANENT", W002: "CASUAL", W003: "CONTRACT" });
+
+    // A file without the column leaves the type alone; a blank cell clears it.
+    await imp("estate_code,employee_code,name\nGLZ,W001,Worker A renamed\n");
+    expect(await types()).toMatchObject({ W001: "PERMANENT" });
+    await imp("estate_code,employee_code,name,employment_type\nGLZ,W001,Worker A renamed,\n");
+    expect(await types()).toMatchObject({ W001: null });
+
+    const bad = await imp("estate_code,employee_code,name,employment_type\nGLZ,W001,Worker A,Seasonal\n");
+    expect(bad.errors).toEqual([expect.objectContaining({ row: 2, column: "employment_type" })]);
+  });
+
+  it("rejects formula injection and unknown columns", async () => {
+    const s = await setupTenant();
+    const res = (await api("/imports/preview", { token: s.owner.token, body: { kind: "workers", csv: "estate_code,employee_code,name,phone\nGLZ,W1,=HYPERLINK(1),9\n" } })).body;
+    expect(res.errors.map((e: { column: string }) => e.column)).toEqual(["phone"]);
     const res2 = (await api("/imports/preview", { token: s.owner.token, body: { kind: "workers", csv: "estate_code,employee_code,name\nGLZ,W1,=HYPERLINK(1)\n" } })).body;
     expect(res2.errors[0].message).toMatch(/cannot start/);
   });
@@ -97,5 +123,97 @@ describe("passwords", () => {
     expect((await api("/auth/me", { token: first.token })).status).toBe(200);
     expect((await api("/auth/me", { token: second.token })).status).toBe(401);
     expect((await login(s.code, "sup1", "my-own-password-9")).user.mustChangePassword).toBe(false);
+  });
+});
+
+describe("masters forms", () => {
+  it("creates a worker with gender and type, allocates the next code, and edits it", async () => {
+    const s = await setupTenant();
+    const mk = (body: Record<string, unknown>) => api("/workers", { token: s.owner.token, body: { estateId: s.estate.id, ...body } });
+    const a = await mk({ name: "Asha", gender: "FEMALE", employmentType: "PERMANENT" });
+    expect(a.status, JSON.stringify(a.body)).toBe(201);
+    expect(a.body).toMatchObject({ employeeCode: "GLZ-001", gender: "FEMALE", employmentType: "PERMANENT", active: true });
+    const b = await mk({ name: "Babu", gender: null, employmentType: "CASUAL" });
+    expect(b.body).toMatchObject({ employeeCode: "GLZ-002", gender: null, employmentType: "CASUAL" });
+    const bad = await mk({ name: "X", gender: "OTHER" });
+    expect(bad.status).toBe(422);
+
+    const edit = await api(`/workers/${b.body.id}`, {
+      method: "PUT",
+      token: s.owner.token,
+      headers: { "if-match": "1" },
+      body: { estateId: s.estate.id, name: "Babu K", gender: "MALE", employmentType: "CONTRACT", active: false },
+    });
+    expect(edit.body).toMatchObject({ name: "Babu K", gender: "MALE", employmentType: "CONTRACT", active: false, version: 2, employeeCode: "GLZ-002" });
+    // Inactive workers are left out of the device list but come back for the Masters screen.
+    const codes = async (q = "") => ((await api(`/reference${q}`, { token: s.owner.token })).body.workers as { employeeCode: string }[]).map((w) => w.employeeCode);
+    expect(await codes()).not.toContain("GLZ-002");
+    expect(await codes("?inactive=1")).toContain("GLZ-002");
+    // A supervisor cannot add workers.
+    const sup = await api("/workers", { token: s.supervisor.token, body: { estateId: s.estate.id, name: "Nope" } });
+    expect(sup.status).toBe(403);
+  });
+
+  it("saves a field with subdivisions A, B, C, derives its varieties, and checks the acres", async () => {
+    const s = await setupTenant();
+    const base = { estateId: s.estate.id, code: "F9", name: "Middle Field", areaCentiAcres: 1000, elevationM: 1050, expectedCherryKg: 2500, crops: ["COFFEE"] };
+    const ok = await api("/fields", {
+      token: s.owner.token,
+      body: {
+        ...base,
+        subdivisions: [
+          { landUse: "BEARING", varietyId: s.cg.id, areaCentiAcres: 400 },
+          { landUse: "BEARING", varietyId: s.ref.varieties.find((v: { code: string }) => v.code === "S9").id, areaCentiAcres: 500 },
+          { landUse: "ROCK", areaCentiAcres: 100 },
+        ],
+      },
+    });
+    expect(ok.status, JSON.stringify(ok.body)).toBe(201);
+    const f = ((await api("/reference", { token: s.owner.token })).body.fields as any[]).find((x) => x.code === "F9");
+    expect(f).toMatchObject({ elevationM: 1050, expectedCherryKg: 2500, areaCentiAcres: 1000 });
+    expect(f.subdivisions.map((x: { label: string; landUse: string }) => `${x.label}:${x.landUse}`)).toEqual(["A:BEARING", "B:BEARING", "C:ROCK"]);
+    expect(f.varietyIds).toHaveLength(2);
+
+    // A field without a code gets the next one for its estate.
+    const auto = await api("/fields", { token: s.owner.token, body: { estateId: s.estate.id, name: "No code given", crops: ["COFFEE"] } });
+    expect(auto.body.code).toBe("GLZ-01");
+
+    const mismatch = await api("/fields", { token: s.owner.token, body: { ...base, code: "F10", subdivisions: [{ landUse: "BEARING", varietyId: s.cg.id, areaCentiAcres: 300 }] } });
+    expect(mismatch.body.code).toBe("SUBDIVISION_AREA");
+    const noVariety = await api("/fields", { token: s.owner.token, body: { ...base, code: "F11", subdivisions: [{ landUse: "BEARING", areaCentiAcres: 1000 }] } });
+    expect(noVariety.body.code).toBe("SUBDIVISION_VARIETY");
+
+    // Editing replaces the subdivisions and keeps the audit trail.
+    const edit = await api(`/fields/${ok.body.id}`, {
+      method: "PUT",
+      token: s.owner.token,
+      headers: { "if-match": "1" },
+      body: { ...base, subdivisions: [{ landUse: "BEARING", varietyId: s.cg.id, areaCentiAcres: 1000 }] },
+    });
+    expect(edit.status, JSON.stringify(edit.body)).toBe(200);
+    const f2 = ((await api("/reference", { token: s.owner.token })).body.fields as any[]).find((x) => x.code === "F9");
+    expect(f2.subdivisions).toHaveLength(1);
+    expect(f2.varietyIds).toEqual([s.cg.id]);
+    // Another tenant's estate cannot be written to; a supervisor cannot write fields.
+    expect((await api("/fields", { token: s.supervisor.token, body: base })).status).toBe(403);
+  });
+
+  it("keeps the plucking flag on jobs and expected readings per day on log kinds", async () => {
+    const s = await setupTenant();
+    const job = await api("/job-types", { token: s.owner.token, body: { code: "PRN", name: "Pruning", countsAsPlucking: false } });
+    expect(job.body).toMatchObject({ countsAsPlucking: false });
+    const upd = await api(`/job-types/${s.plk.id}`, { method: "PUT", token: s.owner.token, body: { code: "PLK", name: "Plucking", countsAsPlucking: true, active: true } });
+    expect(upd.body).toMatchObject({ countsAsPlucking: true });
+    const kind = await api("/admin/log-kinds", {
+      token: s.owner.token,
+      body: { code: "RAIN", label: "Rain", unit: "mm", valueType: "NUMBER", decimals: 0, minScaled: 0, maxScaled: 300, expectedPerDay: 2 },
+    });
+    expect(kind.body).toMatchObject({ expectedPerDay: 2 });
+  });
+
+  it("lists users with their last sign-in", async () => {
+    const s = await setupTenant();
+    const list = (await api("/admin/users", { token: s.owner.token })).body as { username: string; lastSignInAt: string | null }[];
+    expect(list.find((u) => u.username === "sup1")?.lastSignInAt).toMatch(/^\d{4}-/);
   });
 });

@@ -70,6 +70,19 @@ const PATHS: Record<string, ReactNode> = {
       <path d="M12 7.5V12l3 2" />
     </>
   ),
+  map: (
+    <>
+      <path d="M3 6.5 9 4l6 2.5L21 4v13.5L15 20l-6-2.5L3 20Z" />
+      <path d="M9 4v13.5" />
+      <path d="M15 6.5V20" />
+    </>
+  ),
+  user: (
+    <>
+      <circle cx="12" cy="8" r="3.5" />
+      <path d="M4.5 20c.8-3.6 3.6-5.5 7.5-5.5s6.7 1.9 7.5 5.5" />
+    </>
+  ),
   alert: (
     <>
       <path d="M12 3.5 2.5 20h19Z" />
@@ -85,7 +98,7 @@ const PATHS: Record<string, ReactNode> = {
   ),
 };
 
-export type IconName = "grid" | "users" | "leaf" | "scale" | "cloud" | "chart" | "sync" | "sliders" | "clock" | "alert" | "check";
+export type IconName = "grid" | "users" | "leaf" | "scale" | "cloud" | "chart" | "sync" | "sliders" | "map" | "user" | "clock" | "alert" | "check";
 
 export function Icon({ name, className = "h-5 w-5" }: { name: IconName; className?: string }) {
   return (

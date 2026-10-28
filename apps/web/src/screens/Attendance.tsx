@@ -139,14 +139,19 @@ export function Attendance() {
     let A = 0;
     let O = 0;
     let none = 0;
+    let women = 0;
+    let men = 0;
     for (const w of workers) {
       const { r, draft, d } = viewOf(w.id);
       if (!r || draft) none++;
-      else if (d.statusCode === "PRESENT") d.dayFraction === "HALF" ? H++ : P++;
-      else if (d.statusCode === "ABSENT" || d.statusCode === "LEAVE") A++;
+      else if (d.statusCode === "PRESENT") {
+        d.dayFraction === "HALF" ? H++ : P++;
+        if (w.gender === "FEMALE") women++;
+        else if (w.gender === "MALE") men++;
+      } else if (d.statusCode === "ABSENT" || d.statusCode === "LEAVE") A++;
       else O++;
     }
-    return { P, H, A, O, none };
+    return { P, H, A, O, none, women, men };
   })();
 
   async function mark(workerId: string, change: { statusCode: string; dayFraction?: "FULL" | "HALF" | null; fieldId?: string | null; jobTypeId?: string | null; remarks?: string | null }) {
@@ -301,6 +306,11 @@ export function Attendance() {
               </>
             ) : null}
           </small>
+          {counts.women + counts.men > 0 && (
+            <small className="w-full text-muted">
+              {counts.women} {counts.women === 1 ? "woman" : "women"}, {counts.men} {counts.men === 1 ? "man" : "men"} working
+            </small>
+          )}
           <span className="flex-1" />
           {canCapture && (
             <Button variant="secondary" onClick={markRest} disabled={counts.none === 0}>
@@ -445,6 +455,11 @@ export function Attendance() {
                 <div className="flex items-center justify-between gap-2 md:block">
                   <p className="font-semibold">
                     <span className="font-mono text-sm text-muted">{w.employeeCode}</span> {w.name}
+                    {w.employmentType && (
+                      <span className={`ml-2 rounded-full px-2 py-0.5 align-middle text-xs font-medium ${w.employmentType === "PERMANENT" ? "bg-surface-2 text-muted" : "bg-warn/15 text-warn"}`}>
+                        {w.employmentType === "PERMANENT" ? "Permanent" : w.employmentType === "CASUAL" ? "Casual" : "Contract"}
+                      </span>
+                    )}
                   </p>
                   <div className="text-sm">
                     {draft ? <span className="font-semibold text-warn">Choose field and job</span> : r ? <StatusBadge status={r.status} compact /> : <span className="text-muted">Not marked</span>}

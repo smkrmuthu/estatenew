@@ -14,15 +14,17 @@ import { ChangePassword } from "./screens/ChangePassword";
 import { DailyLog } from "./screens/DailyLog";
 import { Dashboard } from "./screens/Dashboard";
 import { Manage } from "./screens/Manage";
+import { Masters } from "./screens/Masters";
 import { SignIn } from "./screens/SignIn";
 import { Summary } from "./screens/Summary";
 import { Sync } from "./screens/Sync";
+import { Users } from "./screens/Users";
 import { WeighIn } from "./screens/WeighIn";
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1, staleTime: 15_000, networkMode: "online" } } });
 
-type Tab = "dashboard" | "attendance" | "weighin" | "dailylog" | "summary" | "sync" | "manage" | "password";
-const TABS: Tab[] = ["dashboard", "attendance", "weighin", "dailylog", "summary", "sync", "manage", "password"];
+type Tab = "dashboard" | "attendance" | "weighin" | "dailylog" | "summary" | "masters" | "users" | "sync" | "manage" | "password";
+const TABS: Tab[] = ["dashboard", "attendance", "weighin", "dailylog", "summary", "masters", "users", "sync", "manage", "password"];
 const tabFromHash = (): Tab => {
   const h = location.hash.slice(1) as Tab;
   return TABS.includes(h) ? h : "dashboard";
@@ -120,6 +122,8 @@ function Shell() {
     { id: "weighin", label: "Weigh-in", short: "Weigh-in", icon: "scale", show: app.can("muster.read") },
     { id: "dailylog", label: "Daily log", short: "Daily log", icon: "cloud", show: app.can("dailylog.read") },
     { id: "summary", label: "Reports", short: "Reports", icon: "chart", show: app.can("reports.read") },
+    { id: "masters", label: "Masters", short: "Masters", icon: "map", show: app.can("masters.read") },
+    { id: "users", label: "Users", short: "Users", icon: "user", show: app.can("users.manage", null) },
     { id: "sync", label: "Sync", short: "Sync", icon: "sync", count: app.queue.waiting + app.queue.rejected + app.queue.conflict, show: true },
     { id: "manage", label: "Manage", short: "Manage", icon: "sliders", show: showManage },
   ];
@@ -188,6 +192,8 @@ function Shell() {
           {current === "weighin" && <WeighIn />}
           {current === "dailylog" && <DailyLog />}
           {current === "summary" && <Summary />}
+          {current === "masters" && <Masters />}
+          {current === "users" && <Users />}
           {current === "sync" && <Sync />}
           {current === "manage" && <Manage />}
           {current === "password" && (

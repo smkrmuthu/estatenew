@@ -48,13 +48,42 @@ export interface ReferenceCache {
   fetchedAt: string;
 }
 
+export type Gender = "MALE" | "FEMALE";
+export type EmploymentType = "PERMANENT" | "CASUAL" | "CONTRACT";
+export type LandUse = "BEARING" | "YOUNG" | "ROCK" | "WATER" | "EMPTY" | "OTHER_CROP";
+
 export interface ReferenceData {
   estates: { id: string; code: string; name: string; timeZone: string }[];
-  fields: { id: string; estateId: string; code: string; name: string; crops: string[]; varietyIds: string[] }[];
+  fields: {
+    id: string;
+    estateId: string;
+    code: string;
+    name: string;
+    crops: string[];
+    varietyIds: string[];
+    areaCentiAcres?: number | null;
+    elevationM?: number | null;
+    expectedCherryKg?: number | null;
+    active?: boolean;
+    version?: number;
+    subdivisions?: { id: string; label: string; landUse: LandUse; varietyId: string | null; areaCentiAcres: number | null }[];
+  }[];
   varieties: { id: string; code: string; name: string; crop: string }[];
-  jobTypes: { id: string; code: string; name: string }[];
-  workers: { id: string; estateId: string; employeeCode: string; name: string }[];
-  logKinds: { id: string; code: string; label: string; unit: string | null; valueType: "NUMBER" | "TEXT"; decimals: number }[];
+  jobTypes: { id: string; code: string; name: string; countsAsPlucking?: boolean; active?: boolean; version?: number }[];
+  workers: { id: string; estateId: string; employeeCode: string; name: string; gender?: Gender | null; employmentType?: EmploymentType | null; active?: boolean; version?: number }[];
+  logKinds: {
+    id: string;
+    code: string;
+    label: string;
+    unit: string | null;
+    valueType: "NUMBER" | "TEXT";
+    decimals: number;
+    minScaled?: number | null;
+    maxScaled?: number | null;
+    expectedPerDay?: number | null;
+    active?: boolean;
+    version?: number;
+  }[];
 }
 
 export class LocalDb extends Dexie {

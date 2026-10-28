@@ -4,7 +4,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import type { z } from "zod";
 import { AppError } from "../../core/errors";
 import { assertFound, type Db, staleVersion, type TenantContext } from "../context";
-import { estates, fields, fieldVarieties, jobTypes, logKinds, varieties, workers } from "../schema";
+import { estates, fieldSubdivisions, fields, fieldVarieties, jobTypes, logKinds, varieties, workers } from "../schema";
 import { setting } from "./settings";
 
 const uniqueViolation = (e: unknown) => e instanceof Error && /UNIQUE constraint failed/i.test(e.message);
@@ -53,7 +53,12 @@ export function createEstate(ctx: TenantContext, input: z.infer<typeof estateInp
 
 export interface ReferenceData {
   estates: (typeof estates.$inferSelect)[];
-  fields: (Omit<typeof fields.$inferSelect, "cropsJson"> & { crops: string[]; varietyIds: string[] })[];
+  fields: (Omit<typeof fields.$inferSelect, "cropsJson" | "expectedCherryG"> & {
+    crops: string[];
+    varietyIds: string[];
+    expectedCherryKg: number | null;
+    subdivisions: { id: string; label: string; landUse: string; varietyId: string | null; areaCentiAcres: number | null }[];
+  })[];
   varieties: (typeof varieties.$inferSelect)[];
   jobTypes: (typeof jobTypes.$inferSelect)[];
   workers: (typeof workers.$inferSelect)[];
@@ -67,6 +72,7 @@ export function referenceData(ctx: TenantContext, includeInactive = false): Refe
   const ids = estateRows.map((e) => e.id);
   if (ids.length === 0) return { estates: [], fields: [], varieties: [], jobTypes: [], workers: [], logKinds: [] };
   const fv = ctx.db.select().from(fieldVarieties).all();
+  const subs = ctx.db.select().from(fieldSubdivisions).all();
   const keep = <T extends { active: boolean }>(r: T) => includeInactive || r.active;
   return {
     estates: estateRows,
@@ -76,12 +82,34 @@ export function referenceData(ctx: TenantContext, includeInactive = false): Refe
       .where(inArray(fields.estateId, ids))
       .all()
       .filter(keep)
-      .map(({ cropsJson, ...f }) => ({ ...f, crops: JSON.parse(cropsJson) as string[], varietyIds: fv.filter((x) => x.fieldId === f.id).map((x) => x.varietyId) })),
+      .map(({ cropsJson, expectedCherryG, ...f }) => ({
+        ...f,
+        crops: JSON.parse(cropsJson) as string[],
+        varietyIds: fv.filter((x) => x.fieldId === f.id).map((x) => x.varietyId),
+        expectedCherryKg: expectedCherryG === null ? null : expectedCherryG / 1000,
+        subdivisions: subs
+          .filter((s) => s.fieldId === f.id)
+          .sort((a, b) => a.label.localeCompare(b.label))
+          .map((s) => ({ id: s.id, label: s.label, landUse: s.landUse, varietyId: s.varietyId, areaCentiAcres: s.areaCentiAcres })),
+      })),
     varieties: ctx.db.select().from(varieties).all().filter(keep),
     jobTypes: ctx.db.select().from(jobTypes).all().filter(keep),
     workers: ctx.db.select().from(workers).where(inArray(workers.estateId, ids)).all().filter(keep),
     logKinds: ctx.db.select().from(logKinds).all().filter(keep),
   };
+}
+
+/** The next free field code for an estate, like GLZ-07, allocated inside the insert's transaction. */
+function nextFieldCode(db: Db, estateId: string): string {
+  const estate = assertFound(db.select().from(estates).where(eq(estates.id, estateId)).get(), "Estate");
+  const prefix = `${estate.code.toUpperCase().replace(/[^A-Z0-9]/g, "")}-`;
+  const used = db
+    .select({ code: fields.code })
+    .from(fields)
+    .where(eq(fields.estateId, estateId))
+    .all()
+    .flatMap((f) => (f.code.toUpperCase().startsWith(prefix) && /^\d+$/.test(f.code.slice(prefix.length)) ? [Number(f.code.slice(prefix.length))] : []));
+  return `${prefix}${String(Math.max(0, ...used) + 1).padStart(2, "0")}`;
 }
 
 export function upsertField(ctx: TenantContext, input: z.infer<typeof fieldInput>, id?: string, baseVersion?: number) {
@@ -90,8 +118,34 @@ export function upsertField(ctx: TenantContext, input: z.infer<typeof fieldInput
   const { now, by } = audited(ctx);
   const enabledCrops = setting(ctx.db, "crops.enabled");
   if (input.crops.some((c) => !enabledCrops.includes(c))) throw new AppError(422, "CROP_NOT_ENABLED", "This crop is not switched on", { crops: "Crop not enabled" });
-  const vs = input.varietyIds.length ? ctx.db.select().from(varieties).where(inArray(varieties.id, input.varietyIds)).all() : [];
-  if (vs.length !== input.varietyIds.length) throw new AppError(422, "VARIETY_UNKNOWN", "A variety was not found", { varietyIds: "Unknown variety" });
+  const subdivisions = input.subdivisions ?? null;
+  if (subdivisions && subdivisions.length > 0) {
+    if (!input.areaCentiAcres) throw new AppError(422, "SUBDIVISION_AREA", "Enter the total acres before adding subdivisions", { areaCentiAcres: "Required" });
+    const total = subdivisions.reduce((s, x) => s + x.areaCentiAcres, 0);
+    if (total !== input.areaCentiAcres) {
+      throw new AppError(422, "SUBDIVISION_AREA", `Subdivisions add up to ${total / 100} acres, but the field is ${input.areaCentiAcres / 100} acres. Make them match.`, {
+        subdivisions: "Acres do not match",
+      });
+    }
+    if (subdivisions.some((s) => s.landUse === "BEARING" && !s.varietyId)) throw new AppError(422, "SUBDIVISION_VARIETY", "Bearing subdivisions need a variety", { subdivisions: "Variety needed" });
+  }
+  // With subdivisions, the field's varieties are the ones its subdivisions carry.
+  const varietyIds = subdivisions && subdivisions.length > 0 ? [...new Set(subdivisions.flatMap((s) => (s.varietyId ? [s.varietyId] : [])))] : input.varietyIds;
+  const vs = varietyIds.length ? ctx.db.select().from(varieties).where(inArray(varieties.id, varietyIds)).all() : [];
+  if (vs.length !== varietyIds.length) throw new AppError(422, "VARIETY_UNKNOWN", "A variety was not found", { varietyIds: "Unknown variety" });
+  const writeSubdivisions = (db: Db, fieldId: string) => {
+    if (!subdivisions) return;
+    db.delete(fieldSubdivisions).where(eq(fieldSubdivisions.fieldId, fieldId)).run();
+    for (const [i, s] of subdivisions.entries()) {
+      db.insert(fieldSubdivisions)
+        .values({ id: uuidv7(), tenantId: ctx.scope.tenantId, fieldId, label: String.fromCharCode(65 + i), landUse: s.landUse, varietyId: s.varietyId ?? null, areaCentiAcres: s.areaCentiAcres })
+        .run();
+    }
+  };
+  const extra = {
+    elevationM: input.elevationM ?? null,
+    expectedCherryG: input.expectedCherryKg == null ? null : input.expectedCherryKg * 1000,
+  };
   try {
     return ctx.tx((db) => {
       if (id) {
@@ -100,9 +154,10 @@ export function upsertField(ctx: TenantContext, input: z.infer<typeof fieldInput
         if (baseVersion !== undefined && before.version !== baseVersion) throw staleVersion();
         const after = {
           ...before,
-          code: input.code,
+          code: input.code ?? before.code,
           name: input.name,
           areaCentiAcres: input.areaCentiAcres ?? null,
+          ...extra,
           cropsJson: JSON.stringify(input.crops),
           active: input.active,
           version: before.version + 1,
@@ -111,17 +166,19 @@ export function upsertField(ctx: TenantContext, input: z.infer<typeof fieldInput
         };
         db.update(fields).set(after).where(eq(fields.id, id)).run();
         db.delete(fieldVarieties).where(eq(fieldVarieties.fieldId, id)).run();
-        for (const v of input.varietyIds) db.insert(fieldVarieties).values({ fieldId: id, varietyId: v }).run();
-        ctx.audit(db, { action: "field.update", entityType: "field", entityId: id, estateId: input.estateId, before, after: { ...after, varietyIds: input.varietyIds } });
+        for (const v of varietyIds) db.insert(fieldVarieties).values({ fieldId: id, varietyId: v }).run();
+        writeSubdivisions(db, id);
+        ctx.audit(db, { action: "field.update", entityType: "field", entityId: id, estateId: input.estateId, before, after: { ...after, varietyIds, subdivisions } });
         return after;
       }
       const row = {
         id: uuidv7(),
         tenantId: ctx.scope.tenantId,
         estateId: input.estateId,
-        code: input.code,
+        code: input.code ?? nextFieldCode(db, input.estateId),
         name: input.name,
         areaCentiAcres: input.areaCentiAcres ?? null,
+        ...extra,
         cropsJson: JSON.stringify(input.crops),
         active: input.active,
         version: 1,
@@ -131,8 +188,9 @@ export function upsertField(ctx: TenantContext, input: z.infer<typeof fieldInput
         updatedBy: by,
       };
       db.insert(fields).values(row).run();
-      for (const v of input.varietyIds) db.insert(fieldVarieties).values({ fieldId: row.id, varietyId: v }).run();
-      ctx.audit(db, { action: "field.create", entityType: "field", entityId: row.id, estateId: row.estateId, after: { ...row, varietyIds: input.varietyIds } });
+      for (const v of varietyIds) db.insert(fieldVarieties).values({ fieldId: row.id, varietyId: v }).run();
+      writeSubdivisions(db, row.id);
+      ctx.audit(db, { action: "field.create", entityType: "field", entityId: row.id, estateId: row.estateId, after: { ...row, varietyIds, subdivisions } });
       return row;
     });
   } catch (e) {
@@ -175,6 +233,18 @@ function upsertSimple<T extends SimpleTable>(ctx: TenantContext, table: T, entit
 export const upsertVariety = (ctx: TenantContext, input: z.infer<typeof varietyInput>, id?: string, v?: number) => upsertSimple(ctx, varieties, "variety", input, id, v);
 export const upsertJobType = (ctx: TenantContext, input: z.infer<typeof jobTypeInput>, id?: string, v?: number) => upsertSimple(ctx, jobTypes, "job_type", input, id, v);
 
+/** The next free code for an estate, like GLZ-007, allocated inside the same transaction as the insert. */
+function nextEmployeeCode(db: Db, estateId: string): string {
+  const estate = assertFound(db.select().from(estates).where(eq(estates.id, estateId)).get(), "Estate");
+  const prefix = `${estate.code.toUpperCase().replace(/[^A-Z0-9]/g, "")}-`;
+  const used = db
+    .select({ code: workers.employeeCode })
+    .from(workers)
+    .all()
+    .flatMap((w) => (w.code.toUpperCase().startsWith(prefix) && /^\d+$/.test(w.code.slice(prefix.length)) ? [Number(w.code.slice(prefix.length))] : []));
+  return `${prefix}${String(Math.max(0, ...used) + 1).padStart(3, "0")}`;
+}
+
 export function upsertWorker(ctx: TenantContext, input: z.infer<typeof workerInput>, id?: string, baseVersion?: number) {
   ctx.require("masters.write", input.estateId);
   getEstate(ctx.db, input.estateId);
@@ -190,7 +260,17 @@ export function upsertWorker(ctx: TenantContext, input: z.infer<typeof workerInp
         ctx.audit(db, { action: "worker.update", entityType: "worker", entityId: id, estateId: input.estateId, before, after });
         return after;
       }
-      const row = { id: uuidv7(), tenantId: ctx.scope.tenantId, ...input, version: 1, createdAt: now, createdBy: by, updatedAt: now, updatedBy: by };
+      const row = {
+        id: uuidv7(),
+        tenantId: ctx.scope.tenantId,
+        ...input,
+        employeeCode: input.employeeCode ?? nextEmployeeCode(db, input.estateId),
+        version: 1,
+        createdAt: now,
+        createdBy: by,
+        updatedAt: now,
+        updatedBy: by,
+      };
       db.insert(workers).values(row).run();
       ctx.audit(db, { action: "worker.create", entityType: "worker", entityId: row.id, estateId: row.estateId, after: row });
       return row;

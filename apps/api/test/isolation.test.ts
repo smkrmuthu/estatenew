@@ -78,7 +78,7 @@ describe("tenant and estate isolation", () => {
     const again = await stub.provision({ tenantId: b.tenantId, actor: "x", seedGatesFromRegister: false });
     expect(again).toMatchObject({ ok: false, error: { code: "TENANT_MISMATCH" } });
     const health = await stub.health();
-    expect(health.migration).toMatchObject({ version: 1, error: null });
+    expect(health.migration).toMatchObject({ version: 2, error: null });
     expect(health.provisioned).toBe(true);
   });
 });

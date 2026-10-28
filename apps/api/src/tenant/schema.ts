@@ -59,6 +59,8 @@ export const fields = sqliteTable("fields", {
   code: text("code").notNull(),
   name: text("name").notNull(),
   areaCentiAcres: integer("area_centi_acres"),
+  elevationM: integer("elevation_m"),
+  expectedCherryG: integer("expected_cherry_g"),
   cropsJson: text("crops_json").notNull(),
   active: integer("active", { mode: "boolean" }).notNull().default(true),
   ...audit,
@@ -68,11 +70,22 @@ export const fieldVarieties = sqliteTable("field_varieties", { fieldId: text("fi
   primaryKey({ columns: [t.fieldId, t.varietyId] }),
 ]);
 
+export const fieldSubdivisions = sqliteTable("field_subdivisions", {
+  id: text("id").primaryKey(),
+  tenantId: text("tenant_id").notNull(),
+  fieldId: text("field_id").notNull(),
+  label: text("label").notNull(),
+  landUse: text("land_use", { enum: ["BEARING", "YOUNG", "ROCK", "WATER", "EMPTY", "OTHER_CROP"] }).notNull(),
+  varietyId: text("variety_id"),
+  areaCentiAcres: integer("area_centi_acres"),
+});
+
 export const jobTypes = sqliteTable("job_types", {
   id: text("id").primaryKey(),
   tenantId: text("tenant_id").notNull(),
   code: text("code").notNull(),
   name: text("name").notNull(),
+  countsAsPlucking: integer("counts_as_plucking", { mode: "boolean" }).notNull().default(false),
   active: integer("active", { mode: "boolean" }).notNull().default(true),
   ...audit,
 });
@@ -83,6 +96,8 @@ export const workers = sqliteTable("workers", {
   estateId: text("estate_id").notNull(),
   employeeCode: text("employee_code").notNull(),
   name: text("name").notNull(),
+  gender: text("gender", { enum: ["MALE", "FEMALE"] }),
+  employmentType: text("employment_type", { enum: ["PERMANENT", "CASUAL", "CONTRACT"] }),
   active: integer("active", { mode: "boolean" }).notNull().default(true),
   ...audit,
 });
@@ -97,6 +112,7 @@ export const logKinds = sqliteTable("log_kinds", {
   decimals: integer("decimals").notNull(),
   minScaled: integer("min_scaled"),
   maxScaled: integer("max_scaled"),
+  expectedPerDay: integer("expected_per_day"),
   active: integer("active", { mode: "boolean" }).notNull().default(true),
   basis: text("basis").notNull(),
   ...audit,

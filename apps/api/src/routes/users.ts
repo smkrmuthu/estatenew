@@ -26,6 +26,11 @@ export function userRoutes(app: Hono<AppEnv>) {
     const db = controlDb(c.env);
     const rows = await db.select().from(users).where(eq(users.tenantId, a.tenant.id)).all();
     const grants = await db.select().from(userGrants).where(eq(userGrants.tenantId, a.tenant.id)).all();
+    // The newest session is the last sign-in.
+    const lastSignIn = new Map<string, string>();
+    for (const s of await db.select({ userId: sessions.userId, createdAt: sessions.createdAt }).from(sessions).where(eq(sessions.tenantId, a.tenant.id)).all()) {
+      if ((lastSignIn.get(s.userId) ?? "") < s.createdAt) lastSignIn.set(s.userId, s.createdAt);
+    }
     return c.json(
       rows.map((u) => ({
         id: u.id,
@@ -34,6 +39,7 @@ export function userRoutes(app: Hono<AppEnv>) {
         status: u.status,
         mfaEnabled: u.mfaEnabled,
         lockedUntil: u.lockedUntil,
+        lastSignInAt: lastSignIn.get(u.id) ?? null,
         grants: grantsOf(grants.filter((g) => g.userId === u.id)),
       })),
     );

@@ -4,6 +4,18 @@ import { looksLikeFormula, parseCsv } from "./csv";
 export const CROPS = ["COFFEE", "PEPPER"] as const;
 export type Crop = (typeof CROPS)[number];
 
+/** Optional on a worker. Collected for display only; use in tasks or rates waits on OC-99. */
+export const GENDERS = ["MALE", "FEMALE"] as const;
+export type Gender = (typeof GENDERS)[number];
+
+/** What a part of a field is used for. Plucking is offered only on BEARING parts. */
+export const LAND_USES = ["BEARING", "YOUNG", "ROCK", "WATER", "EMPTY", "OTHER_CROP"] as const;
+export type LandUse = (typeof LAND_USES)[number];
+
+/** How a worker is employed (OC-109). Optional on a worker. */
+export const EMPLOYMENT_TYPES = ["PERMANENT", "CASUAL", "CONTRACT"] as const;
+export type EmploymentType = (typeof EMPLOYMENT_TYPES)[number];
+
 export const IMPORT_KINDS = ["estates", "fields", "varieties", "job_types", "workers"] as const;
 export type ImportKind = (typeof IMPORT_KINDS)[number];
 
@@ -47,6 +59,9 @@ export interface WorkerRow {
   estateCode: string;
   employeeCode: string;
   name: string;
+  /** undefined: the file has no employment_type column, so leave the worker as is. null: column present but blank. */
+  employmentType?: EmploymentType | null;
+  gender?: Gender | null;
 }
 
 type RowOf<K extends ImportKind> = K extends "estates" ? EstateRow : K extends "fields" ? FieldRow : K extends "varieties" ? VarietyRow : K extends "job_types" ? JobTypeRow : WorkerRow;
@@ -57,7 +72,7 @@ const COLUMNS: Record<ImportKind, { required: string[]; optional: string[] }> = 
   varieties: { required: ["code", "name", "crop"], optional: [] },
   job_types: { required: ["code", "name"], optional: [] },
   // Gender is deliberately not imported (OC-99 open; collect only for a confirmed need).
-  workers: { required: ["estate_code", "employee_code", "name"], optional: [] },
+  workers: { required: ["estate_code", "employee_code", "name"], optional: ["employment_type", "gender"] },
 };
 
 export function importTemplate(kind: ImportKind): string {
@@ -136,7 +151,18 @@ export function parseImport<K extends ImportKind>(kind: K, csvText: string): Par
         break;
       }
       case "workers": {
-        const r = { estateCode: code("estate_code"), employeeCode: code("employee_code"), name: name("name") };
+        const r: WorkerRow = { estateCode: code("estate_code"), employeeCode: code("employee_code"), name: name("name") };
+        if (header.includes("employment_type")) {
+          const t = get("employment_type").toUpperCase();
+          if (t && !(EMPLOYMENT_TYPES as readonly string[]).includes(t)) err("employment_type", "Use PERMANENT, CASUAL or CONTRACT");
+          r.employmentType = (t || null) as EmploymentType | null;
+        }
+        if (header.includes("gender")) {
+          const g = get("gender").toUpperCase();
+          const full = g === "M" ? "MALE" : g === "F" ? "FEMALE" : g;
+          if (full && !(GENDERS as readonly string[]).includes(full)) err("gender", "Use MALE or FEMALE");
+          r.gender = (full || null) as Gender | null;
+        }
         key = r.employeeCode.toUpperCase();
         value = r;
         break;

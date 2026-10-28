@@ -26,8 +26,17 @@ describe("parseImport", () => {
     expect(r.rows[0]?.value).toEqual({ estateCode: "GLZ", code: "SK", name: "Super Kadu", areaCentiAcres: 1050, crops: ["COFFEE", "PEPPER"], varietyCodes: ["CG", "S9"] });
   });
   it("reports missing and unknown columns", () => {
-    const r = parseImport("workers", "estate_code,name,gender\nGLZ,A,F\n");
-    expect(r.errors.map((e) => e.column).sort()).toEqual(["employee_code", "gender"]);
+    const r = parseImport("workers", "estate_code,name,phone\nGLZ,A,9\n");
+    expect(r.errors.map((e) => e.column).sort()).toEqual(["employee_code", "phone"]);
+  });
+  it("reads optional worker type and gender, and tells a missing column from a blank one", () => {
+    const r = parseImport("workers", "estate_code,employee_code,name,employment_type,gender\nGLZ,W1,Ann,casual,f\nGLZ,W2,Bob,,\nGLZ,W3,Cy,Seasonal,X\n");
+    expect(r.rows.map((x) => x.value)).toEqual([
+      { estateCode: "GLZ", employeeCode: "W1", name: "Ann", employmentType: "CASUAL", gender: "FEMALE" },
+      { estateCode: "GLZ", employeeCode: "W2", name: "Bob", employmentType: null, gender: null },
+    ]);
+    expect(r.errors.map((e) => e.column)).toEqual(["employment_type", "gender"]);
+    expect(parseImport("workers", "estate_code,employee_code,name\nGLZ,W1,Ann\n").rows[0]?.value).toEqual({ estateCode: "GLZ", employeeCode: "W1", name: "Ann" });
   });
   it("reports row errors, duplicates and formula injection", () => {
     const r = parseImport("workers", "estate_code,employee_code,name\nGLZ,W1,Ann\nGLZ,w1,Bob\nGLZ,W2,=cmd()\nGLZ,,Cat\n");
