@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { AppError } from "../../core/errors";
 import type { Db, TenantContext } from "../context";
 import { estates, fieldSubdivisions, fields, fieldVarieties, importRuns, jobTypes, varieties, workers } from "../schema";
+import { setWorkerEstates, workerEstateIds } from "./organization";
 import { setting } from "./settings";
 
 interface PlannedRow {
@@ -219,33 +220,60 @@ function plan(ctx: TenantContext, kind: ImportKind, csv: string): { ops: Op[]; e
           continue;
         }
         const employmentType = v.employmentType as WorkerRow["employmentType"];
-        // Only a file that has the employment_type or area column changes it; otherwise it stays as it is.
+        // Only a file that has the employment_type, area, all_estates or estates column changes it; otherwise it stays as it is.
         const area = v.area as WorkerRow["area"];
-        const allEstates = v.allEstates as WorkerRow["allEstates"];
         const values = {
           estateId: estate.id,
           employeeCode: v.employeeCode as string,
           name: v.name as string,
           ...(employmentType !== undefined ? { employmentType } : {}),
           ...(area !== undefined ? { area } : {}),
-          ...(allEstates !== undefined ? { allEstates } : {}),
         };
+        // The estates the worker is allotted to: undefined leaves an existing worker's allotment as it is.
+        let allotted: string[] | undefined;
+        if (v.allEstates === true) allotted = [...estateByCode.values()].map((e) => e.id);
+        else if (v.estateCodes !== undefined || v.allEstates === false) {
+          const ids = new Set<string>([estate.id]);
+          for (const code of (v.estateCodes as string[] | undefined) ?? []) {
+            const e = estateByCode.get(code);
+            if (!e) errors.push({ row: r.row, column: "estates", message: `No estate with code ${code}` });
+            else ids.add(e.id);
+          }
+          allotted = [...ids];
+        }
+        if (allotted?.some((e) => !ctx.can("masters.import", e))) {
+          errors.push({ row: r.row, column: "estates", message: "You cannot allot workers to this estate" });
+          continue;
+        }
+        const finalAllotted = (d: Db, workerId: string) => setWorkerEstates(d, tenantId, workerId, allotted ?? workerEstateIds(d, workerId));
         if (!existing) {
           const row = { id: uuidv7(), tenantId, ...values, active: true, ...base };
-          ops.push({ row: r.row, key: r.key, action: "create", changes: [], apply: (d) => d.insert(workers).values(row).run() });
+          const ids = allotted ?? [estate.id];
+          ops.push({
+            row: r.row,
+            key: r.key,
+            action: "create",
+            changes: [],
+            apply: (d) => {
+              d.insert(workers).values(row).run();
+              setWorkerEstates(d, tenantId, row.id, ids);
+            },
+          });
         } else {
           const changes = diff(existing, values);
+          if (allotted && JSON.stringify([...allotted].sort()) !== JSON.stringify(workerEstateIds(db, existing.id))) changes.push("estates");
           ops.push({
             row: r.row,
             key: r.key,
             action: changes.length ? "update" : "unchanged",
             changes,
-            apply: (d) =>
-              d
-                .update(workers)
+            apply: (d) => {
+              d.update(workers)
                 .set({ ...values, version: existing.version + 1, updatedAt: now, updatedBy: by })
                 .where(eq(workers.id, existing.id))
-                .run(),
+                .run();
+              finalAllotted(d, existing.id);
+            },
           });
         }
         break;

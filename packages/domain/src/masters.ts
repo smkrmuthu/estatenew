@@ -63,8 +63,10 @@ export interface WorkerRow {
   employmentType?: EmploymentType | null;
   /** Where the worker comes from (village or state). undefined: no area column in the file, so leave it as is. */
   area?: string | null;
-  /** True: works in all estates. undefined: no all_estates column in the file, so leave it as is. */
+  /** True: allotted to every estate. undefined: no all_estates column in the file, so leave it as is. */
   allEstates?: boolean;
+  /** Estate codes the worker is allotted to (besides estate_code). undefined: no estates column in the file. */
+  estateCodes?: string[];
   gender?: Gender | null;
 }
 
@@ -76,7 +78,7 @@ const COLUMNS: Record<ImportKind, { required: string[]; optional: string[] }> = 
   varieties: { required: ["code", "name", "crop"], optional: [] },
   job_types: { required: ["code", "name"], optional: [] },
   // Gender is deliberately not imported (OC-99 open; collect only for a confirmed need).
-  workers: { required: ["estate_code", "employee_code", "name"], optional: ["employment_type", "area", "all_estates", "gender"] },
+  workers: { required: ["estate_code", "employee_code", "name"], optional: ["employment_type", "area", "all_estates", "estates", "gender"] },
 };
 
 export function importTemplate(kind: ImportKind): string {
@@ -162,6 +164,11 @@ export function parseImport<K extends ImportKind>(kind: K, csvText: string): Par
           r.employmentType = (t || null) as EmploymentType | null;
         }
         if (header.includes("area")) r.area = get("area") || null;
+        if (header.includes("estates"))
+          r.estateCodes = get("estates")
+            .split(";")
+            .map((x) => x.trim().toUpperCase())
+            .filter(Boolean);
         if (header.includes("all_estates")) {
           const a = get("all_estates").toLowerCase();
           if (a && !["yes", "no", "true", "false", "y", "n", "1", "0"].includes(a)) err("all_estates", "Use YES or NO");

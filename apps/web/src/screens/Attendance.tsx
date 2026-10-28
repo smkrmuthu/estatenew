@@ -119,7 +119,7 @@ export function Attendance() {
   const statuses = sheet.data?.statuses ?? cachedStatuses ?? DEFAULT_STATUSES;
   const chips = CHIPS.filter((c) => c.statusCode === "PRESENT" || statuses.some((s) => s.code === c.statusCode && s.active));
 
-  const workers = useMemo(() => (ref?.workers ?? []).filter((w) => w.estateId === estateId || w.allEstates), [ref, estateId]);
+  const workers = useMemo(() => (ref?.workers ?? []).filter((w) => (w.estateIds ?? [w.estateId]).includes(estateId)), [ref, estateId]);
   const fields = useMemo(() => (ref?.fields ?? []).filter((f) => f.estateId === estateId), [ref, estateId]);
   const jobs = ref?.jobTypes ?? [];
   const byWorker = useMemo(() => {
@@ -487,7 +487,7 @@ export function Attendance() {
                       </span>
                     )}
                   </p>
-                  {w.area && <p className="text-xs text-muted">{w.area}</p>}
+                  {(w.area || w.gender) && <p className="text-xs text-muted">{[w.area, w.gender === "FEMALE" ? "Woman" : w.gender === "MALE" ? "Man" : null].filter(Boolean).join(" · ")}</p>}
                   <div className="text-sm">
                     <span className="mr-2 inline-flex gap-1">
                       <button type="button" className="min-h-8 px-1 text-xs font-medium text-roast hover:underline" aria-label={`History of ${w.name}`} onClick={() => setHistoryFor(w.id)}>

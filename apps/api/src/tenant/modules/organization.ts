@@ -1,10 +1,10 @@
 import type { estateInput, fieldInput, jobTypeInput, logKindInput, varietyInput, workerInput } from "@cemms/contracts";
 import { uuidv7 } from "@cemms/domain";
-import { and, eq, inArray, or } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import type { z } from "zod";
 import { AppError } from "../../core/errors";
 import { assertFound, type Db, staleVersion, type TenantContext } from "../context";
-import { attendanceRecords, estates, fieldSubdivisions, fields, fieldVarieties, jobTypes, logKinds, musterEntries, varieties, workers } from "../schema";
+import { attendanceRecords, estates, fieldSubdivisions, fields, fieldVarieties, jobTypes, logKinds, musterEntries, varieties, workerEstates, workers } from "../schema";
 import { setting } from "./settings";
 
 const uniqueViolation = (e: unknown) => e instanceof Error && /UNIQUE constraint failed/i.test(e.message);
@@ -61,7 +61,7 @@ export interface ReferenceData {
   })[];
   varieties: (typeof varieties.$inferSelect)[];
   jobTypes: (typeof jobTypes.$inferSelect)[];
-  workers: (typeof workers.$inferSelect)[];
+  workers: (typeof workers.$inferSelect & { estateIds: string[] })[];
   logKinds: (typeof logKinds.$inferSelect)[];
 }
 
@@ -74,6 +74,7 @@ export function referenceData(ctx: TenantContext, includeInactive = false): Refe
   const fv = ctx.db.select().from(fieldVarieties).all();
   const subs = ctx.db.select().from(fieldSubdivisions).all();
   const keep = <T extends { active: boolean }>(r: T) => includeInactive || r.active;
+  const allotted = ctx.db.select().from(workerEstates).all();
   return {
     estates: estateRows,
     fields: ctx.db
@@ -97,9 +98,12 @@ export function referenceData(ctx: TenantContext, includeInactive = false): Refe
     workers: ctx.db
       .select()
       .from(workers)
-      .where(or(inArray(workers.estateId, ids), eq(workers.allEstates, true)))
       .all()
-      .filter(keep),
+      .filter(keep)
+      .flatMap((w) => {
+        const estateIds = allotted.filter((a) => a.workerId === w.id && ids.includes(a.estateId)).map((a) => a.estateId);
+        return estateIds.length ? [{ ...w, estateIds }] : [];
+      }),
     logKinds: ctx.db.select().from(logKinds).all().filter(keep),
   };
 }
@@ -251,8 +255,12 @@ function nextEmployeeCode(db: Db, estateId: string): string {
 }
 
 export function upsertWorker(ctx: TenantContext, input: z.infer<typeof workerInput>, id?: string, baseVersion?: number) {
-  ctx.require("masters.write", input.estateId);
-  getEstate(ctx.db, input.estateId);
+  const { estateIds: requested, ...fields } = input;
+  const wanted = [...new Set(requested ?? [input.estateId])];
+  for (const e of wanted) {
+    ctx.require("masters.write", e);
+    getEstate(ctx.db, e);
+  }
   const { now, by } = audited(ctx);
   try {
     return ctx.tx((db) => {
@@ -260,16 +268,26 @@ export function upsertWorker(ctx: TenantContext, input: z.infer<typeof workerInp
         const before = assertFound(db.select().from(workers).where(eq(workers.id, id)).get(), "Worker");
         if (!ctx.can("masters.write", before.estateId)) throw new AppError(403, "FORBIDDEN", "You do not have permission to do this");
         if (baseVersion !== undefined && before.version !== baseVersion) throw staleVersion();
-        const after = { ...before, ...input, version: before.version + 1, updatedAt: now, updatedBy: by };
+        const was = workerEstateIds(db, id);
+        // Estates this user cannot see keep their allotment; only the estates they can manage are replaced.
+        const readable = ctx.estates("masters.read");
+        const hidden = was.filter((e) => readable !== "ALL" && !readable.includes(e));
+        const now_ = [...new Set([...wanted, ...hidden])];
+        const home = now_.includes(before.estateId) ? before.estateId : (wanted[0] ?? before.estateId);
+        for (const e of was.filter((x) => !now_.includes(x))) ctx.require("masters.write", e);
+        const after = { ...before, ...fields, estateId: home, version: before.version + 1, updatedAt: now, updatedBy: by };
         db.update(workers).set(after).where(eq(workers.id, id)).run();
-        ctx.audit(db, { action: "worker.update", entityType: "worker", entityId: id, estateId: input.estateId, before, after });
-        return after;
+        setWorkerEstates(db, ctx.scope.tenantId, id, now_);
+        ctx.audit(db, { action: "worker.update", entityType: "worker", entityId: id, estateId: home, before: { ...before, estateIds: was }, after: { ...after, estateIds: now_ } });
+        return { ...after, estateIds: now_.sort() };
       }
+      const home = wanted.includes(input.estateId) ? input.estateId : (wanted[0] ?? input.estateId);
       const row = {
         id: uuidv7(),
         tenantId: ctx.scope.tenantId,
-        ...input,
-        employeeCode: input.employeeCode ?? nextEmployeeCode(db, input.estateId),
+        ...fields,
+        estateId: home,
+        employeeCode: input.employeeCode ?? nextEmployeeCode(db, home),
         version: 1,
         createdAt: now,
         createdBy: by,
@@ -277,8 +295,9 @@ export function upsertWorker(ctx: TenantContext, input: z.infer<typeof workerInp
         updatedBy: by,
       };
       db.insert(workers).values(row).run();
-      ctx.audit(db, { action: "worker.create", entityType: "worker", entityId: row.id, estateId: row.estateId, after: row });
-      return row;
+      setWorkerEstates(db, ctx.scope.tenantId, row.id, wanted);
+      ctx.audit(db, { action: "worker.create", entityType: "worker", entityId: row.id, estateId: row.estateId, after: { ...row, estateIds: wanted } });
+      return { ...row, estateIds: wanted.sort() };
     });
   } catch (e) {
     if (uniqueViolation(e)) throw new AppError(409, "CODE_TAKEN", "This employee code is already used", { employeeCode: "Already used" });
@@ -315,13 +334,37 @@ export function upsertLogKind(ctx: TenantContext, input: z.infer<typeof logKindI
 }
 
 export function activeWorker(db: Db, workerId: string, estateId: string) {
-  const w = db
-    .select()
-    .from(workers)
-    .where(and(eq(workers.id, workerId), or(eq(workers.estateId, estateId), eq(workers.allEstates, true))))
-    .get();
-  if (!w?.active) throw new AppError(422, "WORKER_UNKNOWN", "This worker is not active on this estate", { workerId: "Unknown worker" });
+  const w = db.select().from(workers).where(eq(workers.id, workerId)).get();
+  const here = w
+    ? db
+        .select()
+        .from(workerEstates)
+        .where(and(eq(workerEstates.workerId, workerId), eq(workerEstates.estateId, estateId)))
+        .get()
+    : undefined;
+  if (!w?.active || !here) throw new AppError(422, "WORKER_UNKNOWN", "This worker is not active on this estate", { workerId: "Unknown worker" });
   return w;
+}
+
+/** The ids of the workers allotted to an estate, for filtering reports and registers. */
+export function workerIdsIn(db: Db, estateId: string) {
+  return db.select({ id: workerEstates.workerId }).from(workerEstates).where(eq(workerEstates.estateId, estateId));
+}
+
+export function workerEstateIds(db: Db, workerId: string): string[] {
+  return db
+    .select()
+    .from(workerEstates)
+    .where(eq(workerEstates.workerId, workerId))
+    .all()
+    .map((x) => x.estateId)
+    .sort();
+}
+
+/** Replace the estates a worker is allotted to. */
+export function setWorkerEstates(db: Db, tenantId: string, workerId: string, estateIds: string[]) {
+  db.delete(workerEstates).where(eq(workerEstates.workerId, workerId)).run();
+  for (const estateId of new Set(estateIds)) db.insert(workerEstates).values({ workerId, estateId, tenantId }).run();
 }
 
 export function activeField(db: Db, fieldId: string, estateId: string) {
@@ -351,6 +394,7 @@ export function deleteWorker(ctx: TenantContext, id: string, reason: string) {
       db.select({ id: attendanceRecords.id }).from(attendanceRecords).where(eq(attendanceRecords.workerId, id)).limit(1).all().length +
       db.select({ id: musterEntries.id }).from(musterEntries).where(eq(musterEntries.workerId, id)).limit(1).all().length;
     if (used > 0) throw new AppError(409, "IN_USE", usedMessage(before.name));
+    db.delete(workerEstates).where(eq(workerEstates.workerId, id)).run();
     db.delete(workers).where(eq(workers.id, id)).run();
     ctx.audit(db, { action: "worker.delete", entityType: "worker", entityId: id, estateId: before.estateId, reason, before });
     return { deleted: true, id };

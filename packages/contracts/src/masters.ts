@@ -34,8 +34,8 @@ export const workerInput = z.object({
   employmentType: z.enum(EMPLOYMENT_TYPES).nullable().optional(),
   /** Where the worker comes from, for example a village or state. */
   area: z.string().trim().max(120).nullable().optional(),
-  /** Works in every estate of the tenant: appears in each estate's register and weigh-in. */
-  allEstates: z.boolean().optional(),
+  /** The estates the worker is allotted to (they appear in each estate's register and weigh-in). Defaults to the worker's own estate. */
+  estateIds: z.array(id).min(1).max(50).optional(),
   active: z.boolean().default(true),
 });
 export const logKindInput = z.object({

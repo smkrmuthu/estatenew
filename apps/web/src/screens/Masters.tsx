@@ -86,12 +86,11 @@ function EstateSelect({ estates, value, onChange, locked }: { estates: Reference
 
 function WorkerForm({ data, id, estateId, done }: { data: ReferenceData; id?: string; estateId: string; done: () => void }) {
   const w = id ? data.workers.find((x) => x.id === id) : undefined;
-  const [estate, setEstate] = useState(w?.estateId ?? estateId);
+  const [estates, setEstates] = useState<string[]>(w?.estateIds ?? [w?.estateId ?? estateId]);
   const [name, setName] = useState(w?.name ?? "");
   const [gender, setGender] = useState<string>(w?.gender ?? "");
   const [type, setType] = useState<string>(w?.employmentType ?? "PERMANENT");
   const [area, setArea] = useState(w?.area ?? "");
-  const [allEstates, setAllEstates] = useState(w?.allEstates === true);
   const [active, setActive] = useState(w?.active !== false);
   const { busy, error, setError, save } = useSaver(done);
   return (
@@ -100,16 +99,35 @@ function WorkerForm({ data, id, estateId, done }: { data: ReferenceData; id?: st
       onSubmit={(e) => {
         e.preventDefault();
         if (!name.trim()) return setError("Enter the worker's name.");
+        if (estates.length === 0) return setError("Choose at least one estate for this worker.");
         void save(() =>
           api(w ? `/workers/${w.id}` : "/workers", {
             method: w ? "PUT" : "POST",
             ...(w ? { headers: { "if-match": String(w.version ?? 1) } } : {}),
-            body: { estateId: estate, name: name.trim(), gender: gender || null, employmentType: type || null, area: area.trim() || null, allEstates, active },
+            body: {
+              estateId: w && estates.includes(w.estateId) ? w.estateId : (estates[0] ?? estateId),
+              estateIds: estates,
+              name: name.trim(),
+              gender: gender || null,
+              employmentType: type || null,
+              area: area.trim() || null,
+              active,
+            },
           }),
         );
       }}
     >
-      <EstateSelect estates={data.estates} value={estate} onChange={setEstate} locked={!!w} />
+      <fieldset className="m-0 min-w-0 border-0 p-0">
+        <legend className="mb-1 text-sm font-medium">Estates the worker works in</legend>
+        <div className="flex flex-wrap gap-4">
+          {data.estates.map((e) => (
+            <label key={e.id} className="flex min-h-10 items-center gap-2 text-sm">
+              <input type="checkbox" checked={estates.includes(e.id)} onChange={(ev) => setEstates((cur) => (ev.target.checked ? [...cur, e.id] : cur.filter((x) => x !== e.id)))} />
+              {e.name}
+            </label>
+          ))}
+        </div>
+      </fieldset>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Field label="Name" htmlFor="w-name">
           <Input id="w-name" value={name} onChange={(e) => setName(e.target.value)} />
@@ -134,10 +152,6 @@ function WorkerForm({ data, id, estateId, done }: { data: ReferenceData; id?: st
           </Select>
         </Field>
       </div>
-      <label className="flex items-center gap-2 text-sm">
-        <input type="checkbox" checked={allEstates} onChange={(e) => setAllEstates(e.target.checked)} />
-        Works in all estates (shows in every estate's register and plucking list)
-      </label>
       <Field label="Status" htmlFor="w-active">
         <Select id="w-active" className="sm:max-w-48" value={active ? "1" : "0"} onChange={(e) => setActive(e.target.value === "1")}>
           <option value="1">Active</option>
@@ -161,71 +175,67 @@ function SelectBox({ label, checked, onChange }: { label: string; checked: boole
 }
 
 function Workers({ data, canWrite, open, pick }: { data: ReferenceData; canWrite: (estateId: string) => boolean; open: (id: string) => void; pick: Pick }) {
+  const ws = data.workers;
+  const code = new Map(data.estates.map((e) => [e.id, e.code]));
   return (
-    <>
-      {data.estates.map((e) => {
-        const ws = data.workers.filter((w) => w.estateId === e.id);
-        return (
-          <Card key={e.id} title={e.name} actions={<span className="text-sm text-muted">{ws.filter((w) => w.active !== false).length} active workers</span>}>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[34rem] text-sm">
-                <thead className="border-b border-line">
-                  <tr>
-                    <Th>
-                      {canWrite(e.id) && (
-                        <SelectBox
-                          label={`Select all workers in ${e.name}`}
-                          checked={ws.length > 0 && ws.every((w) => pick.sel.has(w.id))}
-                          onChange={(on) =>
-                            pick.toggleAll(
-                              ws.map((w) => w.id),
-                              on,
-                            )
-                          }
-                        />
-                      )}
-                    </Th>
-                    <Th>Code</Th>
-                    <Th>Name</Th>
-                    <Th>Area</Th>
-                    <Th>Gender</Th>
-                    <Th>Type</Th>
-                    <Th>Status</Th>
-                    <Th />
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-line">
-                  {ws.map((w) => (
-                    <tr key={w.id}>
-                      <Td>{canWrite(e.id) && <SelectBox label={`Select ${w.name}`} checked={pick.sel.has(w.id)} onChange={() => pick.toggle(w.id)} />}</Td>
-                      <Td className="whitespace-nowrap font-mono">{w.employeeCode}</Td>
-                      <Td>
-                        {w.name}
-                        {w.allEstates && (
-                          <span className="ml-2">
-                            <Chip tone="plain">All estates</Chip>
-                          </span>
-                        )}
-                      </Td>
-                      <Td>{w.area || <span className="text-muted">Not set</span>}</Td>
-                      <Td>{w.gender ? GENDER_LABEL[w.gender] : <span className="text-muted">Not set</span>}</Td>
-                      <Td>{w.employmentType ? <Chip tone={w.employmentType === "PERMANENT" ? "plain" : "warn"}>{TYPE_LABEL[w.employmentType]}</Chip> : <span className="text-muted">Not set</span>}</Td>
-                      <Td>{statusChip(w.active)}</Td>
-                      <Td right>{canWrite(e.id) && <EditLink label={`Edit ${w.name}`} onClick={() => open(w.id)} />}</Td>
-                    </tr>
-                  ))}
-                  {ws.length === 0 && (
-                    <tr>
-                      <Td className="text-muted">No workers yet.</Td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-        );
-      })}
-    </>
+    <Card title="Workers" actions={<span className="text-sm text-muted">{ws.filter((w) => w.active !== false).length} active workers</span>}>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[40rem] text-sm">
+          <thead className="border-b border-line">
+            <tr>
+              <Th>
+                <SelectBox
+                  label="Select all workers"
+                  checked={ws.length > 0 && ws.every((w) => pick.sel.has(w.id))}
+                  onChange={(on) =>
+                    pick.toggleAll(
+                      ws.filter((w) => canWrite(w.estateId)).map((w) => w.id),
+                      on,
+                    )
+                  }
+                />
+              </Th>
+              <Th>Code</Th>
+              <Th>Name</Th>
+              <Th>Estates</Th>
+              <Th>Area</Th>
+              <Th>Gender</Th>
+              <Th>Type</Th>
+              <Th>Status</Th>
+              <Th />
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-line">
+            {ws.map((w) => (
+              <tr key={w.id}>
+                <Td>{canWrite(w.estateId) && <SelectBox label={`Select ${w.name}`} checked={pick.sel.has(w.id)} onChange={() => pick.toggle(w.id)} />}</Td>
+                <Td className="whitespace-nowrap font-mono">{w.employeeCode}</Td>
+                <Td>{w.name}</Td>
+                <Td>
+                  <span className="flex flex-wrap gap-1">
+                    {(w.estateIds ?? [w.estateId]).map((id) => (
+                      <Chip key={id} tone="plain">
+                        {code.get(id) ?? "?"}
+                      </Chip>
+                    ))}
+                  </span>
+                </Td>
+                <Td>{w.area || <span className="text-muted">Not set</span>}</Td>
+                <Td>{w.gender ? GENDER_LABEL[w.gender] : <span className="text-muted">Not set</span>}</Td>
+                <Td>{w.employmentType ? <Chip tone={w.employmentType === "PERMANENT" ? "plain" : "warn"}>{TYPE_LABEL[w.employmentType]}</Chip> : <span className="text-muted">Not set</span>}</Td>
+                <Td>{statusChip(w.active)}</Td>
+                <Td right>{canWrite(w.estateId) && <EditLink label={`Edit ${w.name}`} onClick={() => open(w.id)} />}</Td>
+              </tr>
+            ))}
+            {ws.length === 0 && (
+              <tr>
+                <Td className="text-muted">No workers yet.</Td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </Card>
   );
 }
 

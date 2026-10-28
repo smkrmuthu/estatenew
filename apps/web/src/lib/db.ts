@@ -78,7 +78,8 @@ export interface ReferenceData {
     gender?: Gender | null;
     employmentType?: EmploymentType | null;
     area?: string | null;
-    allEstates?: boolean;
+    /** Estates the worker is allotted to. Older cached lists may lack it. */
+    estateIds?: string[];
     active?: boolean;
     version?: number;
   }[];

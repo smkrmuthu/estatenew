@@ -117,6 +117,43 @@ describe("imports", () => {
     expect((await push(sup2, [c])).body.results[0].status).toBe("accepted");
   });
 
+  it("allots each worker to the estates chosen for them, in Masters and by file", async () => {
+    const s = await setupTenant();
+    const codesOf = async (token: string) =>
+      Object.fromEntries(((await api("/reference", { token })).body.workers as { employeeCode: string; estateIds: string[] }[]).map((w) => [w.employeeCode, w.estateIds.length]));
+    const made = await api("/workers", { token: s.owner.token, body: { estateId: s.estate.id, estateIds: [s.estate.id, s.estate2.id], name: "Both Estates", gender: "FEMALE", active: true } });
+    expect(made.status).toBe(201);
+    expect([...made.body.estateIds].sort()).toEqual([s.estate.id, s.estate2.id].sort());
+    // Shown in both estates, with the gender that was entered.
+    const ref = (await api("/reference", { token: s.owner.token })).body.workers.find((w: { id: string }) => w.id === made.body.id);
+    expect(ref).toMatchObject({ gender: "FEMALE" });
+    expect(ref.estateIds).toHaveLength(2);
+
+    // Narrow it to Estate Two only: the worker leaves Estate One's list.
+    const only2 = await api(`/workers/${made.body.id}`, {
+      method: "PUT",
+      headers: { "if-match": "1" },
+      token: s.owner.token,
+      body: { estateId: s.estate2.id, estateIds: [s.estate2.id], name: "Both Estates", active: true },
+    });
+    expect(only2.status).toBe(200);
+    expect(only2.body.estateIds).toEqual([s.estate2.id]);
+    expect(only2.body.estateId).toBe(s.estate2.id);
+
+    // A file can name the estates with the estates column.
+    const csv = "estate_code,employee_code,name,estates\nGLZ,W001,Worker A,GLZ;BYV\nGLZ,W002,Worker B,GLZ\n";
+    const pre = (await api("/imports/preview", { token: s.owner.token, body: { kind: "workers", csv } })).body;
+    expect(pre.errors).toEqual([]);
+    expect((await api("/imports/commit", { token: s.owner.token, body: { kind: "workers", csv, previewHash: pre.previewHash } })).status).toBe(200);
+    const counts = await codesOf(s.owner.token);
+    expect(counts).toMatchObject({ W001: 2, W002: 1 });
+    const bad = (await api("/imports/preview", { token: s.owner.token, body: { kind: "workers", csv: "estate_code,employee_code,name,estates\nGLZ,W001,Worker A,XXX\n" } })).body;
+    expect(bad.errors[0]).toMatchObject({ column: "estates" });
+
+    // An unused worker can still be deleted with its allotments.
+    expect((await api(`/workers/${made.body.id}/delete`, { token: s.owner.token, body: { reason: "Entered by mistake" } })).status).toBe(200);
+  });
+
   it("rejects formula injection and unknown columns", async () => {
     const s = await setupTenant();
     const res = (await api("/imports/preview", { token: s.owner.token, body: { kind: "workers", csv: "estate_code,employee_code,name,phone\nGLZ,W1,=HYPERLINK(1),9\n" } })).body;

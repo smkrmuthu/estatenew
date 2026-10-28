@@ -1,9 +1,9 @@
 import { addDays, formatKg, formatScaled, halfDays } from "@cemms/domain";
-import { and, eq, gte, lte, or } from "drizzle-orm";
+import { and, eq, gte, inArray, lte } from "drizzle-orm";
 import { AppError } from "../../core/errors";
 import type { TenantContext } from "../context";
 import { attendanceRecords, attendanceSheets, dailylogEntries, deviceStatus, fields, jobTypes, logKinds, musterEntries, syncConflicts, workers } from "../schema";
-import { getEstate } from "./organization";
+import { getEstate, workerIdsIn } from "./organization";
 import { setting } from "./settings";
 
 /**
@@ -44,7 +44,7 @@ export function dailySummary(ctx: TenantContext, estateId: string, businessDate:
   const activeWorkers = db
     .select()
     .from(workers)
-    .where(and(or(eq(workers.estateId, estateId), eq(workers.allEstates, true)), eq(workers.active, true)))
+    .where(and(inArray(workers.id, workerIdsIn(db, estateId)), eq(workers.active, true)))
     .all().length;
 
   const byFieldJob = new Map<string, { field: string; job: string; workers: number; halfDays: number }>();
@@ -167,7 +167,7 @@ export function dashboard(ctx: TenantContext, estateId: string, businessDate: st
   const activeWorkers = db
     .select()
     .from(workers)
-    .where(and(or(eq(workers.estateId, estateId), eq(workers.allEstates, true)), eq(workers.active, true)))
+    .where(and(inArray(workers.id, workerIdsIn(db, estateId)), eq(workers.active, true)))
     .all().length;
 
   const entries = db
@@ -291,7 +291,7 @@ export function pluckingReport(ctx: TenantContext, estateId: string, from: strin
     db
       .select()
       .from(workers)
-      .where(or(eq(workers.estateId, estateId), eq(workers.allEstates, true)))
+      .where(inArray(workers.id, workerIdsIn(db, estateId)))
       .all()
       .map((w) => [w.id, w]),
   );
@@ -382,7 +382,7 @@ export function workerHistory(ctx: TenantContext, estateId: string, workerId: st
   const worker = db
     .select()
     .from(workers)
-    .where(and(eq(workers.id, workerId), or(eq(workers.estateId, estateId), eq(workers.allEstates, true))))
+    .where(and(eq(workers.id, workerId), inArray(workers.id, workerIdsIn(db, estateId))))
     .get();
   if (!worker) throw new AppError(404, "NOT_FOUND", "Worker not found on this estate");
   const fieldName = new Map(

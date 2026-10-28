@@ -99,10 +99,20 @@ export const workers = sqliteTable("workers", {
   gender: text("gender", { enum: ["MALE", "FEMALE"] }),
   employmentType: text("employment_type", { enum: ["PERMANENT", "CASUAL", "CONTRACT", "NORTH_INDIAN"] }),
   area: text("area"),
-  allEstates: integer("all_estates", { mode: "boolean" }).notNull().default(false),
   active: integer("active", { mode: "boolean" }).notNull().default(true),
   ...audit,
 });
+
+/** The estates a worker is allotted to; the worker shows in each of those estates' registers. */
+export const workerEstates = sqliteTable(
+  "worker_estates",
+  {
+    workerId: text("worker_id").notNull(),
+    estateId: text("estate_id").notNull(),
+    tenantId: text("tenant_id").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.workerId, t.estateId] })],
+);
 
 export const logKinds = sqliteTable("log_kinds", {
   id: text("id").primaryKey(),
