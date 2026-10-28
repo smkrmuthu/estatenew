@@ -119,7 +119,7 @@ function Shell() {
   const tabs: { id: Tab; label: string; short: string; icon: IconName; count?: number; show: boolean }[] = [
     { id: "dashboard", label: "Dashboard", short: "Home", icon: "grid", show: app.can("reports.read") },
     { id: "attendance", label: "Attendance", short: "Attendance", icon: "users", show: app.can("attendance.read") },
-    { id: "weighin", label: "Weigh-in", short: "Weigh-in", icon: "scale", show: app.can("muster.read") },
+    { id: "weighin", label: "Plucking", short: "Plucking", icon: "leaf", show: app.can("muster.read") },
     { id: "dailylog", label: "Daily log", short: "Daily log", icon: "cloud", show: app.can("dailylog.read") },
     { id: "summary", label: "Reports", short: "Reports", icon: "chart", show: app.can("reports.read") },
     { id: "masters", label: "Masters", short: "Masters", icon: "map", show: app.can("masters.read") },

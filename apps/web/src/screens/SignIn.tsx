@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Button, Card, Field, Input, Notice } from "../components/ui";
+import { Button, Field, Input, Notice } from "../components/ui";
 import { ApiError, signIn } from "../lib/api";
 import { deviceId } from "../lib/session";
 
@@ -35,21 +35,42 @@ export function SignIn({ onSignedIn, lastTenant }: { onSignedIn: (tenantCode: st
     }
   }
 
+  const glazebrooke = site?.code === "glazebrooke";
+  const estateName = site?.name ?? "your estate";
   return (
-    <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center gap-6 p-4">
-      <div className="text-center">
-        <img src="/icon.svg" alt="" className="mx-auto h-16 w-16" />
-        <h1 className="mt-3">{site?.name ?? "CEMMS Estate"}</h1>
-        <p className="text-muted">Attendance, weigh-in and daily log</p>
-      </div>
-      <Card>
-        <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+    <div className="flex min-h-dvh flex-col lg:flex-row">
+      {/* Hero like the prototype: the estate photo under a dark wash, the logo and one line about what the app is for. */}
+      <section className="relative min-h-72 flex-1 overflow-hidden bg-[#2b1b0f] lg:basis-1/2">
+        {glazebrooke && <img src="/hero.jpg" alt="Misty mountain ridges above the coffee estate" className="absolute inset-0 h-full w-full object-cover" />}
+        <div className="absolute inset-0 bg-[rgba(32,20,10,0.58)]" />
+        <div className="relative flex h-full min-h-72 flex-col justify-between gap-10 p-7 sm:p-10 lg:p-12">
+          {glazebrooke ? <img src="/logo.png" alt="Glazebrooke Coffee Estate" className="w-48" /> : <p className="font-serif text-2xl font-semibold text-white">{site?.name ?? "CEMMS Estate"}</p>}
+          <div>
+            {glazebrooke && <p className="max-w-md font-serif text-3xl leading-tight text-white">Where bisons roam and birds soar, our coffee finds its soul.</p>}
+            <p className="mt-3 max-w-md leading-relaxed text-[#f3ece0]">Attendance, plucking and the daily log for {estateName}, in one place.</p>
+            <p className="mt-6 text-sm text-[#f3ece0]/80">
+              Powered by{" "}
+              <a href="https://oneuptech.co" target="_blank" rel="noopener noreferrer" className="font-medium text-white underline-offset-2 hover:underline">
+                OneUp Tech
+              </a>
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section className="flex flex-1 items-center justify-center p-6 sm:p-10 lg:basis-1/2">
+        <form onSubmit={submit} className="flex w-full max-w-sm flex-col gap-4" noValidate>
+          <div>
+            <span className="text-xs font-medium text-muted">CEMMS</span>
+            <h1 className="mt-1.5 text-[2.1rem]">Sign in</h1>
+            <p className="mt-1 text-muted">You will see the screens that your role allows.</p>
+          </div>
           {site === null && (
             <Field label="Estate group code" htmlFor="tenant">
               <Input id="tenant" autoComplete="organization" autoCapitalize="none" value={tenant} onChange={(e) => setTenant(e.target.value.trim().toLowerCase())} required />
             </Field>
           )}
-          <Field label="User name" htmlFor="username">
+          <Field label="Username" htmlFor="username">
             <Input id="username" autoComplete="username" autoCapitalize="none" value={username} onChange={(e) => setUsername(e.target.value)} required />
           </Field>
           <Field label="Password" htmlFor="password">
@@ -69,12 +90,12 @@ export function SignIn({ onSignedIn, lastTenant }: { onSignedIn: (tenantCode: st
             </>
           )}
           {error && <Notice tone="bad">{error}</Notice>}
-          <Button type="submit" size="lg" disabled={busy || site === undefined || (site === null && !tenant) || !username || !password || (mfa !== null && totp.length !== 6)}>
+          <Button type="submit" size="lg" className="min-h-12" disabled={busy || site === undefined || (site === null && !tenant) || !username || !password || (mfa !== null && totp.length !== 6)}>
             {busy ? "Signing in…" : "Sign in"}
           </Button>
+          <p className="border-t border-line pt-4 text-sm text-muted">Sign in once with internet. After that you can keep working without signal until the session ends.</p>
         </form>
-      </Card>
-      <p className="text-center text-xs text-muted">Sign in once with internet. After that you can keep working without signal until the session ends.</p>
-    </main>
+      </section>
+    </div>
   );
 }

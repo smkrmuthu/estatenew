@@ -178,3 +178,18 @@ export function Chip({ tone = "plain", children }: { tone?: "plain" | "ok" | "wa
     </span>
   );
 }
+
+/** A row of headline figures, like the prototype's KPI strip. */
+export function KpiStrip({ items }: { items: { label: string; value: ReactNode; note?: ReactNode }[] }) {
+  return (
+    <div className="grid overflow-hidden rounded-2xl border border-line bg-surface sm:grid-cols-2 lg:grid-cols-4">
+      {items.map((k) => (
+        <div key={k.label} className="flex min-w-0 flex-col gap-1 border-line p-4 [&:not(:first-child)]:border-t sm:[&:not(:first-child)]:border-t-0 sm:[&:not(:first-child)]:border-l">
+          <span className="text-xs font-semibold uppercase tracking-wide text-muted">{k.label}</span>
+          <span className="text-2xl font-semibold tabular-nums leading-tight">{k.value}</span>
+          {k.note && <span className="text-sm text-muted">{k.note}</span>}
+        </div>
+      ))}
+    </div>
+  );
+}
