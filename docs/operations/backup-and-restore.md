@@ -40,6 +40,14 @@ One-time setup (done by the owner, with the Google account that holds the Drive)
 
 If the refresh token is revoked or expires, the Drive column shows "Failed" with Google's reason; repeat step 4 and set the token again. Production uses its own secrets and its own folder.
 
+### Where it stands (28 October 2026)
+
+- **Decision (project lead, 28 October 2026):** the backups should go into the **owner's** Google Drive, not the developer's. The owner is not technical, so the developer does the Google Cloud setup and the owner only signs in with their own Gmail and taps **Allow** once ("Option 1" in the chat).
+- **Waiting for:** the owner's Gmail address (project lead is getting it) and the owner's time for the one tap. Do not send secrets by chat or email; the developer sets them with `wrangler secret put`.
+- **Staging today:** the Drive copy is switched on in the code but fails with `invalid_client`, because `GDRIVE_CLIENT_ID` on staging is wrong. Cloudflare backups are unaffected. Fix by setting the correct client ID, client secret and a refresh token created with that same client.
+- **Proposed, not built:** a **Connect Google Drive** button in Manage → Backups, so the owner approves in the app and no refresh token is copied by hand ("Connected as owner@gmail.com", with Disconnect). It also suits several estate groups later. It needs the project lead's yes; until then the manual refresh-token steps above are the way.
+- **Production:** repeat the approval for production so the real backups land in the owner's Drive; production has its own secrets and folder.
+
 ## Keep the key safe
 
 The copies can only be opened with `MFA_ENC_KEY`. It is a Worker secret per environment; **keep a second copy of each environment's key in the office password manager**. If the key is lost, the R2 copies cannot be read (the 30-day Cloudflare restore is not affected). Do not rotate the key without re-making the copies first. A separate backup key is still planned. The Drive copy is encrypted with the same key, so the key is also what makes the Drive copy readable.

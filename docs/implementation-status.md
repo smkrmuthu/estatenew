@@ -98,6 +98,8 @@ Production Workers refuse PBKDF2 above 100,000 iterations per call (local worker
 
 ## Next safe actions
 
+0. Google Drive backup copy: get the owner's Gmail, have the owner approve the Drive sign-in once (staging, then production), and fix `GDRIVE_CLIENT_ID` on staging. Decide whether to build the Connect Google Drive button (docs/operations/backup-and-restore.md, "Where it stands").
+
 1. Add `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` as GitHub secrets (staging environment) so CI can deploy staging.
 2. Owner acceptance on staging with real phones; restore drill.
 3. Send the owner the blocking questions; collect the master lists.
