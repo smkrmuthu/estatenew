@@ -14,6 +14,9 @@ interface AppState {
   refFetchedAt: string | null;
   estateId: string;
   setEstateId: (id: string) => void;
+  /** Dashboard and Reports can show every estate together; capture screens always work on one. */
+  allEstates: boolean;
+  setAllEstates: (on: boolean) => void;
   date: string;
   setDate: (d: string) => void;
   online: boolean;
@@ -38,6 +41,7 @@ export function AppProvider({ session, deviceId, onSignOut, children }: { sessio
   const cached = useLive(() => db.reference.get(session.user.tenantId), [session.user.tenantId], undefined);
   const ref = cached?.data ?? null;
   const [estateId, setEstateIdState] = useState<string>("");
+  const [allEstates, setAllEstates] = useState(false);
   const timeZone = ref?.estates.find((e) => e.id === estateId)?.timeZone ?? "Asia/Kolkata";
   const [date, setDate] = useState(() => todayIn("Asia/Kolkata"));
   const [lastReport, setLastReport] = useState<SyncReport | null>(null);
@@ -68,6 +72,8 @@ export function AppProvider({ session, deviceId, onSignOut, children }: { sessio
       refFetchedAt: cached?.fetchedAt ?? null,
       estateId,
       setEstateId: setEstateIdState,
+      allEstates,
+      setAllEstates,
       date,
       setDate,
       online,
@@ -82,7 +88,7 @@ export function AppProvider({ session, deviceId, onSignOut, children }: { sessio
       queue,
       signOut: onSignOut,
     }),
-    [session, deviceId, ref, cached?.fetchedAt, estateId, date, online, reloadReference, lastReport, queue, onSignOut],
+    [session, deviceId, ref, cached?.fetchedAt, estateId, allEstates, date, online, reloadReference, lastReport, queue, onSignOut],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

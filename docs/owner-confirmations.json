@@ -1293,7 +1293,7 @@
       "phase": "1B",
       "blocksProductionActivation": false,
       "affects": [],
-      "interimBehavior": "Not used in Phase 1A. Keep configurable; do not activate proposed defaults.",
+      "interimBehavior": "Season start is a tenant setting (season.startDate), blank by default; the dashboard and Masters show season totals and progress against each field's expected cherry only when it is set. Staging may set it; production refuses until this is confirmed. Expected cherry per field is typed in Masters.",
       "configKeys": [],
       "source": "Coffee Estate Application - Process Confirmation for Estate Owner (23 Oct 2026), answers as exported 27 Oct 2026",
       "approver": null,

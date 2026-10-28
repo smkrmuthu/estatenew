@@ -7,6 +7,7 @@ import { ApiError, api } from "../lib/api";
 import { db, getMeta, type LocalRecord, setMeta } from "../lib/db";
 import { useLive } from "../lib/hooks";
 import { queueChange } from "../lib/outbox";
+import { CorrectRecord, WorkerHistory } from "./AttendanceExtras";
 
 interface ServerRecord {
   id: string;
@@ -59,6 +60,8 @@ export function Attendance() {
   /** Present marks waiting for a field and a job; nothing is queued until they are complete. */
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [historyFor, setHistoryFor] = useState<string | null>(null);
+  const [correcting, setCorrecting] = useState<string | null>(null);
   const [bulkField, setBulkField] = useState("");
   const [bulkJob, setBulkJob] = useState("");
   const [bulkStatus, setBulkStatus] = useState("P");
@@ -462,6 +465,16 @@ export function Attendance() {
                     )}
                   </p>
                   <div className="text-sm">
+                    <span className="mr-2 inline-flex gap-1">
+                      <button type="button" className="min-h-8 px-1 text-xs font-medium text-roast hover:underline" aria-label={`History of ${w.name}`} onClick={() => setHistoryFor(w.id)}>
+                        History
+                      </button>
+                      {locked && r?.status === "accepted" && app.can("attendance.correct") && app.online && (
+                        <button type="button" className="min-h-8 px-1 text-xs font-medium text-roast hover:underline" aria-label={`Correct ${w.name}`} onClick={() => setCorrecting(w.id)}>
+                          Correct
+                        </button>
+                      )}
+                    </span>
                     {draft ? <span className="font-semibold text-warn">Choose field and job</span> : r ? <StatusBadge status={r.status} compact /> : <span className="text-muted">Not marked</span>}
                   </div>
                 </div>
@@ -567,6 +580,27 @@ export function Attendance() {
           </table>
         )}
       </Card>
+      {historyFor && <WorkerHistory estateId={estateId} workerId={historyFor} onClose={() => setHistoryFor(null)} />}
+      {correcting &&
+        (() => {
+          const w = workers.find((x) => x.id === correcting);
+          const rec = byWorker.get(correcting);
+          if (!w || !rec) return null;
+          return (
+            <CorrectRecord
+              estateId={estateId}
+              date={date}
+              recordId={rec.entityId}
+              baseVersion={rec.nextBase}
+              workerName={`${w.employeeCode} ${w.name}`}
+              current={rec.data as { statusCode?: string; dayFraction?: "FULL" | "HALF" | null; fieldId?: string | null; jobTypeId?: string | null; remarks?: string | null }}
+              chips={chips}
+              fields={fields}
+              jobs={ref?.jobTypes ?? []}
+              onClose={() => setCorrecting(null)}
+            />
+          );
+        })()}
     </div>
   );
 }

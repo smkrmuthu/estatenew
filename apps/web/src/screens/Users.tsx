@@ -114,12 +114,91 @@ function AddUser({ onDone, onNote }: { onDone: () => void; onNote: (n: { tone: "
   );
 }
 
+function EditUser({ user, onDone, onNote }: { user: UserRow; onDone: () => void; onNote: (n: { tone: "ok" | "bad"; text: string }) => void }) {
+  const app = useApp();
+  const estates = app.ref?.estates ?? [];
+  const roles = [...new Set(user.grants.map((g) => g.role))];
+  const ids = user.grants.flatMap((g) => (g.estateId ? [g.estateId] : []));
+  const [form, setForm] = useState({
+    displayName: user.displayName,
+    role: roles[0] ?? "FIELD_SUPERVISOR",
+    allEstates: user.grants.some((g) => g.estateId === null) || ids.length === 0,
+    estateIds: ids,
+  });
+  const [error, setError] = useState("");
+  const owner = form.role === "OWNER";
+
+  async function save() {
+    setError("");
+    const grants = owner || form.allEstates ? [{ role: form.role, estateId: null }] : form.estateIds.map((estateId) => ({ role: form.role, estateId }));
+    if (grants.length === 0) return setError("Choose at least one estate.");
+    if (!form.displayName.trim()) return setError("Enter the person's name.");
+    try {
+      await api(`/admin/users/${user.id}`, { method: "PUT", body: { displayName: form.displayName.trim(), grants } });
+      onNote({ tone: "ok", text: `Saved ${user.username}. They are signed out and see the new access when they sign in again.` });
+      onDone();
+    } catch (e) {
+      setError(msg(e));
+    }
+  }
+
+  return (
+    <form
+      className="flex flex-col gap-4"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void save();
+      }}
+    >
+      {roles.length > 1 && <Notice tone="warn">This person has more than one role. Saving gives them the single role chosen here.</Notice>}
+      <Field label="Full name" htmlFor="eu-display">
+        <Input id="eu-display" value={form.displayName} onChange={(e) => setForm({ ...form, displayName: e.target.value })} />
+      </Field>
+      <Field label="Role" htmlFor="eu-role" hint={owner ? "In production the owner also uses an authenticator app" : undefined}>
+        <Select id="eu-role" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
+          <option value="FIELD_SUPERVISOR">Field supervisor: attendance, weigh-in, daily log</option>
+          <option value="ESTATE_MANAGER">Estate manager: also approvals, corrections, lists</option>
+          <option value="OWNER">Owner: everything, including users and settings</option>
+          <option value="AUDITOR">Auditor: read only</option>
+        </Select>
+      </Field>
+      {!owner && (
+        <fieldset>
+          <legend className="text-[0.8rem] font-medium text-muted">Estates</legend>
+          <label className="mt-1 flex min-h-10 items-center gap-2">
+            <input type="checkbox" checked={form.allEstates} onChange={(e) => setForm({ ...form, allEstates: e.target.checked })} /> All estates
+          </label>
+          {!form.allEstates &&
+            estates.map((e) => (
+              <label key={e.id} className="flex min-h-10 items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={form.estateIds.includes(e.id)}
+                  onChange={(ev) => setForm({ ...form, estateIds: ev.target.checked ? [...form.estateIds, e.id] : form.estateIds.filter((x) => x !== e.id) })}
+                />{" "}
+                {e.name}
+              </label>
+            ))}
+        </fieldset>
+      )}
+      {error && <Notice tone="bad">{error}</Notice>}
+      <div className="flex gap-2">
+        <Button type="submit">Save changes</Button>
+        <Button variant="secondary" onClick={onDone}>
+          Cancel
+        </Button>
+      </div>
+    </form>
+  );
+}
+
 export function Users() {
   const app = useApp();
   const qc = useQueryClient();
   const users = useQuery({ queryKey: ["users"], queryFn: () => api<UserRow[]>("/admin/users"), enabled: app.online });
   const estates = app.ref?.estates ?? [];
   const [adding, setAdding] = useState(false);
+  const [editing, setEditing] = useState<UserRow | null>(null);
   const [note, setNote] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
   const estateName = (id: string | null) => (id ? (estates.find((e) => e.id === id)?.name ?? "an estate") : "All estates");
   const refresh = () => qc.invalidateQueries({ queryKey: ["users"] });
@@ -134,6 +213,16 @@ export function Users() {
     try {
       await api(`/admin/users/${u.id}/password`, { body: { password } });
       setNote({ tone: "ok", text: `New temporary password for ${u.username}: ${password}` });
+      void refresh();
+    } catch (e) {
+      setNote({ tone: "bad", text: msg(e) });
+    }
+  }
+
+  async function enable(u: UserRow) {
+    try {
+      await api(`/admin/users/${u.id}/enable`, { body: {} });
+      setNote({ tone: "ok", text: `${u.username} can sign in again with their current password.` });
       void refresh();
     } catch (e) {
       setNote({ tone: "bad", text: msg(e) });
@@ -197,14 +286,25 @@ export function Users() {
                     {u.status !== "ACTIVE" ? <Chip>Inactive</Chip> : u.lockedUntil && new Date(u.lockedUntil) > new Date() ? <Chip tone="warn">Locked</Chip> : <Chip tone="ok">Active</Chip>}
                   </td>
                   <td className="px-3 py-2.5 text-right">
-                    {u.status === "ACTIVE" && u.id !== app.session.user.id && (
+                    {u.id !== app.session.user.id && (
                       <div className="flex justify-end gap-1">
-                        <Button size="sm" variant="ghost" onClick={() => resetPassword(u)}>
-                          New password
+                        <Button size="sm" variant="ghost" onClick={() => setEditing(u)}>
+                          Edit
                         </Button>
-                        <Button size="sm" variant="ghost" onClick={() => disable(u)}>
-                          Disable
-                        </Button>
+                        {u.status === "ACTIVE" ? (
+                          <>
+                            <Button size="sm" variant="ghost" onClick={() => resetPassword(u)}>
+                              New password
+                            </Button>
+                            <Button size="sm" variant="ghost" onClick={() => disable(u)}>
+                              Disable
+                            </Button>
+                          </>
+                        ) : (
+                          <Button size="sm" variant="secondary" onClick={() => enable(u)}>
+                            Enable
+                          </Button>
+                        )}
                       </div>
                     )}
                   </td>
@@ -214,6 +314,18 @@ export function Users() {
           </table>
         </div>
       </Card>
+      {editing && (
+        <Drawer title={editing.displayName} subtitle="Edit user" onClose={() => setEditing(null)}>
+          <EditUser
+            user={editing}
+            onNote={setNote}
+            onDone={() => {
+              setEditing(null);
+              void refresh();
+            }}
+          />
+        </Drawer>
+      )}
       {adding && (
         <Drawer title="Add a user" subtitle="New user" onClose={() => setAdding(false)}>
           <AddUser

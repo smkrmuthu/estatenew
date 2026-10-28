@@ -12,7 +12,7 @@ import { deviceId as getDeviceId, loadSession, type StoredSession, saveSession, 
 import { Attendance } from "./screens/Attendance";
 import { ChangePassword } from "./screens/ChangePassword";
 import { DailyLog } from "./screens/DailyLog";
-import { Dashboard } from "./screens/Dashboard";
+import { Dashboard, useDashboards } from "./screens/Dashboard";
 import { Manage } from "./screens/Manage";
 import { Masters } from "./screens/Masters";
 import { SignIn } from "./screens/SignIn";
@@ -57,7 +57,7 @@ function Clock() {
   );
 }
 
-function DayPicker() {
+function DayPicker({ canAll }: { canAll: boolean }) {
   const app = useApp();
   const estates = app.ref?.estates ?? [];
   const step = (n: number) => app.setDate(addDays(app.date, n));
@@ -67,7 +67,19 @@ function DayPicker() {
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-surface px-4 py-3">
       <label htmlFor="pick-estate" className="flex items-center gap-2 text-[0.8rem] font-medium text-muted">
         Estate
-        <Select id="pick-estate" className="!min-h-10 !w-auto" value={app.estateId} onChange={(e) => app.setEstateId(e.target.value)}>
+        <Select
+          id="pick-estate"
+          className="!min-h-10 !w-auto"
+          value={canAll && app.allEstates ? "ALL" : app.estateId}
+          onChange={(e) => {
+            if (e.target.value === "ALL") app.setAllEstates(true);
+            else {
+              app.setAllEstates(false);
+              app.setEstateId(e.target.value);
+            }
+          }}
+        >
+          {canAll && <option value="ALL">All estates</option>}
           {estates.map((e) => (
             <option key={e.id} value={e.id}>
               {e.name}
@@ -115,10 +127,12 @@ function Shell() {
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
+  // Sidebar badge: days waiting for approval on any estate this person can approve for.
+  const approvals = useDashboards(true).list.reduce((n, d) => n + (app.can("attendance.approve", d.estate.id) ? d.attention.sheetsAwaitingApproval.length : 0), 0);
   const showManage = app.can("masters.import", null) || app.can("users.manage", null) || app.can("conflicts.resolve") || app.can("settings.manage", null);
   const tabs: { id: Tab; label: string; short: string; icon: IconName; count?: number; show: boolean }[] = [
     { id: "dashboard", label: "Dashboard", short: "Home", icon: "grid", show: app.can("reports.read") },
-    { id: "attendance", label: "Attendance", short: "Attendance", icon: "users", show: app.can("attendance.read") },
+    { id: "attendance", label: "Attendance", short: "Attendance", icon: "users", count: approvals, show: app.can("attendance.read") },
     { id: "weighin", label: "Plucking", short: "Plucking", icon: "leaf", show: app.can("muster.read") },
     { id: "dailylog", label: "Daily log", short: "Daily log", icon: "cloud", show: app.can("dailylog.read") },
     { id: "summary", label: "Reports", short: "Reports", icon: "chart", show: app.can("reports.read") },
@@ -185,7 +199,7 @@ function Shell() {
           ))}
         </nav>
         <main className="mx-auto flex w-full min-w-0 max-w-6xl flex-col gap-4 p-4 lg:p-6">
-          {DAY_PAGES.includes(current) && estates.length > 0 && <DayPicker />}
+          {DAY_PAGES.includes(current) && estates.length > 0 && <DayPicker canAll={estates.length > 1 && (current === "dashboard" || current === "summary")} />}
           {estates.length === 0 && app.ref && <Notice tone="warn">No estates yet. The owner imports the estate list under Manage → Import.</Notice>}
           {current === "dashboard" && <Dashboard go={setTab} />}
           {current === "attendance" && <Attendance />}

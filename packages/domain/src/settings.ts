@@ -3,6 +3,8 @@
  * While a setting's gate is open, production accepts only the safe interim default.
  */
 
+import { isBusinessDate } from "./dates";
+
 export type Environment = "development" | "test" | "staging" | "production";
 export type SettingBasis = "confirmed" | "proposed" | "tenant-choice";
 
@@ -37,6 +39,7 @@ const nullableIntIn =
   (v): v is number | null =>
     v === null || intIn(min, max)(v);
 const shortText: Validator<string> = (v): v is string => typeof v === "string" && v.trim().length > 0 && v.length <= 40;
+const dateOrEmpty: Validator<string> = (v): v is string => v === "" || (typeof v === "string" && isBusinessDate(v));
 const timeZone: Validator<string> = (v): v is string => {
   if (typeof v !== "string") return false;
   try {
@@ -159,6 +162,14 @@ export const SETTING_DEFS = {
     basis: "tenant-choice",
     gates: [],
     validate: shortText,
+  },
+  "season.startDate": {
+    key: "season.startDate",
+    description: "First day of the plucking season, as a date like 2026-10-01. Season totals start from here; blank means no season totals.",
+    defaultValue: "",
+    basis: "proposed",
+    gates: ["OC-75"],
+    validate: dateOrEmpty,
   },
   "estate.timeZone": {
     key: "estate.timeZone",

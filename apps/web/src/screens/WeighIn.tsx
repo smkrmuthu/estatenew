@@ -14,6 +14,8 @@ interface ServerEntry {
   fieldId: string;
   crop: string;
   netG: number;
+  subdivision?: string | null;
+  varietyId?: string | null;
   grossG: number;
   bags: number;
   status: "ACTIVE" | "VOID";
@@ -118,6 +120,24 @@ export function WeighIn() {
     const weighed = new Set(active.map((e) => e.workerId)).size;
     return { kg: formatKg(g), entries: active.length, workers: weighed, perWorker: weighed ? formatKg(Math.round(g / weighed)) : "0.000" };
   }, [server.data]);
+  // Accepted weigh-ins grouped by field, subdivision and variety. The letter is filled only when one subdivision carries the variety.
+  const bySubdivision = useMemo(() => {
+    const m = new Map<string, { field: string; subdivision: string; variety: string; workers: Set<string>; netG: number }>();
+    for (const e of (server.data ?? []).filter((x) => x.status === "ACTIVE")) {
+      const key = `${e.fieldId}|${e.subdivision ?? ""}|${e.varietyId ?? ""}`;
+      const cur = m.get(key) ?? {
+        field: fields.find((f) => f.id === e.fieldId)?.name ?? "?",
+        subdivision: e.subdivision ?? "",
+        variety: (ref?.varieties ?? []).find((v) => v.id === e.varietyId)?.name ?? "",
+        workers: new Set<string>(),
+        netG: 0,
+      };
+      cur.workers.add(e.workerId);
+      cur.netG += e.netG;
+      m.set(key, cur);
+    }
+    return [...m.values()].sort((a, b) => b.netG - a.netG);
+  }, [server.data, fields, ref]);
   const rows = useMemo(() => {
     const out = new Map<string, { id: string; workerId: string; fieldId: string; crop: string; netKg: string; status: LocalRecord["status"]; voided: boolean; message?: string; version: number }>();
     for (const e of server.data ?? [])
@@ -401,6 +421,42 @@ export function WeighIn() {
             Save weigh-in
           </Button>
         </div>
+      </Card>
+
+      <Card title="By subdivision" actions={<span className="text-sm text-muted">{date}</span>}>
+        {bySubdivision.length === 0 ? (
+          <p className="text-muted">No weigh-ins yet.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[26rem] text-sm">
+              <thead className="border-b border-line">
+                <tr>
+                  {["Field", "Subdivision", "Variety"].map((t) => (
+                    <th key={t} className="px-3 py-2 text-left text-[0.8rem] font-medium text-muted">
+                      {t}
+                    </th>
+                  ))}
+                  <th className="px-3 py-2 text-right text-[0.8rem] font-medium text-muted">Workers</th>
+                  <th className="px-3 py-2 text-right text-[0.8rem] font-medium text-muted">Net kg</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-line">
+                {bySubdivision.map((r) => (
+                  <tr key={`${r.field}|${r.subdivision}|${r.variety}`}>
+                    <td className="px-3 py-2">{r.field}</td>
+                    <td className="px-3 py-2">{r.subdivision || <span className="text-muted">Not recorded</span>}</td>
+                    <td className="px-3 py-2">{r.variety || <span className="text-muted">Not recorded</span>}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{r.workers.size}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{formatKg(r.netG)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <p className="mt-2 text-sm text-muted">
+          The subdivision is filled in only when the field has one bearing subdivision with the chosen variety. Which part of a field a weighing came from is still to be confirmed with the owner.
+        </p>
       </Card>
 
       <Card title="Today's weigh-ins">

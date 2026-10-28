@@ -1,10 +1,11 @@
 import { formatScaled, parseScaled } from "@cemms/domain";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useState } from "react";
 import { useApp } from "../app-context";
 import { Button, Card, Chip, Drawer, Field, Input, Notice, Select } from "../components/ui";
 import { ApiError, api } from "../lib/api";
 import type { EmploymentType, Gender, LandUse, ReferenceData } from "../lib/db";
+import { useDashboards } from "./Dashboard";
 
 type Tab = "fields" | "workers" | "jobs" | "logkinds";
 type Target = { tab: Tab; id?: string } | null;
@@ -187,7 +188,7 @@ function Workers({ data, canWrite, open, pick }: { data: ReferenceData; canWrite
                   {ws.map((w) => (
                     <tr key={w.id}>
                       <Td>{canWrite(e.id) && <SelectBox label={`Select ${w.name}`} checked={pick.sel.has(w.id)} onChange={() => pick.toggle(w.id)} />}</Td>
-                      <Td className="font-mono">{w.employeeCode}</Td>
+                      <Td className="whitespace-nowrap font-mono">{w.employeeCode}</Td>
                       <Td>{w.name}</Td>
                       <Td>{w.gender ? GENDER_LABEL[w.gender] : <span className="text-muted">Not set</span>}</Td>
                       <Td>{w.employmentType ? <Chip tone={w.employmentType === "PERMANENT" ? "plain" : "warn"}>{TYPE_LABEL[w.employmentType]}</Chip> : <span className="text-muted">Not set</span>}</Td>
@@ -390,7 +391,31 @@ function FieldForm({ data, id, estateId, done }: { data: ReferenceData; id?: str
   );
 }
 
-function Fields({ data, canWrite, open, pick }: { data: ReferenceData; canWrite: (estateId: string) => boolean; open: (id: string) => void; pick: Pick }) {
+function Fields({
+  data,
+  canWrite,
+  open,
+  pick,
+  season,
+}: {
+  data: ReferenceData;
+  canWrite: (estateId: string) => boolean;
+  open: (id: string) => void;
+  pick: Pick;
+  season: { start: string | null; to: string };
+}) {
+  const app = useApp();
+  // Coffee plucked on each field since the season started, to compare with the expected cherry.
+  const plucked = useQueries({
+    queries: season.start
+      ? data.estates.map((e) => ({
+          queryKey: ["season", e.id, season.start, season.to],
+          queryFn: () => api<{ byField: { fieldId: string; coffeeNetG: number }[] }>(`/estates/${e.id}/reports/plucking?from=${season.start}&to=${season.to}`),
+          enabled: app.online && app.can("reports.read", e.id),
+        }))
+      : [],
+  });
+  const pluckedG = new Map(plucked.flatMap((r) => (r.data?.byField ?? []).map((f) => [f.fieldId, f.coffeeNetG] as const)));
   const varietyName = (id: string | null) => data.varieties.find((v) => v.id === id)?.name;
   return (
     <>
@@ -409,7 +434,7 @@ function Fields({ data, canWrite, open, pick }: { data: ReferenceData; canWrite:
             }
           >
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[44rem] text-sm">
+              <table className="w-full min-w-[52rem] text-sm">
                 <thead className="border-b border-line">
                   <tr>
                     <Th>
@@ -431,6 +456,8 @@ function Fields({ data, canWrite, open, pick }: { data: ReferenceData; canWrite:
                     <Th right>Acres</Th>
                     <Th>Subdivisions</Th>
                     <Th right>Expected</Th>
+                    <Th right>Plucked</Th>
+                    <Th>Progress</Th>
                     <Th>Status</Th>
                     <Th />
                   </tr>
@@ -439,7 +466,7 @@ function Fields({ data, canWrite, open, pick }: { data: ReferenceData; canWrite:
                   {fs.map((f) => (
                     <tr key={f.id}>
                       <Td>{canWrite(e.id) && <SelectBox label={`Select ${f.name}`} checked={pick.sel.has(f.id)} onChange={() => pick.toggle(f.id)} />}</Td>
-                      <Td className="font-mono">{f.code}</Td>
+                      <Td className="whitespace-nowrap font-mono">{f.code}</Td>
                       <Td>
                         {f.name}
                         {f.elevationM ? <span className="block text-xs text-muted">{f.elevationM} m</span> : null}
@@ -457,6 +484,24 @@ function Fields({ data, canWrite, open, pick }: { data: ReferenceData; canWrite:
                         </div>
                       </Td>
                       <Td right>{f.expectedCherryKg ? `${f.expectedCherryKg.toLocaleString("en-IN")} kg` : "–"}</Td>
+                      <Td right>{season.start ? `${Math.round((pluckedG.get(f.id) ?? 0) / 1000).toLocaleString("en-IN")} kg` : "–"}</Td>
+                      <Td>
+                        {season.start && f.expectedCherryKg ? (
+                          (() => {
+                            const pct = Math.round(((pluckedG.get(f.id) ?? 0) / 1000 / f.expectedCherryKg) * 100);
+                            return (
+                              <span className="flex items-center gap-2">
+                                <span className="block h-1.5 w-20 overflow-hidden rounded-full bg-surface-2">
+                                  <span className="block h-full rounded-full bg-roast" style={{ width: `${Math.min(100, pct)}%` }} />
+                                </span>
+                                <span className="text-xs text-muted">{pct}%</span>
+                              </span>
+                            );
+                          })()
+                        ) : (
+                          <span className="text-muted">–</span>
+                        )}
+                      </Td>
                       <Td>{statusChip(f.active)}</Td>
                       <Td right>{canWrite(e.id) && <EditLink label={`Edit ${f.name}`} onClick={() => open(f.id)} />}</Td>
                     </tr>
@@ -704,6 +749,7 @@ export function Masters() {
   const app = useApp();
   const qc = useQueryClient();
   const [tab, setTab] = useState<Tab>("fields");
+  const seasonStart = useDashboards(true).list.find((d) => d.season.startDate)?.season.startDate ?? null;
   const [target, setTarget] = useState<Target>(null);
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [note, setNote] = useState<{ tone: "ok" | "warn" | "bad"; text: string } | null>(null);
@@ -830,7 +876,7 @@ export function Masters() {
       {!canAdd && <Notice tone="info">You can view these lists. Only an owner or an estate manager can add or change fields, workers and jobs, and only an owner can change log kinds.</Notice>}
       {q.isLoading && <p>Loading…</p>}
       {q.error && <Notice tone="bad">Could not load the lists.</Notice>}
-      {data && tab === "fields" && <Fields data={data} canWrite={writeEstate} open={(id) => setTarget({ tab, id })} pick={pick} />}
+      {data && tab === "fields" && <Fields data={data} canWrite={writeEstate} open={(id) => setTarget({ tab, id })} pick={pick} season={{ start: seasonStart, to: app.date }} />}
       {data && tab === "workers" && <Workers data={data} canWrite={writeEstate} open={(id) => setTarget({ tab, id })} pick={pick} />}
       {data && tab === "jobs" && <Jobs data={data} canWrite={jobsWrite} open={(id) => setTarget({ tab, id })} />}
       {data && tab === "logkinds" && <Kinds data={data} canWrite={kindsWrite} open={(id) => setTarget({ tab, id })} />}

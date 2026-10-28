@@ -22,12 +22,18 @@ describe("tenant and estate isolation", () => {
     });
     expect((await push(a.supervisor, [m])).body.results[0].status).toBe("accepted");
 
+    const aUserId = ((await api("/admin/users", { token: a.owner.token })).body as { id: string }[])[0]?.id ?? "";
     const attempts: [string, string, unknown?][] = [
       ["GET", `/estates/${a.estate.id}/attendance/${d}`],
       ["GET", `/estates/${a.estate.id}/muster/${d}`],
       ["GET", `/estates/${a.estate.id}/daily-log/${d}`],
       ["GET", `/estates/${a.estate.id}/reports/daily/${d}`],
       ["GET", `/estates/${a.estate.id}/reports/dashboard/${d}`],
+      ["GET", `/estates/${a.estate.id}/reports/plucking?from=${d}&to=${d}`],
+      ["GET", `/estates/${a.estate.id}/daily-log?from=${d}&to=${d}`],
+      ["GET", `/estates/${a.estate.id}/workers/${a.w1.id}/attendance`],
+      ["PUT", `/admin/users/${aUserId}`, { displayName: "Taken over", grants: [{ role: "OWNER", estateId: null }] }],
+      ["POST", `/admin/users/${aUserId}/enable`],
       ["GET", `/estates/${a.estate.id}/conflicts`],
       ["POST", `/estates/${a.estate.id}/attendance/${d}/actions`, { action: "approve" }],
       ["POST", `/attendance-records/${m.entityId}/corrections`, { statusCode: "ABSENT", reason: "test reason", baseVersion: 1 }],

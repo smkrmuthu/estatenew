@@ -1,8 +1,10 @@
 import { addDays, formatKg, formatScaled, halfDays } from "@cemms/domain";
 import { and, eq, gte, lte } from "drizzle-orm";
+import { AppError } from "../../core/errors";
 import type { TenantContext } from "../context";
 import { attendanceRecords, attendanceSheets, dailylogEntries, deviceStatus, fields, jobTypes, logKinds, musterEntries, syncConflicts, workers } from "../schema";
 import { getEstate } from "./organization";
+import { setting } from "./settings";
 
 /**
  * Daily summary for one estate and day. Counts only records the server has accepted, and
@@ -189,10 +191,41 @@ export function dashboard(ctx: TenantContext, estateId: string, businessDate: st
     .all()
     .filter((d) => d.pendingCount > 0 && (JSON.parse(d.estateIdsJson) as string[]).includes(estateId));
 
+  // Season totals need a start date (OC-75 open); without one the dashboard shows none.
+  const seasonStart = setting(db, "season.startDate");
+  const expectedG = db
+    .select()
+    .from(fields)
+    .where(and(eq(fields.estateId, estateId), eq(fields.active, true)))
+    .all()
+    .reduce((sum, f) => sum + (f.expectedCherryG ?? 0), 0);
+  const seasonCoffeeG = seasonStart
+    ? db
+        .select()
+        .from(musterEntries)
+        .where(
+          and(
+            eq(musterEntries.estateId, estateId),
+            eq(musterEntries.status, "ACTIVE"),
+            eq(musterEntries.crop, "COFFEE"),
+            gte(musterEntries.businessDate, seasonStart),
+            lte(musterEntries.businessDate, businessDate),
+          ),
+        )
+        .all()
+        .reduce((sum, e) => sum + e.netG, 0)
+    : 0;
+
   return {
     estate: { id: estate.id, name: estate.name },
     businessDate,
     basis: "server-accepted" as const,
+    season: {
+      startDate: seasonStart || null,
+      coffeeNetKg: formatKg(seasonCoffeeG),
+      expectedKg: formatKg(expectedG),
+      percent: expectedG > 0 && seasonStart ? Math.min(999, Math.round((seasonCoffeeG / expectedG) * 100)) : null,
+    },
     today: {
       sheetState: today?.state ?? "NOT_STARTED",
       activeWorkers,
@@ -215,5 +248,168 @@ export function dashboard(ctx: TenantContext, estateId: string, businessDate: st
       devicesWaiting: waiting.length,
       entriesWaitingOnDevices: waiting.reduce((s, d) => s + d.pendingCount, 0),
     },
+  };
+}
+
+const MAX_RANGE_DAYS = 400;
+function checkRange(from: string, to: string) {
+  if (from > to) throw new AppError(422, "RANGE", "The start date is after the end date");
+  if (daysBetween(from, to) > MAX_RANGE_DAYS) throw new AppError(422, "RANGE_TOO_LONG", `Choose at most ${MAX_RANGE_DAYS} days`);
+}
+const daysBetween = (from: string, to: string) => Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000) + 1;
+
+/**
+ * Accepted weigh-ins over a range, by field and (for users allowed to see worker detail) by worker.
+ * Coffee and pepper are kept apart. No pay or rate is worked out here; payroll is deferred.
+ */
+export function pluckingReport(ctx: TenantContext, estateId: string, from: string, to: string) {
+  ctx.require("reports.read", estateId);
+  checkRange(from, to);
+  getEstate(ctx.db, estateId);
+  const db = ctx.db;
+  const entries = db
+    .select()
+    .from(musterEntries)
+    .where(and(eq(musterEntries.estateId, estateId), eq(musterEntries.status, "ACTIVE"), gte(musterEntries.businessDate, from), lte(musterEntries.businessDate, to)))
+    .all();
+  const fieldRows = new Map(
+    db
+      .select()
+      .from(fields)
+      .where(eq(fields.estateId, estateId))
+      .all()
+      .map((f) => [f.id, f]),
+  );
+  const workerRows = new Map(
+    db
+      .select()
+      .from(workers)
+      .where(eq(workers.estateId, estateId))
+      .all()
+      .map((w) => [w.id, w]),
+  );
+  const kg = (g: number) => formatKg(g);
+  const group = <T extends string>(keyOf: (e: (typeof entries)[number]) => T) => {
+    const m = new Map<T, { entries: number; coffeeG: number; pepperG: number; workerDays: Set<string>; workers: Set<string>; days: Set<string>; bestDayG: Map<string, number> }>();
+    for (const e of entries) {
+      const k = keyOf(e);
+      const g = m.get(k) ?? { entries: 0, coffeeG: 0, pepperG: 0, workerDays: new Set(), workers: new Set(), days: new Set(), bestDayG: new Map() };
+      g.entries++;
+      if (e.crop === "COFFEE") g.coffeeG += e.netG;
+      else g.pepperG += e.netG;
+      g.workerDays.add(`${e.workerId}|${e.businessDate}`);
+      g.workers.add(e.workerId);
+      g.days.add(e.businessDate);
+      g.bestDayG.set(e.businessDate, (g.bestDayG.get(e.businessDate) ?? 0) + e.netG);
+      m.set(k, g);
+    }
+    return m;
+  };
+  const byField = [...group((e) => e.fieldId)].map(([fieldId, g]) => ({
+    fieldId,
+    field: fieldRows.get(fieldId)?.name ?? "?",
+    entries: g.entries,
+    workerDays: g.workerDays.size,
+    coffeeNetKg: kg(g.coffeeG),
+    pepperNetKg: kg(g.pepperG),
+    coffeeNetG: g.coffeeG,
+    coffeePerWorkerDayKg: g.workerDays.size ? kg(Math.round(g.coffeeG / g.workerDays.size)) : "0.000",
+  }));
+  const detail = ctx.can("reports.workerDetail", estateId);
+  const byWorker = detail
+    ? [...group((e) => e.workerId)]
+        .map(([workerId, g]) => ({
+          workerId,
+          worker: workerRows.get(workerId)?.name ?? "?",
+          employeeCode: workerRows.get(workerId)?.employeeCode ?? "",
+          days: g.days.size,
+          entries: g.entries,
+          coffeeNetKg: kg(g.coffeeG),
+          pepperNetKg: kg(g.pepperG),
+          coffeeNetG: g.coffeeG,
+          bestDayKg: kg(Math.max(0, ...g.bestDayG.values())),
+        }))
+        .sort((a, b) => b.coffeeNetG - a.coffeeNetG)
+    : null;
+  return {
+    estate: { id: estateId },
+    from,
+    to,
+    basis: "server-accepted" as const,
+    totals: {
+      entries: entries.length,
+      coffeeNetKg: kg(entries.filter((e) => e.crop === "COFFEE").reduce((s, e) => s + e.netG, 0)),
+      pepperNetKg: kg(entries.filter((e) => e.crop === "PEPPER").reduce((s, e) => s + e.netG, 0)),
+    },
+    byField: byField.sort((a, b) => b.coffeeNetG - a.coffeeNetG),
+    byWorker,
+  };
+}
+
+/** Daily log readings over a range, with the kinds and how many readings each should have per day. */
+export function dailyLogRange(ctx: TenantContext, estateId: string, from: string, to: string) {
+  ctx.require("dailylog.read", estateId);
+  checkRange(from, to);
+  getEstate(ctx.db, estateId);
+  const db = ctx.db;
+  const kinds = db.select().from(logKinds).all();
+  const rows = db
+    .select()
+    .from(dailylogEntries)
+    .where(and(eq(dailylogEntries.estateId, estateId), eq(dailylogEntries.status, "ACTIVE"), gte(dailylogEntries.businessDate, from), lte(dailylogEntries.businessDate, to)))
+    .all();
+  return {
+    from,
+    to,
+    kinds: kinds.map((k) => ({ id: k.id, label: k.label, unit: k.unit, decimals: k.decimals, valueType: k.valueType, expectedPerDay: k.expectedPerDay, active: k.active })),
+    readings: rows
+      .map((r) => ({ id: r.id, businessDate: r.businessDate, readingAt: r.readingAt, kindId: r.kindId, valueScaled: r.valueScaled, valueText: r.valueText, remarks: r.remarks }))
+      .sort((a, b) => a.readingAt.localeCompare(b.readingAt)),
+  };
+}
+
+/** The last days of one worker's attendance on this estate. */
+export function workerHistory(ctx: TenantContext, estateId: string, workerId: string, days: number) {
+  ctx.require("attendance.read", estateId);
+  const db = ctx.db;
+  const worker = db
+    .select()
+    .from(workers)
+    .where(and(eq(workers.id, workerId), eq(workers.estateId, estateId)))
+    .get();
+  if (!worker) throw new AppError(404, "NOT_FOUND", "Worker not found on this estate");
+  const fieldName = new Map(
+    db
+      .select()
+      .from(fields)
+      .where(eq(fields.estateId, estateId))
+      .all()
+      .map((f) => [f.id, f.name]),
+  );
+  const jobName = new Map(
+    db
+      .select()
+      .from(jobTypes)
+      .all()
+      .map((j) => [j.id, j.name]),
+  );
+  const rows = db
+    .select()
+    .from(attendanceRecords)
+    .where(and(eq(attendanceRecords.estateId, estateId), eq(attendanceRecords.workerId, workerId)))
+    .all()
+    .sort((a, b) => b.businessDate.localeCompare(a.businessDate))
+    .slice(0, Math.min(Math.max(days, 1), 120));
+  return {
+    worker: { id: worker.id, name: worker.name, employeeCode: worker.employeeCode },
+    records: rows.map((r) => ({
+      businessDate: r.businessDate,
+      statusCode: r.statusCode,
+      dayFraction: r.dayFraction,
+      field: r.fieldId ? (fieldName.get(r.fieldId) ?? null) : null,
+      job: r.jobTypeId ? (jobName.get(r.jobTypeId) ?? null) : null,
+      remarks: r.remarks,
+    })),
+    daysWorked: rows.reduce((s, r) => s + (r.presence === "PRESENT" ? (r.dayFraction === "HALF" ? 0.5 : 1) : 0), 0),
   };
 }

@@ -1,9 +1,13 @@
-import { useQuery } from "@tanstack/react-query";
+import { addDays } from "@cemms/domain";
+import { useQueries, useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { useApp } from "../app-context";
-import { Card, Notice } from "../components/ui";
+import { Button, Card, Field, Input, Notice } from "../components/ui";
 import { api } from "../lib/api";
+import { useDashboards } from "./Dashboard";
 
 interface Summary {
+  estate: { id: string; name: string };
   attendance: {
     sheetState: string;
     marked: number;
@@ -19,72 +23,347 @@ interface Summary {
   sync: { openConflicts: number; devicesWaiting: number; entriesWaitingOnDevices: number; lastDeviceSyncAt: string | null; note: string };
 }
 
-export function Summary() {
-  const app = useApp();
-  const q = useQuery({
-    queryKey: ["summary", app.estateId, app.date],
-    queryFn: () => api<Summary>(`/estates/${app.estateId}/reports/daily/${app.date}`),
-    enabled: app.online && !!app.estateId && app.can("reports.read"),
-  });
-  if (!app.online) return <Notice tone="warn">The summary needs signal. {app.queue.waiting} entries are waiting on this phone.</Notice>;
-  if (q.isLoading) return <p>Loading…</p>;
-  if (q.error || !q.data) return <Notice tone="bad">Could not load the summary.</Notice>;
-  const s = q.data;
+interface Plucking {
+  from: string;
+  to: string;
+  totals: { entries: number; coffeeNetKg: string; pepperNetKg: string };
+  byField: { fieldId: string; field: string; entries: number; workerDays: number; coffeeNetKg: string; pepperNetKg: string; coffeeNetG: number; coffeePerWorkerDayKg: string }[];
+  byWorker: { workerId: string; worker: string; employeeCode: string; days: number; entries: number; coffeeNetKg: string; pepperNetKg: string; coffeeNetG: number; bestDayKg: string }[] | null;
+}
+
+const STATE_TEXT: Record<string, string> = { NOT_STARTED: "not started", DRAFT: "draft", SUBMITTED: "submitted", APPROVED: "approved" };
+const cropText = (c: string) => (c === "PEPPER" ? "Pepper" : "Coffee");
+const dayText = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+const timeText = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+/** The message for one day, ready to paste into WhatsApp. Counts only what the server has received. */
+function whatsappMessage(date: string, list: Summary[]): string {
+  const lines: string[] = [`*Estate summary · ${dayText(date)}*`];
+  for (const s of list) {
+    lines.push("", `*${s.estate.name}*`);
+    const a = s.attendance;
+    lines.push(
+      a.sheetState === "NOT_STARTED"
+        ? "Attendance: not started"
+        : `Attendance: ${a.present} present${a.halfDayCount ? ` (${a.halfDayCount} half day)` : ""}, ${a.absent} absent, ${a.marked} of ${a.activeWorkers} marked · ${a.manDays} man-days (${STATE_TEXT[a.sheetState] ?? a.sheetState})`,
+    );
+    if (s.weighIn.byCrop.length === 0) lines.push("Plucking: no weigh-ins yet");
+    for (const c of s.weighIn.byCrop)
+      lines.push(`${cropText(c.crop)}: ${c.netKg} kg from ${c.workers} ${c.workers === 1 ? "worker" : "workers"} (${c.entries} ${c.entries === 1 ? "weigh-in" : "weigh-ins"})`);
+    if (s.dailyLog.length) lines.push(`Daily log: ${s.dailyLog.map((r) => `${r.kind} ${r.value}${r.unit ? ` ${r.unit}` : ""} (${timeText(r.readingAt)})`).join("; ")}`);
+  }
+  const waiting = list.reduce((n, s) => n + s.sync.entriesWaitingOnDevices, 0);
+  if (waiting) lines.push("", `Note: ${waiting} entries are still on supervisor phones and are not counted yet.`);
+  return lines.join("\n");
+}
+
+function Bar({ value, max }: { value: number; max: number }) {
   return (
-    <div className="flex flex-col gap-4">
-      <Notice tone={s.sync.entriesWaitingOnDevices > 0 || app.queue.waiting > 0 ? "warn" : "info"}>
-        {s.sync.note} {s.sync.entriesWaitingOnDevices > 0 && `${s.sync.entriesWaitingOnDevices} entries are still waiting on ${s.sync.devicesWaiting} phone(s).`}{" "}
-        {app.queue.waiting > 0 && `This phone has ${app.queue.waiting} waiting.`}
-        {s.sync.openConflicts > 0 && ` ${s.sync.openConflicts} conflict(s) need a manager.`}
-      </Notice>
-      <Card title={`Attendance · ${app.date}`}>
+    <span className="block h-1.5 w-28 overflow-hidden rounded-full bg-surface-2">
+      <span className="block h-full rounded-full bg-roast" style={{ width: `${max > 0 ? Math.round((value / max) * 100) : 0}%` }} />
+    </span>
+  );
+}
+
+const Th = ({ children, right }: { children?: React.ReactNode; right?: boolean }) => (
+  <th className={`px-3 py-2 text-[0.8rem] font-medium text-muted ${right ? "text-right" : "text-left"}`}>{children}</th>
+);
+
+function DaySummary({ s }: { s: Summary }) {
+  return (
+    <>
+      <Card title={`Attendance · ${s.estate.name}`}>
         <p>
           {s.attendance.present} present ({s.attendance.halfDayCount} half day), {s.attendance.absent} absent, {s.attendance.marked} of {s.attendance.activeWorkers} marked · {s.attendance.manDays}{" "}
-          man-days · {s.attendance.sheetState.toLowerCase().replace("_", " ")}
+          man-days · {(STATE_TEXT[s.attendance.sheetState] ?? s.attendance.sheetState).replace("_", " ")}
         </p>
-        <table className="mt-2 w-full text-left text-sm">
-          <thead>
-            <tr className="text-muted">
-              <th className="py-1">Field</th>
-              <th>Job</th>
-              <th className="text-right">Workers</th>
-              <th className="text-right">Man-days</th>
-            </tr>
-          </thead>
-          <tbody>
-            {s.attendance.byFieldJob.map((r) => (
-              <tr key={`${r.field}${r.job}`} className="border-t border-line">
-                <td className="py-1">{r.field}</td>
-                <td>{r.job}</td>
-                <td className="text-right">{r.workers}</td>
-                <td className="text-right">{r.manDays}</td>
+        <div className="mt-2 overflow-x-auto">
+          <table className="w-full min-w-[22rem] text-left text-sm">
+            <thead className="border-b border-line">
+              <tr>
+                <Th>Field</Th>
+                <Th>Job</Th>
+                <Th right>Workers</Th>
+                <Th right>Man-days</Th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-line">
+              {s.attendance.byFieldJob.map((r) => (
+                <tr key={`${r.field}${r.job}`}>
+                  <td className="px-3 py-1.5">{r.field}</td>
+                  <td className="px-3 py-1.5">{r.job}</td>
+                  <td className="px-3 py-1.5 text-right tabular-nums">{r.workers}</td>
+                  <td className="px-3 py-1.5 text-right tabular-nums">{r.manDays}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </Card>
-      <Card title="Weigh-in">
+      <Card title={`Plucking · ${s.estate.name}`}>
         {s.weighIn.byCrop.length === 0 && <p className="text-muted">No weigh-ins yet.</p>}
         <ul>
           {s.weighIn.byCrop.map((c) => (
             <li key={c.crop} className="text-lg">
-              {c.crop === "PEPPER" ? "Pepper" : "Coffee"}: <strong>{c.netKg} kg</strong> from {c.workers} {c.workers === 1 ? "worker" : "workers"} ({c.entries}{" "}
-              {c.entries === 1 ? "weigh-in" : "weigh-ins"})
+              {cropText(c.crop)}: <strong>{c.netKg} kg</strong> from {c.workers} {c.workers === 1 ? "worker" : "workers"} ({c.entries} {c.entries === 1 ? "weigh-in" : "weigh-ins"})
             </li>
           ))}
         </ul>
         {s.weighIn.workersWithSeveralEntries > 0 && <p className="text-sm text-muted">{s.weighIn.workersWithSeveralEntries} worker(s) were weighed more than once today.</p>}
       </Card>
-      <Card title="Daily log">
+      <Card title={`Daily log · ${s.estate.name}`}>
         <ul>
           {s.dailyLog.map((r) => (
             <li key={r.readingAt + r.kind}>
-              {new Date(r.readingAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} · {r.kind}: {r.value} {r.unit ?? ""}
+              {timeText(r.readingAt)} · {r.kind}: {r.value} {r.unit ?? ""}
             </li>
           ))}
           {s.dailyLog.length === 0 && <li className="text-muted">No readings yet.</li>}
         </ul>
       </Card>
+    </>
+  );
+}
+
+function PluckingRange({ estateId, name, from, to, showName }: { estateId: string; name: string; from: string; to: string; showName: boolean }) {
+  const app = useApp();
+  const q = useQuery({
+    queryKey: ["season", estateId, from, to],
+    queryFn: () => api<Plucking>(`/estates/${estateId}/reports/plucking?from=${from}&to=${to}`),
+    enabled: app.online,
+  });
+  if (q.isLoading) return <p>Loading…</p>;
+  if (q.error || !q.data) return <Notice tone="bad">Could not load the report{showName ? ` for ${name}` : ""}.</Notice>;
+  const r = q.data;
+  const topWorker = Math.max(0, ...(r.byWorker ?? []).map((w) => w.coffeeNetG));
+  const topField = Math.max(0, ...r.byField.map((f) => f.coffeeNetG));
+  return (
+    <>
+      <Card
+        title={showName ? `By field · ${name}` : "By field"}
+        actions={
+          <span className="text-sm text-muted">
+            Coffee {r.totals.coffeeNetKg} kg · Pepper {r.totals.pepperNetKg} kg
+          </span>
+        }
+      >
+        {r.byField.length === 0 ? (
+          <p className="text-muted">No weigh-ins in these days.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[34rem] text-sm">
+              <thead className="border-b border-line">
+                <tr>
+                  <Th>Field</Th>
+                  <Th right>Worker-days</Th>
+                  <Th right>Coffee kg</Th>
+                  <Th />
+                  <Th right>Pepper kg</Th>
+                  <Th right>Coffee per worker-day</Th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-line">
+                {r.byField.map((f) => (
+                  <tr key={f.fieldId}>
+                    <td className="px-3 py-2">{f.field}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{f.workerDays}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{f.coffeeNetKg}</td>
+                    <td className="px-3 py-2">
+                      <Bar value={f.coffeeNetG} max={topField} />
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums">{f.pepperNetKg}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{f.coffeePerWorkerDayKg}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+      {r.byWorker && (
+        <Card title={showName ? `By worker · ${name}` : "By worker"} actions={<span className="text-sm text-muted">Most coffee first</span>}>
+          {r.byWorker.length === 0 ? (
+            <p className="text-muted">No weigh-ins in these days.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[38rem] text-sm">
+                <thead className="border-b border-line">
+                  <tr>
+                    <Th>Worker</Th>
+                    <Th right>Days</Th>
+                    <Th right>Weigh-ins</Th>
+                    <Th right>Coffee kg</Th>
+                    <Th>Compared with the top worker</Th>
+                    <Th right>Pepper kg</Th>
+                    <Th right>Best day</Th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-line">
+                  {r.byWorker.map((w) => (
+                    <tr key={w.workerId}>
+                      <td className="px-3 py-2">
+                        <span className="font-mono text-xs text-muted">{w.employeeCode}</span> {w.worker}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums">{w.days}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{w.entries}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{w.coffeeNetKg}</td>
+                      <td className="px-3 py-2">
+                        <Bar value={w.coffeeNetG} max={topWorker} />
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums">{w.pepperNetKg}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{w.bestDayKg}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <p className="mt-2 text-sm text-muted">Weights only. No pay or rate is worked out here.</p>
+        </Card>
+      )}
+    </>
+  );
+}
+
+export function Summary() {
+  const app = useApp();
+  const estates = app.ref?.estates ?? [];
+  const scope = app.allEstates && estates.length > 1 ? estates : estates.filter((e) => e.id === app.estateId);
+  const multi = scope.length > 1;
+  const [view, setView] = useState<"day" | "range">("day");
+  const [from, setFrom] = useState(addDays(app.date, -6));
+  const [to, setTo] = useState(app.date);
+  const [copied, setCopied] = useState<"ok" | "fail" | null>(null);
+  const seasonStart = useDashboards().list.find((d) => d.season.startDate)?.season.startDate ?? null;
+
+  const results = useQueries({
+    queries: scope.map((e) => ({
+      queryKey: ["summary", e.id, app.date],
+      queryFn: () => api<Summary>(`/estates/${e.id}/reports/daily/${app.date}`),
+      enabled: app.online && app.can("reports.read", e.id),
+    })),
+  });
+  const list = results.flatMap((r) => (r.data ? [r.data] : []));
+  const message = list.length ? whatsappMessage(app.date, list) : "";
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(message);
+      setCopied("ok");
+    } catch {
+      setCopied("fail");
+    }
+  }
+
+  if (!app.online) return <Notice tone="warn">Reports need signal. {app.queue.waiting} entries are waiting on this phone.</Notice>;
+  const pending = list.reduce((n, s) => n + s.sync.entriesWaitingOnDevices, 0);
+  const conflicts = list.reduce((n, s) => n + s.sync.openConflicts, 0);
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1>Reports</h1>
+          <p className="mt-1 max-w-xl text-sm text-muted">{multi ? "All estates together." : "One estate."} Figures count only what the server has received.</p>
+        </div>
+        <fieldset className="inline-flex gap-0.5 rounded-xl border-0 bg-surface-2 p-[3px]">
+          <legend className="sr-only">Report</legend>
+          {(
+            [
+              ["day", "Day summary"],
+              ["range", "Plucking by field and worker"],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              aria-pressed={view === id}
+              onClick={() => setView(id)}
+              className={`min-h-9 rounded-lg px-3 text-sm font-medium transition-colors ${view === id ? "bg-surface text-ink shadow-[0_0_0_1px_var(--color-line)]" : "text-muted hover:text-ink"}`}
+            >
+              {label}
+            </button>
+          ))}
+        </fieldset>
+      </div>
+
+      {view === "day" && (
+        <>
+          {results.some((r) => r.isLoading) && <p>Loading…</p>}
+          {results.some((r) => r.error) && <Notice tone="bad">Could not load the summary.</Notice>}
+          {list.length > 0 && (
+            <>
+              <Notice tone={pending > 0 || app.queue.waiting > 0 || conflicts > 0 ? "warn" : "info"}>
+                {list[0]?.sync.note} {pending > 0 && `${pending} entries are still waiting on supervisor phones.`} {app.queue.waiting > 0 && `This phone has ${app.queue.waiting} waiting.`}
+                {conflicts > 0 && ` ${conflicts} conflict(s) need a manager.`}
+              </Notice>
+              <Card
+                title="Message to send"
+                actions={
+                  <Button size="sm" onClick={() => void copy()}>
+                    Copy for WhatsApp
+                  </Button>
+                }
+              >
+                <pre className="whitespace-pre-wrap break-words font-sans text-sm">{message}</pre>
+                {copied === "ok" && <p className="mt-2 text-sm text-ok">Copied. Paste it into WhatsApp.</p>}
+                {copied === "fail" && <p className="mt-2 text-sm text-bad">Could not copy automatically. Select the text above and copy it.</p>}
+              </Card>
+              {list.map((s) => (
+                <DaySummary key={s.estate.id} s={s} />
+              ))}
+            </>
+          )}
+        </>
+      )}
+
+      {view === "range" && (
+        <>
+          <Card>
+            <div className="flex flex-wrap items-end gap-3">
+              <Field label="From" htmlFor="rep-from">
+                <Input id="rep-from" type="date" value={from} onChange={(e) => e.target.value && setFrom(e.target.value)} />
+              </Field>
+              <Field label="To" htmlFor="rep-to">
+                <Input id="rep-to" type="date" value={to} onChange={(e) => e.target.value && setTo(e.target.value)} />
+              </Field>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setFrom(addDays(app.date, -6));
+                    setTo(app.date);
+                  }}
+                >
+                  Last 7 days
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setFrom(addDays(app.date, -29));
+                    setTo(app.date);
+                  }}
+                >
+                  Last 30 days
+                </Button>
+                {seasonStart && (
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      setFrom(seasonStart);
+                      setTo(app.date);
+                    }}
+                  >
+                    Season to date
+                  </Button>
+                )}
+              </div>
+            </div>
+            {from > to && <p className="mt-2 text-sm text-bad">The start date is after the end date.</p>}
+          </Card>
+          {from <= to && scope.map((e) => <PluckingRange key={e.id} estateId={e.id} name={e.name} from={from} to={to} showName={multi} />)}
+        </>
+      )}
     </div>
   );
 }

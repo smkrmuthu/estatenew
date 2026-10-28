@@ -268,6 +268,21 @@ export function tenantRoutes(app: Hono<AppEnv>) {
   );
   route(
     app,
+    { method: "get", path: "/estates/:estateId/reports/plucking", summary: "Weigh-ins over a date range by field and worker (?from=&to=)", tag: "reports", auth: "bearer", permission: "reports.read" },
+    call("reports.plucking", (c) => ({ estateId: p(c, "estateId"), from: c.req.query("from") ?? "", to: c.req.query("to") ?? "" })),
+  );
+  route(
+    app,
+    { method: "get", path: "/estates/:estateId/daily-log", summary: "Daily log readings over a date range (?from=&to=)", tag: "dailylog", auth: "bearer", permission: "dailylog.read" },
+    call("dailylog.range", (c) => ({ estateId: p(c, "estateId"), from: c.req.query("from") ?? "", to: c.req.query("to") ?? "" })),
+  );
+  route(
+    app,
+    { method: "get", path: "/estates/:estateId/workers/:workerId/attendance", summary: "A worker's recent attendance (?days=)", tag: "attendance", auth: "bearer", permission: "attendance.read" },
+    call("attendance.workerHistory", (c) => ({ estateId: p(c, "estateId"), workerId: p(c, "workerId"), days: Number(c.req.query("days") ?? 30) || 30 })),
+  );
+  route(
+    app,
     { method: "get", path: "/audit", summary: "Audit trail", tag: "audit", auth: "bearer", permission: "audit.read" },
     call("audit.list", (c) => ({ estateId: c.req.query("estateId"), entityType: c.req.query("entityType"), entityId: c.req.query("entityId"), limit: Number(c.req.query("limit") ?? 100) })),
   );

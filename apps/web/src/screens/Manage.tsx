@@ -217,6 +217,51 @@ function AttendanceTypes() {
   );
 }
 
+function SeasonStart() {
+  const app = useApp();
+  const qc = useQueryClient();
+  const settings = useQuery({ queryKey: ["settings"], queryFn: () => api<{ key: string; value: unknown }[]>("/admin/settings"), enabled: app.online });
+  const current = (settings.data?.find((x) => x.key === "season.startDate")?.value as string | undefined) ?? "";
+  const [value, setValue] = useState<string | null>(null);
+  const [note, setNote] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
+  const shown = value ?? current;
+  return (
+    <Card title="Season">
+      <p className="mb-2 text-sm text-muted">
+        The first day of the plucking season. The dashboard adds up coffee from this day and compares it with the expected cherry entered on the fields. The owner has not yet confirmed the season
+        dates (question OC-75), so the live site refuses to set this until they do.
+      </p>
+      <div className="flex flex-wrap items-end gap-3">
+        <Field label="Season start" htmlFor="season-start" hint="Leave blank for no season totals">
+          <Input id="season-start" type="date" value={shown} onChange={(e) => setValue(e.target.value)} />
+        </Field>
+        <Button
+          disabled={!app.online || shown === current}
+          onClick={async () => {
+            try {
+              await api("/admin/settings/season.startDate", { method: "PUT", body: { value: shown } });
+              setNote({ tone: "ok", text: shown ? "Saved. The dashboard now shows the season total." : "Cleared. The dashboard no longer shows a season total." });
+              setValue(null);
+              await qc.invalidateQueries({ queryKey: ["settings"] });
+              await qc.invalidateQueries({ queryKey: ["dashboard"] });
+              await qc.invalidateQueries({ queryKey: ["season"] });
+            } catch (e) {
+              setNote({ tone: "bad", text: msg(e) });
+            }
+          }}
+        >
+          Save
+        </Button>
+      </div>
+      {note && (
+        <div className="mt-3">
+          <Notice tone={note.tone}>{note.text}</Notice>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function Setup() {
   const app = useApp();
   const qc = useQueryClient();
@@ -227,6 +272,7 @@ function Setup() {
   });
   return (
     <>
+      <SeasonStart />
       <AttendanceTypes />
       <Card title="Go-live readiness">
         {readiness.data?.ready ? (

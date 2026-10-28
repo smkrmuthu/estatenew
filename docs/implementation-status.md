@@ -39,6 +39,17 @@ Not run: browser end-to-end suite (Playwright), load test, OWASP ZAP scan, stagi
 
 Masters has Fields, Workers, Jobs and Log kinds tabs with Add and Edit side forms like the prototype; Users is its own page with last sign-in. New optional data: worker gender and type (Permanent, Casual, Contract), field elevation, expected cherry and subdivisions, job "counts as plucking", log kind "expected per day". Server allocates employee codes (`GLZ-001`) and field codes (`GLZ-01`). Tenant migration 0002 adds the columns and table. Workers and fields that no attendance or weigh-in record refers to can be deleted from Masters (tick rows, Delete selected, a reason is required and audited; used ones are refused and should be set Inactive). Importing a CSV never deletes; it adds or updates by code, and a field that has subdivisions keeps its varieties and acres. Not yet: weigh-in does not follow "counts as plucking"; no CSV import for subdivisions; gender, subdivisions, elevation and expected crop wait on owner answers (OC-99, AQ-24, OC-74, OC-75).
 
+## Prototype gaps closed (28 October)
+
+- **All estates:** the Dashboard and Reports can show every estate together (the estate picker has "All estates"); capture screens still work on one estate.
+- **Attendance:** per-worker History, and a manager's Correct form on submitted or approved days (append-only correction with reason, through the existing correction API). "Workers by field" was already there.
+- **Daily log:** readings over 7 or 30 days as a chart and a list, and "Rain 1 of 2" progress against each kind's expected readings per day.
+- **Reports:** "Copy for WhatsApp" daily message, and a date-range report of weigh-ins by field and by worker (weights only, no pay; worker detail needs `reports.workerDetail`).
+- **Dashboard and sidebar:** season total against expected cherry (needs the season start setting, OC-75), and a badge on Attendance for days waiting for approval.
+- **Plucking:** a "By subdivision" table (letter only where unambiguous; subdivision weighing still open, AQ-25).
+- **Masters:** Plucked and Progress columns on fields once the season start is set.
+- **Users:** edit a person's name, role and estates (their sessions end; the last owner and your own access cannot be changed) and re-enable a disabled user.
+
 ## Prototype pages not built yet
 
 Washing, Processing, Packing, Trace a bag and Process settings from the prototype are Phase 1B and are not in the menu. Plucking is the Weigh-in page (it also covers pepper). Masters and Users are inside Manage. Daily log "expected readings per day" is not shown because the reading list is open (OC-100).

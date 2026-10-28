@@ -54,6 +54,12 @@ export const passwordChange = z
 /** An owner sets a temporary password for someone; they must change it at next sign-in. */
 export const passwordReset = z.object({ password: z.string().min(12, "Use at least 12 characters").max(200) });
 
+/** Change a person's name and what they may do; their sessions end so the new access applies at once. */
+export const userUpdate = z.object({
+  displayName: z.string().trim().min(1).max(120),
+  grants: z.array(grant).min(1).max(20),
+});
+
 export const userCreate = z.object({
   username: z
     .string()

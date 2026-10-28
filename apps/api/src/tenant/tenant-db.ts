@@ -101,6 +101,18 @@ const OPS = {
   "sync.push": { input: syncPush, run: pushMutations },
   "reports.daily": { input: day, run: (c: TenantContext, i: z.infer<typeof day>) => reports.dailySummary(c, i.estateId, i.businessDate) },
   "reports.dashboard": { input: day, run: (c: TenantContext, i: z.infer<typeof day>) => reports.dashboard(c, i.estateId, i.businessDate) },
+  "reports.plucking": {
+    input: z.object({ estateId: z.string(), from: z.string().refine(isBusinessDate), to: z.string().refine(isBusinessDate) }),
+    run: (c: TenantContext, i: { estateId: string; from: string; to: string }) => reports.pluckingReport(c, i.estateId, i.from, i.to),
+  },
+  "dailylog.range": {
+    input: z.object({ estateId: z.string(), from: z.string().refine(isBusinessDate), to: z.string().refine(isBusinessDate) }),
+    run: (c: TenantContext, i: { estateId: string; from: string; to: string }) => reports.dailyLogRange(c, i.estateId, i.from, i.to),
+  },
+  "attendance.workerHistory": {
+    input: z.object({ estateId: z.string(), workerId: z.string(), days: z.number().int().min(1).max(120).default(30) }),
+    run: (c: TenantContext, i: { estateId: string; workerId: string; days: number }) => reports.workerHistory(c, i.estateId, i.workerId, i.days),
+  },
   "audit.list": {
     input: z.object({ estateId: z.string().optional(), entityType: z.string().optional(), entityId: z.string().optional(), limit: z.number().int().min(1).max(500).default(100) }),
     run: (c: TenantContext, i: { estateId?: string; entityType?: string; entityId?: string; limit: number }) => history.listAudit(c, i),

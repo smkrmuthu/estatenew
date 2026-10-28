@@ -283,3 +283,97 @@ describe("masters forms", () => {
     expect(list.find((u) => u.username === "sup1")?.lastSignInAt).toMatch(/^\d{4}-/);
   });
 });
+
+describe("reports, season and user access", () => {
+  it("reports weigh-ins by field and worker over a range, and hides worker detail from a supervisor", async () => {
+    const s = await setupTenant();
+    const w = (workerId: string, fieldId: string, gross: string, crop = "COFFEE") =>
+      mutation(s.supervisor.deviceId, s.estate.id, "muster_entry", "create", { businessDate: today(), workerId, fieldId, crop, grossKg: gross, bags: 1, tareKg: "0" });
+    const ms = [await w(s.w1.id, s.f1.id, "20"), await w(s.w1.id, s.f1.id, "5"), await w(s.w2.id, s.f2.id, "12"), await w(s.w2.id, s.f2.id, "3", "PEPPER")];
+    expect((await push(s.supervisor, ms)).body.results.map((r: { status: string }) => r.status)).toEqual(["accepted", "accepted", "accepted", "accepted"]);
+    const url = `/estates/${s.estate.id}/reports/plucking?from=${today()}&to=${today()}`;
+    const owner = (await api(url, { token: s.owner.token })).body;
+    expect(owner.totals).toMatchObject({ entries: 4, coffeeNetKg: "37.000", pepperNetKg: "3.000" });
+    expect(owner.byField.find((f: { field: string }) => f.field === "Field One")).toMatchObject({ coffeeNetKg: "25.000", workerDays: 1, coffeePerWorkerDayKg: "25.000" });
+    expect(owner.byWorker[0]).toMatchObject({ employeeCode: "W001", coffeeNetKg: "25.000", days: 1, entries: 2 });
+    const sup = (await api(url, { token: s.supervisor.token })).body;
+    expect(sup.byWorker).toBeNull();
+    expect(sup.byField).toHaveLength(2);
+    expect((await api(`/estates/${s.estate.id}/reports/plucking?from=${today()}&to=2020-01-01`, { token: s.owner.token })).body.code).toBe("RANGE");
+  });
+
+  it("lists daily log readings over a range and a worker's attendance history", async () => {
+    const s = await setupTenant();
+    const kind = (
+      await api("/admin/log-kinds", { token: s.owner.token, body: { code: "RAIN", label: "Rain", unit: "mm", valueType: "NUMBER", decimals: 0, minScaled: 0, maxScaled: 300, expectedPerDay: 2 } })
+    ).body;
+    const r = await mutation(s.supervisor.deviceId, s.estate.id, "dailylog_entry", "create", { businessDate: today(), kindId: kind.id, value: "12", readingAt: new Date().toISOString() });
+    await push(s.supervisor, [r]);
+    const range = (await api(`/estates/${s.estate.id}/daily-log?from=${today()}&to=${today()}`, { token: s.supervisor.token })).body;
+    expect(range.kinds.find((k: { id: string }) => k.id === kind.id)).toMatchObject({ expectedPerDay: 2 });
+    expect(range.readings).toEqual([expect.objectContaining({ kindId: kind.id, valueScaled: 12 })]);
+
+    const a = await mutation(s.supervisor.deviceId, s.estate.id, "attendance_record", "upsert", {
+      businessDate: today(),
+      workerId: s.w1.id,
+      statusCode: "PRESENT",
+      dayFraction: "HALF",
+      fieldId: s.f1.id,
+      jobTypeId: s.plk.id,
+    });
+    await push(s.supervisor, [a]);
+    const h = (await api(`/estates/${s.estate.id}/workers/${s.w1.id}/attendance`, { token: s.supervisor.token })).body;
+    expect(h).toMatchObject({ worker: { employeeCode: "W001" }, daysWorked: 0.5 });
+    expect(h.records[0]).toMatchObject({ field: "Field One", job: "Plucking", dayFraction: "HALF" });
+    // A worker of another estate is not found through this estate.
+    expect((await api(`/estates/${s.estate.id}/workers/${s.w101.id}/attendance`, { token: s.owner.token })).status).toBe(404);
+  });
+
+  it("shows season totals on the dashboard only once the season start is set", async () => {
+    const s = await setupTenant();
+    await api(`/fields`, { token: s.owner.token, body: { estateId: s.estate.id, name: "Expecting", areaCentiAcres: 500, expectedCherryKg: 1000, crops: ["COFFEE"] } });
+    const m = await mutation(s.supervisor.deviceId, s.estate.id, "muster_entry", "create", {
+      businessDate: today(),
+      workerId: s.w1.id,
+      fieldId: s.f1.id,
+      crop: "COFFEE",
+      grossKg: "250",
+      bags: 1,
+      tareKg: "0",
+    });
+    await push(s.supervisor, [m]);
+    const dash = async () => (await api(`/estates/${s.estate.id}/reports/dashboard/${today()}`, { token: s.owner.token })).body.season;
+    expect(await dash()).toMatchObject({ startDate: null, expectedKg: "1000.000", percent: null });
+    const set = await api("/admin/settings/season.startDate", { method: "PUT", token: s.owner.token, body: { value: today() } });
+    expect(set.status, JSON.stringify(set.body)).toBe(200);
+    expect(await dash()).toMatchObject({ startDate: today(), coffeeNetKg: "250.000", percent: 25 });
+    expect((await api("/admin/settings/season.startDate", { method: "PUT", token: s.owner.token, body: { value: "not a date" } })).status).toBe(422);
+  });
+
+  it("edits a user's access, ends their sessions, re-enables them, and keeps one owner", async () => {
+    const s = await setupTenant();
+    const list = async () =>
+      (await api("/admin/users", { token: s.owner.token })).body as { id: string; username: string; status: string; displayName: string; grants: { role: string; estateId: string | null }[] }[];
+    const sup = (await list()).find((u) => u.username === "sup1");
+    if (!sup) throw new Error("no supervisor");
+    const edit = await api(`/admin/users/${sup.id}`, { method: "PUT", token: s.owner.token, body: { displayName: "Supervisor Renamed", grants: [{ role: "ESTATE_MANAGER", estateId: s.estate.id }] } });
+    expect(edit.status, JSON.stringify(edit.body)).toBe(200);
+    expect((await list()).find((u) => u.id === sup.id)).toMatchObject({ displayName: "Supervisor Renamed", grants: [{ role: "ESTATE_MANAGER", estateId: s.estate.id }] });
+    // The old session is ended.
+    expect((await api("/reference", { token: s.supervisor.token })).status).toBe(401);
+
+    const bad = await api(`/admin/users/${sup.id}`, { method: "PUT", token: s.owner.token, body: { displayName: "X", grants: [{ role: "FIELD_SUPERVISOR", estateId: uuidv7() }] } });
+    expect(bad.body.code).toBe("ESTATE_UNKNOWN");
+    const owner = (await list()).find((u) => u.username === "owner");
+    if (!owner) throw new Error("no owner");
+    expect((await api(`/admin/users/${owner.id}`, { method: "PUT", token: s.owner.token, body: { displayName: "Me", grants: [{ role: "AUDITOR", estateId: null }] } })).body.code).toBe("SELF_EDIT");
+
+    await api(`/admin/users/${sup.id}/disable`, { token: s.owner.token, body: { reason: "Left the estate" } });
+    expect((await list()).find((u) => u.id === sup.id)?.status).toBe("DISABLED");
+    expect((await api(`/admin/users/${sup.id}/enable`, { method: "POST", token: s.owner.token })).status).toBe(200);
+    expect((await list()).find((u) => u.id === sup.id)?.status).toBe("ACTIVE");
+    // A supervisor cannot manage users.
+    const again = await login(s.code, "sup1", "supervisor-pass-1");
+    expect((await api(`/admin/users/${sup.id}/enable`, { method: "POST", token: again.token })).status).toBe(403);
+  });
+});

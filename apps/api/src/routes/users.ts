@@ -1,4 +1,4 @@
-import { passwordReset, userCreate } from "@cemms/contracts";
+import { passwordReset, userCreate, userUpdate } from "@cemms/contracts";
 import { can, uuidv7 } from "@cemms/domain";
 import { and, eq, isNull } from "drizzle-orm";
 import type { Context, Hono } from "hono";
@@ -84,6 +84,86 @@ export function userRoutes(app: Hono<AppEnv>) {
     await audit(db, { actor: a.user.id, action: "user.create", tenantId: a.tenant.id, userId: user.id, requestId: c.get("requestId"), detail: { grants: body.grants } });
     return c.json({ id: user.id, username: user.username, displayName: user.displayName, grants: body.grants }, 201);
   });
+
+  route(
+    app,
+    { method: "put", path: "/admin/users/:id", summary: "Change a user's name, roles and estates; their sessions end", tag: "admin", auth: "bearer", permission: "users.manage", body: userUpdate },
+    async (c) => {
+      const a = auth(c);
+      const body = userUpdate.parse(await readJson(c));
+      const id = c.req.param("id") ?? "";
+      if (id === a.user.id) throw new AppError(422, "SELF_EDIT", "You cannot change your own access");
+      if (body.grants.some((g) => g.role === "PLATFORM_ADMIN")) throw new AppError(422, "ROLE_NOT_ALLOWED", "This role cannot be given here");
+      const estateIds = [...new Set(body.grants.map((g) => g.estateId).filter((x): x is string => x !== null))];
+      if (estateIds.length) {
+        const { missing } = await callTenant(c, "org.validateEstates", { estateIds });
+        if (missing.length) throw new AppError(422, "ESTATE_UNKNOWN", "An estate was not found", { grants: "Unknown estate" });
+      }
+      const db = controlDb(c.env);
+      const target = await db
+        .select()
+        .from(users)
+        .where(and(eq(users.id, id), eq(users.tenantId, a.tenant.id)))
+        .get();
+      if (!target) throw new AppError(404, "NOT_FOUND", "User not found");
+      const before = grantsOf(
+        await db
+          .select()
+          .from(userGrants)
+          .where(and(eq(userGrants.userId, id), eq(userGrants.tenantId, a.tenant.id)))
+          .all(),
+      );
+      // Never leave the tenant without an active owner.
+      if (before.some((g) => g.role === "OWNER") && !body.grants.some((g) => g.role === "OWNER")) {
+        const otherOwners = (
+          await db
+            .select()
+            .from(userGrants)
+            .where(and(eq(userGrants.tenantId, a.tenant.id), eq(userGrants.role, "OWNER")))
+            .all()
+        ).filter((g) => g.userId !== id);
+        if (otherOwners.length === 0) throw new AppError(422, "LAST_OWNER", "The estate needs at least one owner");
+      }
+      const now = new Date().toISOString();
+      await db.batch([
+        db.update(users).set({ displayName: body.displayName }).where(eq(users.id, id)),
+        db.delete(userGrants).where(and(eq(userGrants.userId, id), eq(userGrants.tenantId, a.tenant.id))),
+        ...body.grants.map((g) => db.insert(userGrants).values({ id: uuidv7(), tenantId: a.tenant.id, userId: id, estateKey: g.estateId ?? "", role: g.role, createdAt: now, createdBy: a.user.id })),
+        db
+          .update(sessions)
+          .set({ revokedAt: now, revokedReason: "access-changed" })
+          .where(and(eq(sessions.userId, id), isNull(sessions.revokedAt))),
+      ]);
+      await audit(db, {
+        actor: a.user.id,
+        action: "user.update",
+        tenantId: a.tenant.id,
+        userId: id,
+        requestId: c.get("requestId"),
+        detail: { before, after: body.grants, displayName: body.displayName },
+      });
+      return c.json({ id, displayName: body.displayName, grants: body.grants });
+    },
+  );
+
+  route(
+    app,
+    { method: "post", path: "/admin/users/:id/enable", summary: "Re-enable a disabled user; they sign in again with their password", tag: "admin", auth: "bearer", permission: "users.manage" },
+    async (c) => {
+      const a = auth(c);
+      const id = c.req.param("id") ?? "";
+      const db = controlDb(c.env);
+      const target = await db
+        .select()
+        .from(users)
+        .where(and(eq(users.id, id), eq(users.tenantId, a.tenant.id)))
+        .get();
+      if (!target) throw new AppError(404, "NOT_FOUND", "User not found");
+      await db.update(users).set({ status: "ACTIVE", failedAttempts: 0, lockedUntil: null }).where(eq(users.id, id));
+      await audit(db, { actor: a.user.id, action: "user.enable", tenantId: a.tenant.id, userId: id, requestId: c.get("requestId") });
+      return c.json({ ok: true });
+    },
+  );
 
   route(
     app,
