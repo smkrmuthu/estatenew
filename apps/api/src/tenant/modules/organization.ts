@@ -202,7 +202,7 @@ export function upsertField(ctx: TenantContext, input: z.infer<typeof fieldInput
 type SimpleTable = typeof varieties | typeof jobTypes;
 
 function upsertSimple<T extends SimpleTable>(ctx: TenantContext, table: T, entityType: string, values: Record<string, unknown>, id?: string, baseVersion?: number) {
-  ctx.require("masters.write", null);
+  ctx.requireAny("masters.write");
   const { now, by } = audited(ctx);
   try {
     return ctx.tx((db) => {
@@ -282,7 +282,7 @@ export function upsertWorker(ctx: TenantContext, input: z.infer<typeof workerInp
 }
 
 export function upsertLogKind(ctx: TenantContext, input: z.infer<typeof logKindInput>, id?: string, baseVersion?: number) {
-  ctx.require("settings.manage", null);
+  ctx.requireAny("dailylog.configure");
   if (input.minScaled !== null && input.maxScaled !== null && input.minScaled > input.maxScaled) throw new AppError(422, "RANGE", "Minimum is above maximum", { minScaled: "Above maximum" });
   const { now, by } = audited(ctx);
   try {

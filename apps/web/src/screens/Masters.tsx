@@ -758,8 +758,8 @@ export function Masters() {
   const data = q.data;
   const writeEstate = (estateId: string) => app.can("masters.write", estateId);
   const anyWrite = (data?.estates ?? []).some((e) => writeEstate(e.id));
-  const jobsWrite = app.can("masters.write", null);
-  const kindsWrite = app.can("settings.manage", null);
+  const jobsWrite = app.canAny("masters.write");
+  const kindsWrite = app.canAny("dailylog.configure");
   const tabs: { id: Tab; label: string }[] = [
     { id: "fields", label: "Fields" },
     { id: "workers", label: "Workers" },
@@ -873,7 +873,15 @@ export function Masters() {
       </div>
 
       {note && <Notice tone={note.tone}>{note.text}</Notice>}
-      {!canAdd && <Notice tone="info">You can view these lists. Only an owner or an estate manager can add or change fields, workers and jobs, and only an owner can change log kinds.</Notice>}
+      {!canAdd && (
+        <Notice tone="info">
+          {tab === "logkinds"
+            ? "You can view the log kinds. They are shared by every estate, so only an owner or an estate manager can add or change them."
+            : tab === "jobs"
+              ? "You can view the jobs. They are shared by every estate, so only an owner or an estate manager can add or change them."
+              : `You can view the ${tab}. Only an owner or an estate manager of this estate can add or change them.`}
+        </Notice>
+      )}
       {q.isLoading && <p>Loading…</p>}
       {q.error && <Notice tone="bad">Could not load the lists.</Notice>}
       {data && tab === "fields" && <Fields data={data} canWrite={writeEstate} open={(id) => setTarget({ tab, id })} pick={pick} season={{ start: seasonStart, to: app.date }} />}

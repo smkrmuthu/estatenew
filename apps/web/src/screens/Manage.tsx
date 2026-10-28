@@ -204,7 +204,7 @@ function AttendanceTypes() {
               <input
                 type="checkbox"
                 checked={enabled.includes(code)}
-                disabled={code === "PRESENT" || code === "ABSENT" || !app.can("settings.manage", null)}
+                disabled={code === "PRESENT" || code === "ABSENT" || !app.canAny("settings.configure")}
                 onChange={(e) => toggle(code, e.target.checked)}
               />{" "}
               {label}
@@ -274,27 +274,29 @@ function Setup() {
     <>
       <SeasonStart />
       <AttendanceTypes />
-      <Card title="Go-live readiness">
-        {readiness.data?.ready ? (
-          <Notice tone="ok">No open owner questions block Phase 1A.</Notice>
-        ) : (
-          <>
-            <p className="mb-2 text-sm">These owner questions are still open. Until they are answered the app uses the safe interim behaviour shown.</p>
-            <ul className="flex flex-col gap-2 text-sm">
-              {(readiness.data?.blocking ?? []).map((g) => (
-                <li key={g.id} className="rounded-xl bg-bg p-2">
-                  <strong>{g.id}</strong> {g.question}
-                  <br />
-                  <span className="text-muted">Now: {g.interimBehavior}</span>
-                </li>
-              ))}
-            </ul>
-            <Button size="sm" variant="ghost" onClick={() => qc.invalidateQueries({ queryKey: ["readiness"] })}>
-              Refresh
-            </Button>
-          </>
-        )}
-      </Card>
+      {app.can("settings.manage", null) && (
+        <Card title="Go-live readiness">
+          {readiness.data?.ready ? (
+            <Notice tone="ok">No open owner questions block Phase 1A.</Notice>
+          ) : (
+            <>
+              <p className="mb-2 text-sm">These owner questions are still open. Until they are answered the app uses the safe interim behaviour shown.</p>
+              <ul className="flex flex-col gap-2 text-sm">
+                {(readiness.data?.blocking ?? []).map((g) => (
+                  <li key={g.id} className="rounded-xl bg-bg p-2">
+                    <strong>{g.id}</strong> {g.question}
+                    <br />
+                    <span className="text-muted">Now: {g.interimBehavior}</span>
+                  </li>
+                ))}
+              </ul>
+              <Button size="sm" variant="ghost" onClick={() => qc.invalidateQueries({ queryKey: ["readiness"] })}>
+                Refresh
+              </Button>
+            </>
+          )}
+        </Card>
+      )}
     </>
   );
 }
@@ -304,9 +306,9 @@ export function Manage() {
   const [tab, setTab] = useState<"import" | "conflicts" | "setup">("import");
   if (!app.online) return <Notice tone="warn">Managing lists and users needs signal.</Notice>;
   const tabs = [
-    { id: "import", label: "Import", show: app.can("masters.import", null) || app.can("masters.import") },
+    { id: "import", label: "Import", show: app.canAny("masters.import") },
     { id: "conflicts", label: "Conflicts", show: app.can("conflicts.resolve") },
-    { id: "setup", label: "Setup", show: app.can("settings.manage", null) },
+    { id: "setup", label: "Setup", show: app.canAny("settings.configure") },
   ] as const;
   return (
     <div className="flex flex-col gap-4">

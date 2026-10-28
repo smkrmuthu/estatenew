@@ -71,7 +71,7 @@ function plan(ctx: TenantContext, kind: ImportKind, csv: string): { ops: Op[]; e
     const v = r.value as unknown as Record<string, unknown>;
     switch (kind) {
       case "estates": {
-        if (!ctx.can("masters.import", null)) {
+        if (!ctx.canAny("masters.import")) {
           errors.push({ row: r.row, column: "code", message: "Only tenant-wide users can import estates" });
           continue;
         }
@@ -99,8 +99,8 @@ function plan(ctx: TenantContext, kind: ImportKind, csv: string): { ops: Op[]; e
       }
       case "varieties":
       case "job_types": {
-        if (!ctx.can("masters.import", null)) {
-          errors.push({ row: r.row, column: "code", message: "Only tenant-wide users can import this list" });
+        if (!ctx.canAny("masters.import")) {
+          errors.push({ row: r.row, column: "code", message: "You need to be an owner or an estate manager to import this list" });
           continue;
         }
         const table = kind === "varieties" ? varieties : jobTypes;

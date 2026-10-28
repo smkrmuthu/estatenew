@@ -1,6 +1,6 @@
 # ADR-0003: Identity and tenancy model (interim)
 
-- Status: Interim until architecture question AQ-1 is answered
+- Status: Interim. AQ-1 is a platform (product) decision for the platform owner, not a question for the estate owner (clarified 28 October 2026). This model is what the Glazebrooke go-live uses; cross-tenant login can be added later without changing token routing.
 - Proposed default used: separate companies; one user belongs to one tenant; an Owner sees every estate in the tenant.
 
 ## Decision

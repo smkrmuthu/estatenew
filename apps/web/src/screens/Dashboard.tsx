@@ -226,7 +226,7 @@ export function Dashboard({ go }: { go: (page: DashboardPage) => void }) {
                       {season.percent}% of {Number(season.expectedKg).toLocaleString("en-IN", { maximumFractionDigits: 0 })} kg expected
                     </>
                   )
-                ) : app.can("settings.manage", null) ? (
+                ) : app.canAny("settings.configure") ? (
                   "Set the season start under Manage › Setup"
                 ) : (
                   "The season dates are not set yet"

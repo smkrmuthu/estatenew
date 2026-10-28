@@ -21,6 +21,10 @@ export const PERMISSIONS = [
   "dailylog.read",
   "dailylog.capture",
   "dailylog.correct",
+  /** Add or change Daily log reading kinds, which every estate shares. Held on any estate. */
+  "dailylog.configure",
+  /** Change settings such as the season start and attendance types. Recording go-live answers stays with settings.manage (owner). */
+  "settings.configure",
   "conflicts.resolve",
   "reports.read",
   "reports.workerDetail",
@@ -30,7 +34,7 @@ export const PERMISSIONS = [
 export type Permission = (typeof PERMISSIONS)[number];
 
 /** Permissions that only make sense tenant-wide; they need a grant with no estate. */
-export const TENANT_WIDE: ReadonlySet<Permission> = new Set(["users.manage", "settings.manage"]);
+export const TENANT_WIDE: ReadonlySet<Permission> = new Set(["settings.manage"]);
 
 const READ: Permission[] = ["estate.read", "masters.read", "attendance.read", "muster.read", "dailylog.read", "reports.read"];
 
@@ -80,6 +84,14 @@ export function can(grants: readonly Grant[], permission: Permission, estateId: 
     if (estateId !== null && g.estateId === estateId) return true;
   }
   return false;
+}
+
+/**
+ * True when the role grants the permission on at least one estate (or tenant-wide). Used for lists every estate shares,
+ * such as jobs, varieties and Daily log kinds, and for managing users.
+ */
+export function canAnyEstate(grants: readonly Grant[], permission: Permission): boolean {
+  return grants.some((g) => ROLE_PERMISSIONS[g.role].includes(permission) && !(TENANT_WIDE.has(permission) && g.estateId !== null));
 }
 
 /** Estates a user may act on for a permission; "ALL" when a tenant-wide grant allows it. */

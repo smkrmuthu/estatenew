@@ -7,7 +7,7 @@ Rules: a ticked box or written comment from the owner is confirmed; a blank is o
 - Confirmed: 12
 - Answered, meaning unclear: 2
 - Open: 105
-- Open and blocking production activation: 25
+- Open and blocking production activation: 24
 
 ## Daily process overview
 
@@ -187,7 +187,7 @@ Rules: a ticked box or written comment from the owner is confirmed; a blank is o
 
 | ID | Question | Owner answer | Status | Phase | Blocks production | Interim behaviour |
 |---|---|---|---|---|---|---|
-| AQ-1 | Who are the tenants, and does an owner need one login across several tenants? | Proposed: Separate companies; one user belongs to one tenant; an owner sees all estates in that tenant | Open | 1A | Yes | One user belongs to one tenant. Cross-tenant login is not built. Blocking for the identity model; interim model documented in ADR-0003. |
+| AQ-1 | Who are the tenants, and does an owner need one login across several tenants? | Proposed: Separate companies; one user belongs to one tenant; an owner sees all estates in that tenant | Open | 1A |  | Internal platform decision for the product owner, not a question for the estate owner (clarified 28 Oct 2026). Interim model for the Glazebrooke go-live: one user belongs to one tenant, and each tenant has its own address (ADR-0010). Cross-tenant login is not built; deciding it is a product choice for later. |
 | AQ-2 | Technology preference | Proposed: TypeScript, Hono on Cloudflare Workers, React installable web app | Confirmed | 0 |  | Decided 27 October 2026 revision. |
 | AQ-3 | Hosting provider, region, budget, residency | Proposed: Cloudflare, existing account | Confirmed | 0 |  | Decided 27 October 2026 revision. Asia-Pacific placement, not India-only residency. |
 | AQ-4 | Weigh-in policy: individual, several per day, unit, gross/tare | Proposed: Individual entries in kg, several per day, gross and tare optional | Open | 1A | Yes | See OC-16 to OC-19 and OC-87. Raw gross, bags and tare are stored as entered. |

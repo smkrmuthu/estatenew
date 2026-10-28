@@ -27,7 +27,7 @@ export function gateStatusOf(db: Db): (id: string) => GateStatus {
 }
 
 export function listSettings(ctx: TenantContext) {
-  ctx.require("estate.read", null);
+  ctx.requireAny("estate.read");
   const stored = storedSettings(ctx.db);
   const status = gateStatusOf(ctx.db);
   return Object.values(SETTING_DEFS).map((def) => ({
@@ -41,7 +41,7 @@ export function listSettings(ctx: TenantContext) {
 }
 
 export function changeSetting(ctx: TenantContext, key: string, value: unknown) {
-  ctx.require("settings.manage", null);
+  ctx.requireAny("settings.configure");
   if (!isSettingKey(key)) throw new AppError(404, "SETTING_UNKNOWN", "Unknown setting");
   try {
     checkSettingChange(key, value, ctx.scope.environment, gateStatusOf(ctx.db));

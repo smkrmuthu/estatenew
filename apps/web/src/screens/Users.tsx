@@ -30,7 +30,7 @@ const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString("en-IN"
 function AddUser({ onDone, onNote }: { onDone: () => void; onNote: (n: { tone: "ok" | "bad"; text: string }) => void }) {
   const app = useApp();
   const estates = app.ref?.estates ?? [];
-  const [form, setForm] = useState({ username: "", displayName: "", password: tempPassword(), role: "FIELD_SUPERVISOR", allEstates: true, estateIds: [] as string[] });
+  const [form, setForm] = useState({ username: "", displayName: "", password: tempPassword(), role: "FIELD_SUPERVISOR", allEstates: app.can("users.manage", null), estateIds: [] as string[] });
   const [error, setError] = useState("");
   const owner = form.role === "OWNER";
 
@@ -77,7 +77,7 @@ function AddUser({ onDone, onNote }: { onDone: () => void; onNote: (n: { tone: "
           <Select id="u-role" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
             <option value="FIELD_SUPERVISOR">Field supervisor: attendance, weigh-in, daily log</option>
             <option value="ESTATE_MANAGER">Estate manager: also approvals, corrections, lists</option>
-            <option value="OWNER">Owner: everything, including users and settings</option>
+            {app.isOwner && <option value="OWNER">Owner: everything, including users and settings</option>}
             <option value="AUDITOR">Auditor: read only</option>
           </Select>
         </Field>
@@ -86,7 +86,7 @@ function AddUser({ onDone, onNote }: { onDone: () => void; onNote: (n: { tone: "
         <fieldset>
           <legend className="text-[0.8rem] font-medium text-muted">Estates</legend>
           <label className="mt-1 flex min-h-10 items-center gap-2">
-            <input type="checkbox" checked={form.allEstates} onChange={(e) => setForm({ ...form, allEstates: e.target.checked })} /> All estates
+            <input type="checkbox" checked={form.allEstates} disabled={!app.can("users.manage", null)} onChange={(e) => setForm({ ...form, allEstates: e.target.checked })} /> All estates
           </label>
           {!form.allEstates &&
             estates.map((e) => (
@@ -158,7 +158,7 @@ function EditUser({ user, onDone, onNote }: { user: UserRow; onDone: () => void;
         <Select id="eu-role" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
           <option value="FIELD_SUPERVISOR">Field supervisor: attendance, weigh-in, daily log</option>
           <option value="ESTATE_MANAGER">Estate manager: also approvals, corrections, lists</option>
-          <option value="OWNER">Owner: everything, including users and settings</option>
+          {app.isOwner && <option value="OWNER">Owner: everything, including users and settings</option>}
           <option value="AUDITOR">Auditor: read only</option>
         </Select>
       </Field>
@@ -166,7 +166,7 @@ function EditUser({ user, onDone, onNote }: { user: UserRow; onDone: () => void;
         <fieldset>
           <legend className="text-[0.8rem] font-medium text-muted">Estates</legend>
           <label className="mt-1 flex min-h-10 items-center gap-2">
-            <input type="checkbox" checked={form.allEstates} onChange={(e) => setForm({ ...form, allEstates: e.target.checked })} /> All estates
+            <input type="checkbox" checked={form.allEstates} disabled={!app.can("users.manage", null)} onChange={(e) => setForm({ ...form, allEstates: e.target.checked })} /> All estates
           </label>
           {!form.allEstates &&
             estates.map((e) => (
@@ -286,7 +286,7 @@ export function Users() {
                     {u.status !== "ACTIVE" ? <Chip>Inactive</Chip> : u.lockedUntil && new Date(u.lockedUntil) > new Date() ? <Chip tone="warn">Locked</Chip> : <Chip tone="ok">Active</Chip>}
                   </td>
                   <td className="px-3 py-2.5 text-right">
-                    {u.id !== app.session.user.id && (
+                    {u.id !== app.session.user.id && (app.isOwner || !rolesOf(u).includes("OWNER")) && (
                       <div className="flex justify-end gap-1">
                         <Button size="sm" variant="ghost" onClick={() => setEditing(u)}>
                           Edit

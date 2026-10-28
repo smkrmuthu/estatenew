@@ -1,4 +1,4 @@
-import { can, type Environment, estatesWith, type Grant, type Permission, uuidv7 } from "@cemms/domain";
+import { can, canAnyEstate, type Environment, estatesWith, type Grant, type Permission, uuidv7 } from "@cemms/domain";
 import type { DrizzleSqliteDODatabase } from "drizzle-orm/durable-sqlite";
 import { AppError, forbidden } from "../core/errors";
 import * as schema from "./schema";
@@ -29,6 +29,15 @@ export class TenantContext {
 
   can(permission: Permission, estateId: string | null): boolean {
     return can(this.scope.grants, permission, estateId);
+  }
+
+  /** The permission on any estate: for lists every estate shares. */
+  canAny(permission: Permission): boolean {
+    return canAnyEstate(this.scope.grants, permission);
+  }
+
+  requireAny(permission: Permission): void {
+    if (!this.canAny(permission)) throw forbidden();
   }
 
   require(permission: Permission, estateId: string | null): void {

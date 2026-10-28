@@ -264,6 +264,70 @@ describe("masters forms", () => {
     expect((await del("workers", s.w2.id)).status).toBe(404);
   });
 
+  it("lets an estate manager of both estates manage shared lists, settings and users, without owner powers", async () => {
+    const s = await setupTenant();
+    const mk = async (username: string, grants: { role: string; estateId: string | null }[]) => {
+      const res = await api("/admin/users", { token: s.owner.token, body: { username, displayName: username, password: "manager-pass-1234", grants } });
+      expect(res.status, JSON.stringify(res.body)).toBe(201);
+      return { ...(await login(s.code, username, "manager-pass-1234")), id: res.body.id as string };
+    };
+    // One manager has a grant for each estate, the other for one estate only.
+    const both = await mk("mgrboth", [
+      { role: "ESTATE_MANAGER", estateId: s.estate.id },
+      { role: "ESTATE_MANAGER", estateId: s.estate2.id },
+    ]);
+    const one = await mk("mgrone", [{ role: "ESTATE_MANAGER", estateId: s.estate.id }]);
+    const kind = { code: "FERM", label: "Fermentation room temperature", unit: "°C", valueType: "NUMBER", decimals: 1, minScaled: 0, maxScaled: 600, expectedPerDay: null };
+
+    // Shared lists: log kinds and jobs.
+    for (const m of [both, one]) {
+      const made = await api("/admin/log-kinds", { token: m.token, body: { ...kind, code: `K${m.id.slice(-4)}` } });
+      expect(made.status, JSON.stringify(made.body)).toBe(201);
+      expect((await api("/job-types", { token: m.token, body: { code: `J${m.id.slice(-4)}`, name: "Pruning", countsAsPlucking: false } })).status).toBe(201);
+    }
+    expect((await api("/admin/log-kinds", { token: s.supervisor.token, body: { ...kind, code: "X2" } })).status).toBe(403);
+
+    // Settings: the season start, but not recording go-live answers.
+    expect((await api("/admin/settings/season.startDate", { method: "PUT", token: both.token, body: { value: "2026-10-01" } })).status).toBe(200);
+    expect((await api("/admin/settings", { token: both.token })).status).toBe(200);
+    expect((await api("/admin/gates/OC-7", { method: "PUT", token: both.token, body: { status: "confirmed", answer: "x", approver: "x", decidedOn: "2026-10-28", source: "x" } })).status).toBe(403);
+    expect((await api("/admin/readiness", { token: both.token })).status).toBe(403);
+
+    // Users: create and edit staff for their estates, never owners or other estates.
+    const staff = await api("/admin/users", {
+      token: both.token,
+      body: { username: "newsup", displayName: "New Supervisor", password: "supervisor-pass-9", grants: [{ role: "FIELD_SUPERVISOR", estateId: s.estate2.id }] },
+    });
+    expect(staff.status, JSON.stringify(staff.body)).toBe(201);
+    expect(
+      (await api("/admin/users", { token: both.token, body: { username: "newowner", displayName: "X", password: "owner-pass-12345", grants: [{ role: "OWNER", estateId: null }] } })).body.code,
+    ).toBe("OWNER_ONLY");
+    expect(
+      (
+        await api("/admin/users", {
+          token: one.token,
+          body: { username: "wrongestate", displayName: "X", password: "supervisor-pass-9", grants: [{ role: "FIELD_SUPERVISOR", estateId: s.estate2.id }] },
+        })
+      ).body.code,
+    ).toBe("ESTATE_NOT_YOURS");
+    expect(
+      (await api("/admin/users", { token: both.token, body: { username: "everywhere", displayName: "X", password: "supervisor-pass-9", grants: [{ role: "FIELD_SUPERVISOR", estateId: null }] } })).body
+        .code,
+    ).toBe("ESTATE_NOT_YOURS");
+    const users = (await api("/admin/users", { token: s.owner.token })).body as { id: string; username: string }[];
+    const ownerId = users.find((u) => u.username === "owner")?.id ?? "";
+    expect((await api(`/admin/users/${ownerId}/disable`, { token: both.token, body: { reason: "Not allowed" } })).body.code).toBe("OWNER_ONLY");
+    expect((await api(`/admin/users/${ownerId}/password`, { token: both.token, body: { password: "a-new-password-123" } })).body.code).toBe("OWNER_ONLY");
+    expect((await api(`/admin/users/${staff.body.id}`, { method: "PUT", token: both.token, body: { displayName: "Renamed", grants: [{ role: "OWNER", estateId: null }] } })).body.code).toBe(
+      "OWNER_ONLY",
+    );
+    expect(
+      (await api(`/admin/users/${staff.body.id}`, { method: "PUT", token: both.token, body: { displayName: "Renamed", grants: [{ role: "FIELD_SUPERVISOR", estateId: s.estate.id }] } })).status,
+    ).toBe(200);
+    // A supervisor still cannot manage users.
+    expect((await api("/admin/users", { token: s.supervisor.token })).status).toBe(403);
+  });
+
   it("keeps the plucking flag on jobs and expected readings per day on log kinds", async () => {
     const s = await setupTenant();
     const job = await api("/job-types", { token: s.owner.token, body: { code: "PRN", name: "Pruning", countsAsPlucking: false } });
@@ -372,8 +436,13 @@ describe("reports, season and user access", () => {
     expect((await list()).find((u) => u.id === sup.id)?.status).toBe("DISABLED");
     expect((await api(`/admin/users/${sup.id}/enable`, { method: "POST", token: s.owner.token })).status).toBe(200);
     expect((await list()).find((u) => u.id === sup.id)?.status).toBe("ACTIVE");
-    // A supervisor cannot manage users.
-    const again = await login(s.code, "sup1", "supervisor-pass-1");
-    expect((await api(`/admin/users/${sup.id}/enable`, { method: "POST", token: again.token })).status).toBe(403);
+    // A field supervisor cannot manage users.
+    const plain = await api("/admin/users", {
+      token: s.owner.token,
+      body: { username: "plainsup", displayName: "Plain Supervisor", password: "supervisor-pass-2", grants: [{ role: "FIELD_SUPERVISOR", estateId: s.estate.id }] },
+    });
+    expect(plain.status).toBe(201);
+    const plainLogin = await login(s.code, "plainsup", "supervisor-pass-2");
+    expect((await api(`/admin/users/${sup.id}/enable`, { method: "POST", token: plainLogin.token })).status).toBe(403);
   });
 });

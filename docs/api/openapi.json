@@ -1667,7 +1667,7 @@
       "put": {
         "summary": "Change a setting (refused in production while its question is open)",
         "tags": ["admin"],
-        "description": "Requires permission `settings.manage` on the estate in scope.",
+        "description": "Requires permission `settings.configure` on the estate in scope.",
         "parameters": [
           {
             "name": "key",
@@ -1793,7 +1793,7 @@
       "post": {
         "summary": "Create a Daily log reading type",
         "tags": ["admin"],
-        "description": "Requires permission `settings.manage` on the estate in scope.",
+        "description": "Requires permission `dailylog.configure` on the estate in scope.",
         "requestBody": {
           "required": true,
           "content": {
@@ -1899,7 +1899,7 @@
       "put": {
         "summary": "Update a Daily log reading type",
         "tags": ["admin"],
-        "description": "Requires permission `settings.manage` on the estate in scope.",
+        "description": "Requires permission `dailylog.configure` on the estate in scope.",
         "parameters": [
           {
             "name": "id",

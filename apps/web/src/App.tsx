@@ -129,7 +129,7 @@ function Shell() {
   }, []);
   // Sidebar badge: days waiting for approval on any estate this person can approve for.
   const approvals = useDashboards(true).list.reduce((n, d) => n + (app.can("attendance.approve", d.estate.id) ? d.attention.sheetsAwaitingApproval.length : 0), 0);
-  const showManage = app.can("masters.import", null) || app.can("users.manage", null) || app.can("conflicts.resolve") || app.can("settings.manage", null);
+  const showManage = app.canAny("masters.import") || app.can("conflicts.resolve") || app.canAny("settings.configure");
   const tabs: { id: Tab; label: string; short: string; icon: IconName; count?: number; show: boolean }[] = [
     { id: "dashboard", label: "Dashboard", short: "Home", icon: "grid", show: app.can("reports.read") },
     { id: "attendance", label: "Attendance", short: "Attendance", icon: "users", count: approvals, show: app.can("attendance.read") },
@@ -137,7 +137,7 @@ function Shell() {
     { id: "dailylog", label: "Daily log", short: "Daily log", icon: "cloud", show: app.can("dailylog.read") },
     { id: "summary", label: "Reports", short: "Reports", icon: "chart", show: app.can("reports.read") },
     { id: "masters", label: "Masters", short: "Masters", icon: "map", show: app.can("masters.read") },
-    { id: "users", label: "Users", short: "Users", icon: "user", show: app.can("users.manage", null) },
+    { id: "users", label: "Users", short: "Users", icon: "user", show: app.canAny("users.manage") },
     { id: "sync", label: "Sync", short: "Sync", icon: "sync", count: app.queue.waiting + app.queue.rejected + app.queue.conflict, show: true },
     { id: "manage", label: "Manage", short: "Manage", icon: "sliders", show: showManage },
   ];

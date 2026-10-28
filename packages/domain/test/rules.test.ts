@@ -5,6 +5,7 @@ import {
   backoffMs,
   businessDateAt,
   can,
+  canAnyEstate,
   canonicalJson,
   checkSettingChange,
   DEFAULT_ATTENDANCE_STATUSES,
@@ -32,10 +33,24 @@ describe("permissions", () => {
     expect(can(sup, "users.manage", null)).toBe(false);
     expect(estatesWith(sup, "muster.capture")).toEqual(["E1"]);
   });
-  it("owners are tenant-wide; estate managers cannot manage users", () => {
+  it("owners are tenant-wide; estate managers manage users and settings but not go-live answers", () => {
     expect(can([{ role: "OWNER", estateId: null }], "users.manage", null)).toBe(true);
-    expect(can([{ role: "ESTATE_MANAGER", estateId: null }], "users.manage", null)).toBe(false);
+    expect(can([{ role: "ESTATE_MANAGER", estateId: null }], "users.manage", null)).toBe(true);
+    expect(can([{ role: "ESTATE_MANAGER", estateId: "E1" }], "users.manage", "E1")).toBe(true);
+    expect(can([{ role: "ESTATE_MANAGER", estateId: null }], "settings.configure", null)).toBe(true);
+    expect(can([{ role: "ESTATE_MANAGER", estateId: null }], "settings.manage", null)).toBe(false);
     expect(can([{ role: "ESTATE_MANAGER", estateId: "E1" }], "attendance.approve", "E1")).toBe(true);
+  });
+  it("lists every estate shares need the permission on any estate, not on all", () => {
+    const two = [
+      { role: "ESTATE_MANAGER", estateId: "E1" },
+      { role: "ESTATE_MANAGER", estateId: "E2" },
+    ] as const;
+    expect(can(two, "dailylog.configure", null)).toBe(false);
+    expect(canAnyEstate(two, "dailylog.configure")).toBe(true);
+    expect(canAnyEstate(sup, "dailylog.configure")).toBe(false);
+    expect(canAnyEstate([{ role: "OWNER", estateId: "E1" }], "settings.manage")).toBe(false);
+    expect(canAnyEstate([{ role: "OWNER", estateId: null }], "settings.manage")).toBe(true);
   });
   it("an estate-scoped grant never gives tenant-wide permissions", () => {
     expect(can([{ role: "OWNER", estateId: "E1" }], "settings.manage", null)).toBe(false);

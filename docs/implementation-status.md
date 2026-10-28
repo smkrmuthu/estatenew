@@ -48,6 +48,7 @@ Masters has Fields, Workers, Jobs and Log kinds tabs with Add and Edit side form
 - **Dashboard and sidebar:** season total against expected cherry (needs the season start setting, OC-75), and a badge on Attendance for days waiting for approval.
 - **Plucking:** a "By subdivision" table (letter only where unambiguous; subdivision weighing still open, AQ-25).
 - **Masters:** Plucked and Progress columns on fields once the season start is set.
+- **Estate manager access (28 October, project lead instruction):** an estate manager on any estate (including one with a separate grant for each estate) can add and change the lists every estate shares (Daily log kinds, jobs, varieties), change settings such as the season start and attendance types (`settings.configure`), and manage users. Guards: only an owner can give or change the Owner role; a manager can only give access to estates they manage; no one edits their own access. Recording go-live answers and the readiness list (`settings.manage`) stay with the owner.
 - **Users:** edit a person's name, role and estates (their sessions end; the last owner and your own access cannot be changed) and re-enable a disabled user.
 
 ## Prototype pages not built yet

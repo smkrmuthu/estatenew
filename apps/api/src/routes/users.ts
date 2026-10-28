@@ -1,5 +1,5 @@
 import { passwordReset, userCreate, userUpdate } from "@cemms/contracts";
-import { can, uuidv7 } from "@cemms/domain";
+import { can, canAnyEstate, type Grant, uuidv7 } from "@cemms/domain";
 import { and, eq, isNull } from "drizzle-orm";
 import type { Context, Hono } from "hono";
 import { z } from "zod";
@@ -16,8 +16,24 @@ import type { AppEnv } from "../core/types";
 function auth(c: Context<AppEnv>) {
   const a = c.get("auth");
   if (!a) throw new AppError(401, "UNAUTHENTICATED", "Sign in again");
-  if (!can(a.grants, "users.manage", null)) throw forbidden();
+  if (!canAnyEstate(a.grants, "users.manage")) throw forbidden();
   return a;
+}
+
+/** Only an owner may give or change the Owner role, and a manager may only give access to estates they manage. */
+function guardNewGrants(actor: readonly Grant[], grants: readonly Grant[]) {
+  if (!actor.some((g) => g.role === "OWNER") && grants.some((g) => g.role === "OWNER")) throw new AppError(403, "OWNER_ONLY", "Only an owner can give the Owner role");
+  if (!grants.every((g) => can(actor, "users.manage", g.estateId))) throw new AppError(403, "ESTATE_NOT_YOURS", "You can only give access to estates you manage");
+}
+
+async function guardTarget(db: ReturnType<typeof controlDb>, actor: readonly Grant[], tenantId: string, userId: string) {
+  if (actor.some((g) => g.role === "OWNER")) return;
+  const rows = await db
+    .select()
+    .from(userGrants)
+    .where(and(eq(userGrants.userId, userId), eq(userGrants.tenantId, tenantId)))
+    .all();
+  if (rows.some((g) => g.role === "OWNER")) throw new AppError(403, "OWNER_ONLY", "Only an owner can change an owner");
 }
 
 export function userRoutes(app: Hono<AppEnv>) {
@@ -49,6 +65,7 @@ export function userRoutes(app: Hono<AppEnv>) {
     const a = auth(c);
     const body = userCreate.parse(await readJson(c));
     if (body.grants.some((g) => g.role === "PLATFORM_ADMIN")) throw new AppError(422, "ROLE_NOT_ALLOWED", "This role cannot be given here");
+    guardNewGrants(a.grants, body.grants);
     const estateIds = [...new Set(body.grants.map((g) => g.estateId).filter((x): x is string => x !== null))];
     if (estateIds.length) {
       const { missing } = await callTenant(c, "org.validateEstates", { estateIds });
@@ -94,6 +111,7 @@ export function userRoutes(app: Hono<AppEnv>) {
       const id = c.req.param("id") ?? "";
       if (id === a.user.id) throw new AppError(422, "SELF_EDIT", "You cannot change your own access");
       if (body.grants.some((g) => g.role === "PLATFORM_ADMIN")) throw new AppError(422, "ROLE_NOT_ALLOWED", "This role cannot be given here");
+      guardNewGrants(a.grants, body.grants);
       const estateIds = [...new Set(body.grants.map((g) => g.estateId).filter((x): x is string => x !== null))];
       if (estateIds.length) {
         const { missing } = await callTenant(c, "org.validateEstates", { estateIds });
@@ -106,6 +124,7 @@ export function userRoutes(app: Hono<AppEnv>) {
         .where(and(eq(users.id, id), eq(users.tenantId, a.tenant.id)))
         .get();
       if (!target) throw new AppError(404, "NOT_FOUND", "User not found");
+      await guardTarget(db, a.grants, a.tenant.id, id);
       const before = grantsOf(
         await db
           .select()
@@ -159,6 +178,7 @@ export function userRoutes(app: Hono<AppEnv>) {
         .where(and(eq(users.id, id), eq(users.tenantId, a.tenant.id)))
         .get();
       if (!target) throw new AppError(404, "NOT_FOUND", "User not found");
+      await guardTarget(db, a.grants, a.tenant.id, id);
       await db.update(users).set({ status: "ACTIVE", failedAttempts: 0, lockedUntil: null }).where(eq(users.id, id));
       await audit(db, { actor: a.user.id, action: "user.enable", tenantId: a.tenant.id, userId: id, requestId: c.get("requestId") });
       return c.json({ ok: true });
@@ -187,6 +207,7 @@ export function userRoutes(app: Hono<AppEnv>) {
         .where(and(eq(users.id, id), eq(users.tenantId, a.tenant.id)))
         .get();
       if (!target) throw new AppError(404, "NOT_FOUND", "User not found");
+      await guardTarget(db, a.grants, a.tenant.id, id);
       if (target.id === a.user.id) throw new AppError(422, "SELF_DISABLE", "You cannot disable yourself");
       const now = new Date().toISOString();
       await db.batch([
@@ -224,6 +245,7 @@ export function userRoutes(app: Hono<AppEnv>) {
         .where(and(eq(users.id, id), eq(users.tenantId, a.tenant.id)))
         .get();
       if (!target) throw new AppError(404, "NOT_FOUND", "User not found");
+      await guardTarget(db, a.grants, a.tenant.id, id);
       const now = new Date().toISOString();
       await db.batch([
         db

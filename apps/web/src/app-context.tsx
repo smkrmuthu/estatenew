@@ -1,4 +1,4 @@
-import { can as canDo, type Permission } from "@cemms/domain";
+import { canAnyEstate, can as canDo, type Permission } from "@cemms/domain";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { api } from "./lib/api";
 import { db, type ReferenceData } from "./lib/db";
@@ -21,6 +21,9 @@ interface AppState {
   setDate: (d: string) => void;
   online: boolean;
   can: (p: Permission, estateId?: string | null) => boolean;
+  /** The permission on at least one estate: for lists every estate shares, and for users and setup. */
+  canAny: (p: Permission) => boolean;
+  isOwner: boolean;
   reloadReference: () => Promise<void>;
   sync: () => Promise<SyncReport>;
   lastReport: SyncReport | null;
@@ -78,6 +81,8 @@ export function AppProvider({ session, deviceId, onSignOut, children }: { sessio
       setDate,
       online,
       can: (p, e = estateId) => canDo(session.user.grants, p, e ?? null),
+      canAny: (p) => canAnyEstate(session.user.grants, p),
+      isOwner: session.user.grants.some((g) => g.role === "OWNER"),
       reloadReference,
       sync: async () => {
         const r = await syncNow(session.user.id, deviceId, true);

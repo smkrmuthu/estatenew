@@ -138,7 +138,7 @@ export function tenantRoutes(app: Hono<AppEnv>) {
       summary: "Change a setting (refused in production while its question is open)",
       tag: "admin",
       auth: "bearer",
-      permission: "settings.manage",
+      permission: "settings.configure",
       body: settingChange.pick({ value: true }),
     },
     call("settings.change", async (c) => ({ key: p(c, "key"), value: ((await readJson(c)) as { value?: unknown }).value })),
@@ -160,12 +160,12 @@ export function tenantRoutes(app: Hono<AppEnv>) {
   );
   route(
     app,
-    { method: "post", path: "/admin/log-kinds", summary: "Create a Daily log reading type", tag: "admin", auth: "bearer", permission: "settings.manage", body: logKindInput },
+    { method: "post", path: "/admin/log-kinds", summary: "Create a Daily log reading type", tag: "admin", auth: "bearer", permission: "dailylog.configure", body: logKindInput },
     call("org.upsertLogKind", async (c) => ({ body: await readJson(c) }), 201),
   );
   route(
     app,
-    { method: "put", path: "/admin/log-kinds/:id", summary: "Update a Daily log reading type", tag: "admin", auth: "bearer", permission: "settings.manage", body: logKindInput },
+    { method: "put", path: "/admin/log-kinds/:id", summary: "Update a Daily log reading type", tag: "admin", auth: "bearer", permission: "dailylog.configure", body: logKindInput },
     call("org.upsertLogKind", async (c) => ({ id: p(c, "id"), baseVersion: version(c), body: await readJson(c) })),
   );
 
