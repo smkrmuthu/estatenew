@@ -2,7 +2,7 @@ import { computeWeighIn, formatKg, parseKg, WeightError } from "@cemms/domain";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { useApp } from "../app-context";
-import { Button, Card, Field, Input, KpiStrip, Notice, Select, StatusBadge } from "../components/ui";
+import { Button, Card, Field, FilterBar, FilterSearch, FilterSelect, Input, KpiStrip, Notice, Select, StatusBadge } from "../components/ui";
 import { api } from "../lib/api";
 import { db, type LocalRecord } from "../lib/db";
 import { useLive } from "../lib/hooks";
@@ -140,6 +140,11 @@ export function WeighIn() {
     }
     return [...m.values()].sort((a, b) => b.netG - a.netG);
   }, [server.data, fields, ref]);
+  // Filters over the day's list (they only change what is listed).
+  const [lq, setLq] = useState("");
+  const [lField, setLField] = useState("");
+  const [lCrop, setLCrop] = useState("");
+  const [lState, setLState] = useState("");
   const rows = useMemo(() => {
     const out = new Map<string, { id: string; workerId: string; fieldId: string; crop: string; netKg: string; status: LocalRecord["status"]; voided: boolean; message?: string; version: number }>();
     for (const e of server.data ?? [])
@@ -155,6 +160,19 @@ export function WeighIn() {
     }
     return [...out.values()].reverse();
   }, [server.data, local]);
+
+  const listed = rows.filter((r) => {
+    const w = workers.find((x) => x.id === r.workerId);
+    if (lq && !`${w?.name ?? ""} ${w?.employeeCode ?? ""}`.toLowerCase().includes(lq.toLowerCase())) return false;
+    if (lField && r.fieldId !== lField) return false;
+    if (lCrop && r.crop !== lCrop) return false;
+    if (lState === "CANCELLED") return r.voided;
+    if (lState === "ACCEPTED") return r.status === "accepted" && !r.voided;
+    if (lState === "WAITING") return r.status === "waiting";
+    if (lState === "PROBLEM") return r.status !== "accepted" && r.status !== "waiting";
+    return true;
+  });
+  const listFiltersOn = !!(lq || lField || lCrop || lState);
 
   async function save() {
     if (!worker || !field || !preview.net) return;
@@ -462,8 +480,47 @@ export function WeighIn() {
       </Card>
 
       <Card title="Today's weigh-ins">
+        <div className="mb-3">
+          <FilterBar
+            shown={listed.length}
+            total={rows.length}
+            noun="weigh-ins"
+            active={listFiltersOn}
+            onClear={() => {
+              setLq("");
+              setLField("");
+              setLCrop("");
+              setLState("");
+            }}
+          >
+            <FilterSearch label="Find a worker" value={lq} onChange={setLq} placeholder="Name or code" />
+            <FilterSelect label="Field" value={lField} onChange={setLField} options={[{ value: "", label: "All fields" }, ...fields.map((f) => ({ value: f.id, label: f.name }))]} />
+            <FilterSelect
+              label="Crop"
+              value={lCrop}
+              onChange={setLCrop}
+              options={[
+                { value: "", label: "Coffee and pepper" },
+                { value: "COFFEE", label: "Coffee" },
+                { value: "PEPPER", label: "Pepper" },
+              ]}
+            />
+            <FilterSelect
+              label="State"
+              value={lState}
+              onChange={setLState}
+              options={[
+                { value: "", label: "All" },
+                { value: "ACCEPTED", label: "Accepted by the office" },
+                { value: "WAITING", label: "Waiting on this phone" },
+                { value: "PROBLEM", label: "Not accepted or conflict" },
+                { value: "CANCELLED", label: "Cancelled" },
+              ]}
+            />
+          </FilterBar>
+        </div>
         <ul className="divide-y divide-line">
-          {rows.map((r) => {
+          {listed.map((r) => {
             const w = workers.find((x) => x.id === r.workerId);
             return (
               <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
@@ -489,6 +546,7 @@ export function WeighIn() {
             );
           })}
           {rows.length === 0 && <li className="py-2 text-muted">No weigh-ins yet.</li>}
+          {rows.length > 0 && listed.length === 0 && <li className="py-2 text-muted">No weigh-ins match these filters.</li>}
         </ul>
       </Card>
     </div>

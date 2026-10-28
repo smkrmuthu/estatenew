@@ -2,7 +2,7 @@ import { formatScaled, parseScaled } from "@cemms/domain";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useState } from "react";
 import { useApp } from "../app-context";
-import { Button, Card, Chip, Drawer, Field, Input, Notice, Select } from "../components/ui";
+import { Button, Card, Chip, Drawer, Field, FilterBar, FilterSearch, FilterSelect, Input, Notice, Select } from "../components/ui";
 import { ApiError, api } from "../lib/api";
 import type { EmploymentType, Gender, LandUse, ReferenceData } from "../lib/db";
 import { useDashboards } from "./Dashboard";
@@ -175,10 +175,73 @@ function SelectBox({ label, checked, onChange }: { label: string; checked: boole
 }
 
 function Workers({ data, canWrite, open, pick }: { data: ReferenceData; canWrite: (estateId: string) => boolean; open: (id: string) => void; pick: Pick }) {
-  const ws = data.workers;
+  const [q, setQ] = useState("");
+  const [fEstate, setFEstate] = useState("");
+  const [fType, setFType] = useState("");
+  const [fArea, setFArea] = useState("");
+  const [fGender, setFGender] = useState("");
+  const [fStatus, setFStatus] = useState("");
+  const all = data.workers;
+  const ws = all.filter(
+    (w) =>
+      (!q || `${w.name} ${w.employeeCode}`.toLowerCase().includes(q.toLowerCase())) &&
+      (!fEstate || (w.estateIds ?? [w.estateId]).includes(fEstate)) &&
+      (!fType || w.employmentType === fType) &&
+      (!fArea || (w.area ?? "") === fArea) &&
+      (!fGender || (w.gender ?? "") === fGender) &&
+      (!fStatus || (fStatus === "active" ? w.active !== false : w.active === false)),
+  );
+  const areas = [...new Set(all.map((w) => w.area).filter((a): a is string => !!a))].sort();
+  const filtersOn = !!(q || fEstate || fType || fArea || fGender || fStatus);
   const code = new Map(data.estates.map((e) => [e.id, e.code]));
   return (
-    <Card title="Workers" actions={<span className="text-sm text-muted">{ws.filter((w) => w.active !== false).length} active workers</span>}>
+    <Card title="Workers" actions={<span className="text-sm text-muted">{all.filter((w) => w.active !== false).length} active workers</span>}>
+      <div className="mb-3 flex flex-col gap-3">
+        <FilterSearch label="Find a worker" value={q} onChange={setQ} placeholder="Name or code" />
+        <FilterBar
+          shown={ws.length}
+          total={all.length}
+          noun="workers"
+          active={filtersOn}
+          onClear={() => {
+            setQ("");
+            setFEstate("");
+            setFType("");
+            setFArea("");
+            setFGender("");
+            setFStatus("");
+          }}
+        >
+          <FilterSelect label="Estate" value={fEstate} onChange={setFEstate} options={[{ value: "", label: "All estates" }, ...data.estates.map((e) => ({ value: e.id, label: e.name }))]} />
+          <FilterSelect
+            label="Type"
+            value={fType}
+            onChange={setFType}
+            options={[{ value: "", label: "All types" }, ...(Object.keys(TYPE_LABEL) as EmploymentType[]).map((t) => ({ value: t, label: TYPE_LABEL[t] }))]}
+          />
+          <FilterSelect label="Area" value={fArea} onChange={setFArea} options={[{ value: "", label: "All areas" }, ...areas.map((a) => ({ value: a, label: a }))]} />
+          <FilterSelect
+            label="Gender"
+            value={fGender}
+            onChange={setFGender}
+            options={[
+              { value: "", label: "Everyone" },
+              { value: "FEMALE", label: "Women" },
+              { value: "MALE", label: "Men" },
+            ]}
+          />
+          <FilterSelect
+            label="Status"
+            value={fStatus}
+            onChange={setFStatus}
+            options={[
+              { value: "", label: "Active and inactive" },
+              { value: "active", label: "Active" },
+              { value: "inactive", label: "Inactive" },
+            ]}
+          />
+        </FilterBar>
+      </div>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[40rem] text-sm">
           <thead className="border-b border-line">
@@ -186,7 +249,7 @@ function Workers({ data, canWrite, open, pick }: { data: ReferenceData; canWrite
               <Th>
                 <SelectBox
                   label="Select all workers"
-                  checked={ws.length > 0 && ws.every((w) => pick.sel.has(w.id))}
+                  checked={ws.length > 0 && ws.filter((w) => canWrite(w.estateId)).every((w) => pick.sel.has(w.id))}
                   onChange={(on) =>
                     pick.toggleAll(
                       ws.filter((w) => canWrite(w.estateId)).map((w) => w.id),
@@ -229,7 +292,7 @@ function Workers({ data, canWrite, open, pick }: { data: ReferenceData; canWrite
             ))}
             {ws.length === 0 && (
               <tr>
-                <Td className="text-muted">No workers yet.</Td>
+                <Td className="text-muted">{filtersOn ? "No workers match these filters." : "No workers yet."}</Td>
               </tr>
             )}
           </tbody>
@@ -445,106 +508,158 @@ function Fields({
   });
   const pluckedG = new Map(plucked.flatMap((r) => (r.data?.byField ?? []).map((f) => [f.fieldId, f.coffeeNetG] as const)));
   const varietyName = (id: string | null) => data.varieties.find((v) => v.id === id)?.name;
+  const [q, setQ] = useState("");
+  const [fEstate, setFEstate] = useState("");
+  const [fStatus, setFStatus] = useState("");
+  const [fCrop, setFCrop] = useState("");
+  const [fVariety, setFVariety] = useState("");
+  const matches = (f: ReferenceData["fields"][number]) =>
+    (!q || `${f.name} ${f.code}`.toLowerCase().includes(q.toLowerCase())) &&
+    (!fEstate || f.estateId === fEstate) &&
+    (!fStatus || (fStatus === "active" ? f.active !== false : f.active === false)) &&
+    (!fCrop || (f.crops ?? []).includes(fCrop as "COFFEE" | "PEPPER")) &&
+    (!fVariety || (f.varietyIds ?? []).includes(fVariety) || (f.subdivisions ?? []).some((s) => s.varietyId === fVariety));
+  const filtersOn = !!(q || fEstate || fStatus || fCrop || fVariety);
   return (
     <>
-      {data.estates.map((e) => {
-        const fs = data.fields.filter((f) => f.estateId === e.id);
-        const total = fs.reduce((s, f) => s + (f.areaCentiAcres ?? 0), 0);
-        const bearing = fs.reduce((s, f) => s + (f.subdivisions ?? []).filter((x) => x.landUse === "BEARING").reduce((a, x) => a + (x.areaCentiAcres ?? 0), 0), 0);
-        return (
-          <Card
-            key={e.id}
-            title={e.name}
-            actions={
-              <span className="text-sm text-muted">
-                {fs.filter((f) => f.active !== false).length} active fields · {acres(total)} acres · {acres(bearing)} bearing
-              </span>
-            }
-          >
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[52rem] text-sm">
-                <thead className="border-b border-line">
-                  <tr>
-                    <Th>
-                      {canWrite(e.id) && (
-                        <SelectBox
-                          label={`Select all fields in ${e.name}`}
-                          checked={fs.length > 0 && fs.every((f) => pick.sel.has(f.id))}
-                          onChange={(on) =>
-                            pick.toggleAll(
-                              fs.map((f) => f.id),
-                              on,
-                            )
-                          }
-                        />
-                      )}
-                    </Th>
-                    <Th>Code</Th>
-                    <Th>Field</Th>
-                    <Th right>Acres</Th>
-                    <Th>Subdivisions</Th>
-                    <Th right>Expected</Th>
-                    <Th right>Plucked</Th>
-                    <Th>Progress</Th>
-                    <Th>Status</Th>
-                    <Th />
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-line">
-                  {fs.map((f) => (
-                    <tr key={f.id}>
-                      <Td>{canWrite(e.id) && <SelectBox label={`Select ${f.name}`} checked={pick.sel.has(f.id)} onChange={() => pick.toggle(f.id)} />}</Td>
-                      <Td className="whitespace-nowrap font-mono">{f.code}</Td>
-                      <Td>
-                        {f.name}
-                        {f.elevationM ? <span className="block text-xs text-muted">{f.elevationM} m</span> : null}
-                      </Td>
-                      <Td right>{acres(f.areaCentiAcres)}</Td>
-                      <Td>
-                        <div className="flex flex-wrap gap-1">
-                          {(f.subdivisions ?? []).map((s) => (
-                            <Chip key={s.id} tone={s.landUse === "BEARING" ? "ok" : "plain"}>
-                              {s.label} · {LAND_LABEL[s.landUse]}
-                              {varietyName(s.varietyId) ? ` · ${varietyName(s.varietyId)}` : ""} · {acres(s.areaCentiAcres)} ac
-                            </Chip>
-                          ))}
-                          {!f.subdivisions?.length && <span className="text-muted">None</span>}
-                        </div>
-                      </Td>
-                      <Td right>{f.expectedCherryKg ? `${f.expectedCherryKg.toLocaleString("en-IN")} kg` : "–"}</Td>
-                      <Td right>{season.start ? `${Math.round((pluckedG.get(f.id) ?? 0) / 1000).toLocaleString("en-IN")} kg` : "–"}</Td>
-                      <Td>
-                        {season.start && f.expectedCherryKg ? (
-                          (() => {
-                            const pct = Math.round(((pluckedG.get(f.id) ?? 0) / 1000 / f.expectedCherryKg) * 100);
-                            return (
-                              <span className="flex items-center gap-2">
-                                <span className="block h-1.5 w-20 overflow-hidden rounded-full bg-surface-2">
-                                  <span className="block h-full rounded-full bg-roast" style={{ width: `${Math.min(100, pct)}%` }} />
-                                </span>
-                                <span className="text-xs text-muted">{pct}%</span>
-                              </span>
-                            );
-                          })()
-                        ) : (
-                          <span className="text-muted">–</span>
-                        )}
-                      </Td>
-                      <Td>{statusChip(f.active)}</Td>
-                      <Td right>{canWrite(e.id) && <EditLink label={`Edit ${f.name}`} onClick={() => open(f.id)} />}</Td>
-                    </tr>
-                  ))}
-                  {fs.length === 0 && (
+      <FilterBar
+        shown={data.fields.filter(matches).length}
+        total={data.fields.length}
+        noun="fields"
+        active={filtersOn}
+        onClear={() => {
+          setQ("");
+          setFEstate("");
+          setFStatus("");
+          setFCrop("");
+          setFVariety("");
+        }}
+      >
+        <FilterSearch label="Find a field" value={q} onChange={setQ} placeholder="Name or code" />
+        <FilterSelect label="Estate" value={fEstate} onChange={setFEstate} options={[{ value: "", label: "All estates" }, ...data.estates.map((e) => ({ value: e.id, label: e.name }))]} />
+        <FilterSelect
+          label="Crop"
+          value={fCrop}
+          onChange={setFCrop}
+          options={[
+            { value: "", label: "Coffee and pepper" },
+            { value: "COFFEE", label: "Coffee" },
+            { value: "PEPPER", label: "Pepper" },
+          ]}
+        />
+        <FilterSelect label="Variety" value={fVariety} onChange={setFVariety} options={[{ value: "", label: "All varieties" }, ...data.varieties.map((v) => ({ value: v.id, label: v.name }))]} />
+        <FilterSelect
+          label="Status"
+          value={fStatus}
+          onChange={setFStatus}
+          options={[
+            { value: "", label: "Active and inactive" },
+            { value: "active", label: "Active" },
+            { value: "inactive", label: "Inactive" },
+          ]}
+        />
+      </FilterBar>
+      {data.estates
+        .filter((e) => !fEstate || e.id === fEstate)
+        .map((e) => {
+          const every = data.fields.filter((f) => f.estateId === e.id);
+          const fs = every.filter(matches);
+          const total = every.reduce((s, f) => s + (f.areaCentiAcres ?? 0), 0);
+          const bearing = every.reduce((s, f) => s + (f.subdivisions ?? []).filter((x) => x.landUse === "BEARING").reduce((a, x) => a + (x.areaCentiAcres ?? 0), 0), 0);
+          return (
+            <Card
+              key={e.id}
+              title={e.name}
+              actions={
+                <span className="text-sm text-muted">
+                  {every.filter((f) => f.active !== false).length} active fields · {acres(total)} acres · {acres(bearing)} bearing
+                </span>
+              }
+            >
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[52rem] text-sm">
+                  <thead className="border-b border-line">
                     <tr>
-                      <Td className="text-muted">No fields yet.</Td>
+                      <Th>
+                        {canWrite(e.id) && (
+                          <SelectBox
+                            label={`Select all fields in ${e.name}`}
+                            checked={fs.length > 0 && fs.every((f) => pick.sel.has(f.id))}
+                            onChange={(on) =>
+                              pick.toggleAll(
+                                fs.map((f) => f.id),
+                                on,
+                              )
+                            }
+                          />
+                        )}
+                      </Th>
+                      <Th>Code</Th>
+                      <Th>Field</Th>
+                      <Th right>Acres</Th>
+                      <Th>Subdivisions</Th>
+                      <Th right>Expected</Th>
+                      <Th right>Plucked</Th>
+                      <Th>Progress</Th>
+                      <Th>Status</Th>
+                      <Th />
                     </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-        );
-      })}
+                  </thead>
+                  <tbody className="divide-y divide-line">
+                    {fs.map((f) => (
+                      <tr key={f.id}>
+                        <Td>{canWrite(e.id) && <SelectBox label={`Select ${f.name}`} checked={pick.sel.has(f.id)} onChange={() => pick.toggle(f.id)} />}</Td>
+                        <Td className="whitespace-nowrap font-mono">{f.code}</Td>
+                        <Td>
+                          {f.name}
+                          {f.elevationM ? <span className="block text-xs text-muted">{f.elevationM} m</span> : null}
+                        </Td>
+                        <Td right>{acres(f.areaCentiAcres)}</Td>
+                        <Td>
+                          <div className="flex flex-wrap gap-1">
+                            {(f.subdivisions ?? []).map((s) => (
+                              <Chip key={s.id} tone={s.landUse === "BEARING" ? "ok" : "plain"}>
+                                {s.label} · {LAND_LABEL[s.landUse]}
+                                {varietyName(s.varietyId) ? ` · ${varietyName(s.varietyId)}` : ""} · {acres(s.areaCentiAcres)} ac
+                              </Chip>
+                            ))}
+                            {!f.subdivisions?.length && <span className="text-muted">None</span>}
+                          </div>
+                        </Td>
+                        <Td right>{f.expectedCherryKg ? `${f.expectedCherryKg.toLocaleString("en-IN")} kg` : "–"}</Td>
+                        <Td right>{season.start ? `${Math.round((pluckedG.get(f.id) ?? 0) / 1000).toLocaleString("en-IN")} kg` : "–"}</Td>
+                        <Td>
+                          {season.start && f.expectedCherryKg ? (
+                            (() => {
+                              const pct = Math.round(((pluckedG.get(f.id) ?? 0) / 1000 / f.expectedCherryKg) * 100);
+                              return (
+                                <span className="flex items-center gap-2">
+                                  <span className="block h-1.5 w-20 overflow-hidden rounded-full bg-surface-2">
+                                    <span className="block h-full rounded-full bg-roast" style={{ width: `${Math.min(100, pct)}%` }} />
+                                  </span>
+                                  <span className="text-xs text-muted">{pct}%</span>
+                                </span>
+                              );
+                            })()
+                          ) : (
+                            <span className="text-muted">–</span>
+                          )}
+                        </Td>
+                        <Td>{statusChip(f.active)}</Td>
+                        <Td right>{canWrite(e.id) && <EditLink label={`Edit ${f.name}`} onClick={() => open(f.id)} />}</Td>
+                      </tr>
+                    ))}
+                    {fs.length === 0 && (
+                      <tr>
+                        <Td className="text-muted">{filtersOn ? "No fields match these filters." : "No fields yet."}</Td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          );
+        })}
     </>
   );
 }

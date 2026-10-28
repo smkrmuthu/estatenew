@@ -74,7 +74,7 @@ const DASH = "-";
 const kg = (g: number) => g / 1000;
 const dotted = (d: string) => `${d.slice(8, 10)}.${d.slice(5, 7)}.${d.slice(0, 4)}`;
 const dashed = (d: string) => `${d.slice(8, 10)}-${d.slice(5, 7)}-${d.slice(0, 4)}`;
-const orDash = (s: string | null | undefined) => (s && s.trim() ? s : DASH);
+const orDash = (s: string | null | undefined) => (s?.trim() ? s : DASH);
 
 const genderLabel = (g: ExportWorker["gender"]) => (g === "MALE" ? "Male" : g === "FEMALE" ? "Female" : DASH);
 const typeLabel = (t: ExportWorker["employmentType"]) => (t ? TYPE_LABEL[t] : DASH);

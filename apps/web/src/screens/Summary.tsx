@@ -2,7 +2,7 @@ import { addDays } from "@cemms/domain";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { useApp } from "../app-context";
-import { Button, Card, Field, Input, Notice } from "../components/ui";
+import { Button, Card, Field, FilterBar, FilterSearch, FilterSelect, Input, Notice } from "../components/ui";
 import { ApiError, api, apiFile } from "../lib/api";
 import { useDashboards } from "./Dashboard";
 
@@ -125,7 +125,14 @@ function DaySummary({ s }: { s: Summary }) {
   );
 }
 
-function PluckingRange({ estateId, name, from, to, showName }: { estateId: string; name: string; from: string; to: string; showName: boolean }) {
+interface RangeFilter {
+  fieldId: string;
+  crop: string;
+  worker: string;
+}
+const hasKg = (kg: string) => Number.parseFloat(kg) > 0;
+
+function PluckingRange({ estateId, name, from, to, showName, filter }: { estateId: string; name: string; from: string; to: string; showName: boolean; filter: RangeFilter }) {
   const app = useApp();
   const q = useQuery({
     queryKey: ["season", estateId, from, to],
@@ -135,6 +142,11 @@ function PluckingRange({ estateId, name, from, to, showName }: { estateId: strin
   if (q.isLoading) return <p>Loading…</p>;
   if (q.error || !q.data) return <Notice tone="bad">Could not load the report{showName ? ` for ${name}` : ""}.</Notice>;
   const r = q.data;
+  const byField = r.byField.filter((f) => (!filter.fieldId || f.fieldId === filter.fieldId) && (!filter.crop || (filter.crop === "COFFEE" ? f.coffeeNetG > 0 : hasKg(f.pepperNetKg))));
+  const byWorker = (r.byWorker ?? []).filter(
+    (w) =>
+      (!filter.worker || `${w.worker} ${w.employeeCode}`.toLowerCase().includes(filter.worker.toLowerCase())) && (!filter.crop || (filter.crop === "COFFEE" ? w.coffeeNetG > 0 : hasKg(w.pepperNetKg))),
+  );
   const topWorker = Math.max(0, ...(r.byWorker ?? []).map((w) => w.coffeeNetG));
   const topField = Math.max(0, ...r.byField.map((f) => f.coffeeNetG));
   return (
@@ -147,8 +159,8 @@ function PluckingRange({ estateId, name, from, to, showName }: { estateId: strin
           </span>
         }
       >
-        {r.byField.length === 0 ? (
-          <p className="text-muted">No weigh-ins in these days.</p>
+        {byField.length === 0 ? (
+          <p className="text-muted">{r.byField.length === 0 ? "No weigh-ins in these days." : "No fields match these filters."}</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[34rem] text-sm">
@@ -163,7 +175,7 @@ function PluckingRange({ estateId, name, from, to, showName }: { estateId: strin
                 </tr>
               </thead>
               <tbody className="divide-y divide-line">
-                {r.byField.map((f) => (
+                {byField.map((f) => (
                   <tr key={f.fieldId}>
                     <td className="px-3 py-2">{f.field}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{f.workerDays}</td>
@@ -182,8 +194,8 @@ function PluckingRange({ estateId, name, from, to, showName }: { estateId: strin
       </Card>
       {r.byWorker && (
         <Card title={showName ? `By worker · ${name}` : "By worker"} actions={<span className="text-sm text-muted">Most coffee first</span>}>
-          {r.byWorker.length === 0 ? (
-            <p className="text-muted">No weigh-ins in these days.</p>
+          {byWorker.length === 0 ? (
+            <p className="text-muted">{r.byWorker.length === 0 ? "No weigh-ins in these days." : "No workers match these filters."}</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[38rem] text-sm">
@@ -199,7 +211,7 @@ function PluckingRange({ estateId, name, from, to, showName }: { estateId: strin
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-line">
-                  {r.byWorker.map((w) => (
+                  {byWorker.map((w) => (
                     <tr key={w.workerId}>
                       <td className="px-3 py-2">
                         <span className="font-mono text-xs text-muted">{w.employeeCode}</span> {w.worker}
@@ -231,6 +243,10 @@ export function Summary() {
   const scope = app.allEstates && estates.length > 1 ? estates : estates.filter((e) => e.id === app.estateId);
   const multi = scope.length > 1;
   const [view, setView] = useState<"day" | "range" | "files">("day");
+  const [rEstate, setREstate] = useState("");
+  const [rField, setRField] = useState("");
+  const [rCrop, setRCrop] = useState("");
+  const [rWorker, setRWorker] = useState("");
   const [fileBusy, setFileBusy] = useState<string | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
   const [from, setFrom] = useState(addDays(app.date, -6));
@@ -424,8 +440,58 @@ export function Summary() {
               </div>
             </div>
             {from > to && <p className="mt-2 text-sm text-bad">The start date is after the end date.</p>}
+            <div className="mt-3 border-t border-line pt-3">
+              <FilterBar
+                shown={scope.filter((e) => !rEstate || e.id === rEstate).length}
+                total={scope.length}
+                noun="estates"
+                active={!!(rEstate || rField || rCrop || rWorker)}
+                onClear={() => {
+                  setREstate("");
+                  setRField("");
+                  setRCrop("");
+                  setRWorker("");
+                }}
+              >
+                {multi && (
+                  <FilterSelect
+                    label="Estate"
+                    value={rEstate}
+                    onChange={(v) => {
+                      setREstate(v);
+                      setRField("");
+                    }}
+                    options={[{ value: "", label: "All estates" }, ...scope.map((e) => ({ value: e.id, label: e.name }))]}
+                  />
+                )}
+                <FilterSelect
+                  label="Field"
+                  value={rField}
+                  onChange={setRField}
+                  options={[
+                    { value: "", label: "All fields" },
+                    ...(app.ref?.fields ?? []).filter((f) => scope.some((e) => e.id === f.estateId) && (!rEstate || f.estateId === rEstate)).map((f) => ({ value: f.id, label: f.name })),
+                  ]}
+                />
+                <FilterSelect
+                  label="Crop"
+                  value={rCrop}
+                  onChange={setRCrop}
+                  options={[
+                    { value: "", label: "Coffee and pepper" },
+                    { value: "COFFEE", label: "Coffee" },
+                    { value: "PEPPER", label: "Pepper" },
+                  ]}
+                />
+                <FilterSearch label="Find a worker" value={rWorker} onChange={setRWorker} placeholder="Name or code" />
+              </FilterBar>
+              <p className="mt-1 text-xs text-muted">Field applies to the by-field table, Find a worker to the by-worker table; Crop applies to both.</p>
+            </div>
           </Card>
-          {from <= to && scope.map((e) => <PluckingRange key={e.id} estateId={e.id} name={e.name} from={from} to={to} showName={multi} />)}
+          {from <= to &&
+            scope
+              .filter((e) => !rEstate || e.id === rEstate)
+              .map((e) => <PluckingRange key={e.id} estateId={e.id} name={e.name} from={from} to={to} showName={multi} filter={{ fieldId: rField, crop: rCrop, worker: rWorker }} />)}
         </>
       )}
     </div>

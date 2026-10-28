@@ -1,5 +1,5 @@
 // Small shadcn-style primitives (copied-in components, styled with Tailwind tokens).
-import { type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, useEffect, useRef } from "react";
+import { type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, useEffect, useId, useRef } from "react";
 import type { LocalStatus } from "../../lib/db";
 
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(" ");
@@ -191,5 +191,57 @@ export function KpiStrip({ items }: { items: { label: string; value: ReactNode; 
         </div>
       ))}
     </div>
+  );
+}
+
+/** A labelled drop-down used in a filter bar. */
+export function FilterSelect({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: { value: string; label: string }[] }) {
+  const id = useId();
+  return (
+    <div className="flex min-w-32 flex-1 flex-col gap-1 sm:max-w-48">
+      <label htmlFor={id} className="text-xs font-semibold text-muted">
+        {label}
+      </label>
+      <Select id={id} value={value} onChange={(e) => onChange(e.target.value)}>
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </Select>
+    </div>
+  );
+}
+
+/** A labelled search box used in a filter bar. */
+export function FilterSearch({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (v: string) => void; placeholder: string }) {
+  const id = useId();
+  return (
+    <div className="flex min-w-40 flex-1 flex-col gap-1 sm:max-w-56">
+      <label htmlFor={id} className="text-xs font-semibold text-muted">
+        {label}
+      </label>
+      <Input id={id} type="search" placeholder={placeholder} value={value} onChange={(e) => onChange(e.target.value)} />
+    </div>
+  );
+}
+
+/** A row of filters with a count of what is shown and a way to clear them. */
+export function FilterBar({ children, shown, total, noun, active, onClear }: { children: ReactNode; shown: number; total: number; noun: string; active: boolean; onClear: () => void }) {
+  return (
+    <fieldset className="m-0 flex min-w-0 flex-wrap items-end gap-3 border-0 p-0">
+      <legend className="sr-only">Filters</legend>
+      {children}
+      <div className="flex min-h-9 items-center gap-2 text-sm text-muted" aria-live="polite">
+        <span>
+          Showing {shown} of {total} {noun}
+        </span>
+        {active && (
+          <Button size="sm" variant="ghost" onClick={onClear}>
+            Clear filters
+          </Button>
+        )}
+      </div>
+    </fieldset>
   );
 }

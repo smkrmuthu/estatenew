@@ -2,7 +2,7 @@ import { uuidv7 } from "@cemms/domain";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { useApp } from "../app-context";
-import { Button, Card, Input, Notice, Select, StatusBadge } from "../components/ui";
+import { Button, Card, FilterBar, FilterSelect, Input, Notice, Select, StatusBadge } from "../components/ui";
 import { ApiError, api } from "../lib/api";
 import { db, getMeta, type LocalRecord, setMeta } from "../lib/db";
 import { useLive } from "../lib/hooks";
@@ -67,6 +67,12 @@ export function Attendance() {
   const [bulkStatus, setBulkStatus] = useState("P");
   /** Day register or Night register (night watchers). Each is marked, submitted and approved on its own. */
   const [shift, setShift] = useState<"DAY" | "NIGHT">("DAY");
+  // Filters over the register (they only change what is listed, never what is saved).
+  const [fType, setFType] = useState("");
+  const [fArea, setFArea] = useState("");
+  const [fGender, setFGender] = useState("");
+  const [fStatus, setFStatus] = useState("");
+  const [fField, setFField] = useState("");
   const tenantId = session.user.tenantId;
 
   const sheet = useQuery({
@@ -130,7 +136,6 @@ export function Attendance() {
   const assignment = (workerId: string) => prefill?.assignments.find((a) => a.workerId === workerId);
   const locked = sheetState !== "DRAFT";
   const canCapture = app.can("attendance.capture") && !locked;
-  const shown = workers.filter((w) => !search || `${w.name} ${w.employeeCode}`.toLowerCase().includes(search.toLowerCase()));
 
   /** What the register shows for a worker: the saved record, or a present mark still missing its field or job. */
   const viewOf = (workerId: string) => {
@@ -159,6 +164,30 @@ export function Attendance() {
     }
     return { P, H, A, O, none, women, men };
   })();
+
+  const filtersOn = !!(search || fType || fArea || fGender || fStatus || fField);
+  const shown = workers.filter((w) => {
+    if (search && !`${w.name} ${w.employeeCode}`.toLowerCase().includes(search.toLowerCase())) return false;
+    if (fType && w.employmentType !== fType) return false;
+    if (fArea && (w.area ?? "") !== fArea) return false;
+    if (fGender && (w.gender ?? "") !== fGender) return false;
+    if (fStatus || fField) {
+      const { r, draft, d } = viewOf(w.id);
+      const state = !r || draft ? "NONE" : d.statusCode === "PRESENT" ? "PRESENT" : d.statusCode === "ABSENT" || d.statusCode === "LEAVE" ? "ABSENT" : "OFF";
+      if (fStatus && state !== fStatus) return false;
+      if (fField && (state !== "PRESENT" || (fField === "none" ? !!d.fieldId : d.fieldId !== fField))) return false;
+    }
+    return true;
+  });
+  const areas = [...new Set(workers.map((w) => w.area).filter((a): a is string => !!a))].sort();
+  const clearFilters = () => {
+    setSearch("");
+    setFType("");
+    setFArea("");
+    setFGender("");
+    setFStatus("");
+    setFField("");
+  };
 
   async function mark(workerId: string, change: { statusCode: string; dayFraction?: "FULL" | "HALF" | null; fieldId?: string | null; jobTypeId?: string | null; remarks?: string | null }) {
     const current = byWorker.get(workerId);
@@ -441,6 +470,51 @@ export function Attendance() {
           </label>
           <Input id="search" type="search" placeholder="Name or code" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
+        <div className="mt-3">
+          <FilterBar shown={shown.length} total={workers.length} noun="workers" active={filtersOn} onClear={clearFilters}>
+            <FilterSelect
+              label="Worker status"
+              value={fType}
+              onChange={setFType}
+              options={[
+                { value: "", label: "All types" },
+                { value: "PERMANENT", label: "Permanent" },
+                { value: "CASUAL", label: "Casual" },
+                { value: "CONTRACT", label: "Contract" },
+                { value: "NORTH_INDIAN", label: "North Indian" },
+              ]}
+            />
+            <FilterSelect label="Area" value={fArea} onChange={setFArea} options={[{ value: "", label: "All areas" }, ...areas.map((a) => ({ value: a, label: a }))]} />
+            <FilterSelect
+              label="Gender"
+              value={fGender}
+              onChange={setFGender}
+              options={[
+                { value: "", label: "Everyone" },
+                { value: "FEMALE", label: "Women" },
+                { value: "MALE", label: "Men" },
+              ]}
+            />
+            <FilterSelect
+              label="Today's mark"
+              value={fStatus}
+              onChange={setFStatus}
+              options={[
+                { value: "", label: "All" },
+                { value: "NONE", label: "Not marked" },
+                { value: "PRESENT", label: "Present or half day" },
+                { value: "ABSENT", label: "Absent or leave" },
+                { value: "OFF", label: "Off or holiday" },
+              ]}
+            />
+            <FilterSelect
+              label="Field"
+              value={fField}
+              onChange={setFField}
+              options={[{ value: "", label: "All fields" }, ...fields.map((f) => ({ value: f.id, label: f.name })), { value: "none", label: "No field set" }]}
+            />
+          </FilterBar>
+        </div>
       </Card>
 
       <div className="rounded-2xl border border-line bg-surface">
@@ -580,7 +654,7 @@ export function Attendance() {
         </ul>
         {shown.length === 0 && (
           <div className="p-3">
-            <Notice>No workers match. Workers come from the master list (Manage → Import).</Notice>
+            <Notice>{filtersOn ? "No workers match these filters." : "No workers match. Workers come from the master list (Manage → Import)."}</Notice>
           </div>
         )}
       </div>

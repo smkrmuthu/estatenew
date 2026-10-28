@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useApp } from "../app-context";
-import { Button, Card, Chip, Drawer, Field, Input, Notice, Select } from "../components/ui";
+import { Button, Card, Chip, Drawer, Field, FilterBar, FilterSearch, FilterSelect, Input, Notice, Select } from "../components/ui";
 import { ApiError, api } from "../lib/api";
 
 const msg = (e: unknown) => (e instanceof ApiError ? e.message : "Could not reach the server.");
@@ -200,10 +200,25 @@ export function Users() {
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<UserRow | null>(null);
   const [note, setNote] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
+  const [q, setQ] = useState("");
+  const [fRole, setFRole] = useState("");
+  const [fEstate, setFEstate] = useState("");
+  const [fStatus, setFStatus] = useState("");
   const estateName = (id: string | null) => (id ? (estates.find((e) => e.id === id)?.name ?? "an estate") : "All estates");
   const refresh = () => qc.invalidateQueries({ queryKey: ["users"] });
   const estatesOf = (u: UserRow) => [...new Set(u.grants.map((g) => estateName(g.estateId)))].join(", ");
   const rolesOf = (u: UserRow) => [...new Set(u.grants.map((g) => g.role))];
+
+  const locked = (u: UserRow) => !!u.lockedUntil && new Date(u.lockedUntil) > new Date();
+  const all = users.data ?? [];
+  const list = all.filter(
+    (u) =>
+      (!q || `${u.displayName} ${u.username}`.toLowerCase().includes(q.toLowerCase())) &&
+      (!fRole || rolesOf(u).includes(fRole)) &&
+      (!fEstate || u.grants.some((g) => g.estateId === null || g.estateId === fEstate)) &&
+      (!fStatus || (fStatus === "ACTIVE" ? u.status === "ACTIVE" && !locked(u) : fStatus === "LOCKED" ? locked(u) : u.status !== "ACTIVE")),
+  );
+  const filtersOn = !!(q || fRole || fEstate || fStatus);
 
   if (!app.online) return <Notice tone="warn">Users need signal.</Notice>;
 
@@ -253,6 +268,35 @@ export function Users() {
       {note && <Notice tone={note.tone}>{note.text}</Notice>}
       <Card title="People with access">
         {users.isLoading && <p>Loading…</p>}
+        <div className="mb-3">
+          <FilterBar
+            shown={list.length}
+            total={all.length}
+            noun="people"
+            active={filtersOn}
+            onClear={() => {
+              setQ("");
+              setFRole("");
+              setFEstate("");
+              setFStatus("");
+            }}
+          >
+            <FilterSearch label="Find a person" value={q} onChange={setQ} placeholder="Name or username" />
+            <FilterSelect label="Role" value={fRole} onChange={setFRole} options={[{ value: "", label: "All roles" }, ...Object.entries(ROLE_LABEL).map(([value, label]) => ({ value, label }))]} />
+            <FilterSelect label="Estate" value={fEstate} onChange={setFEstate} options={[{ value: "", label: "All estates" }, ...estates.map((e) => ({ value: e.id, label: e.name }))]} />
+            <FilterSelect
+              label="Status"
+              value={fStatus}
+              onChange={setFStatus}
+              options={[
+                { value: "", label: "All" },
+                { value: "ACTIVE", label: "Active" },
+                { value: "LOCKED", label: "Locked" },
+                { value: "INACTIVE", label: "Inactive" },
+              ]}
+            />
+          </FilterBar>
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[38rem] text-sm">
             <thead className="border-b border-line">
@@ -265,7 +309,7 @@ export function Users() {
               </tr>
             </thead>
             <tbody className="divide-y divide-line">
-              {(users.data ?? []).map((u) => (
+              {list.map((u) => (
                 <tr key={u.id}>
                   <td className="px-3 py-2.5">
                     <p className="font-semibold">{u.displayName}</p>
