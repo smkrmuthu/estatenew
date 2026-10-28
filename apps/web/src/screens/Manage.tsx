@@ -308,11 +308,12 @@ interface BackupRow {
   bytes: number;
   verified: boolean;
   tables: Record<string, number>;
+  offsite?: { ok: boolean; error?: string };
 }
 
 function Backups() {
   const qc = useQueryClient();
-  const q = useQuery({ queryKey: ["backups"], queryFn: () => api<{ backups: BackupRow[]; ageHours: number | null; late: boolean; schedule: string }>("/admin/backups") });
+  const q = useQuery({ queryKey: ["backups"], queryFn: () => api<{ backups: BackupRow[]; ageHours: number | null; late: boolean; schedule: string; googleDrive: boolean }>("/admin/backups") });
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
   async function backUpNow() {
@@ -353,6 +354,16 @@ function Backups() {
               : `Last good backup: ${d.ageHours} hours ago.`}
         </Notice>
       )}
+      {d && !d.googleDrive && (
+        <div className="mt-3">
+          <Notice tone="warn">The second copy in Google Drive is not set up yet, so the backups are only in Cloudflare. Ask the office to finish the Google Drive setup.</Notice>
+        </div>
+      )}
+      {d?.googleDrive && d.backups[0] && d.backups[0].offsite?.ok !== true && (
+        <div className="mt-3">
+          <Notice tone="warn">The newest backup was not copied to Google Drive{d.backups[0].offsite?.error ? `: ${d.backups[0].offsite.error}` : "."}</Notice>
+        </div>
+      )}
       {note && (
         <div className="mt-3">
           <Notice tone={note.tone}>{note.text}</Notice>
@@ -363,7 +374,7 @@ function Backups() {
           <table className="w-full min-w-[34rem] text-sm">
             <thead className="border-b border-line">
               <tr>
-                {["Made", "How", "Workers", "Attendance", "Weigh-ins", "Size", "Checked"].map((h) => (
+                {["Made", "How", "Workers", "Attendance", "Weigh-ins", "Size", "Checked", "Google Drive"].map((h) => (
                   <th key={h} className="px-3 py-2 text-left text-[0.8rem] font-medium text-muted">
                     {h}
                   </th>
@@ -380,6 +391,7 @@ function Backups() {
                   <td className="px-3 py-2 tabular-nums">{b.tables.muster_entries ?? 0}</td>
                   <td className="px-3 py-2 tabular-nums">{Math.max(1, Math.round(b.bytes / 1024))} KB</td>
                   <td className="px-3 py-2">{b.verified ? <Chip tone="ok">Checked</Chip> : <Chip tone="bad">Not checked</Chip>}</td>
+                  <td className="px-3 py-2">{b.offsite ? b.offsite.ok ? <Chip tone="ok">Copied</Chip> : <Chip tone="bad">Failed</Chip> : <span className="text-muted">Not set up</span>}</td>
                 </tr>
               ))}
             </tbody>

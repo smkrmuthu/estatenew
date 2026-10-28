@@ -17,9 +17,32 @@
 - Platform side: `POST /platform/backups/run` (header `x-platform-token`) runs everything now; `GET /platform/backups` lists the newest copies.
 - Copies are kept (they are small). Add a retention rule in R2 when storage matters.
 
+## Second copy in Google Drive
+
+When `GDRIVE_CLIENT_ID`, `GDRIVE_CLIENT_SECRET` and `GDRIVE_REFRESH_TOKEN` are set, each backup (nightly or on request) is also uploaded to the owner's Google Drive, into a folder the app makes called `CEMMS backups - <environment>`. The files are the same encrypted files as in R2, each is read back from Drive and compared, and nothing is ever deleted from Drive. If Drive fails, the R2 copy is kept and the failure shows in Manage → Backups ("Failed") and in the log (`backup.offsite.failed`).
+
+A service account does not work for a personal Drive (it has no storage of its own), so the app signs in as the owner's Google account with a refresh token created once. The scope is `drive.file`: the app can see only files it made itself.
+
+One-time setup (done by the owner, with the Google account that holds the Drive):
+
+1. In the Google Cloud console create a project (for example "CEMMS backups") and turn on the **Google Drive API**.
+2. **OAuth consent screen**: user type External, add your own address as a test user, add the scope `.../auth/drive.file`, then set the publishing status to **In production**. (In "Testing" status Google ends the refresh token after 7 days.) `drive.file` does not need Google's verification for personal use; Google may show an "unverified app" warning when you approve it.
+3. **Credentials → Create OAuth client ID**, type Web application, with the authorised redirect URI `https://developers.google.com/oauthplayground`. Note the client ID and client secret.
+4. Open the Google OAuth Playground, click the gear, tick "Use your own OAuth credentials" and enter the client ID and secret. In Step 1 enter the scope `https://www.googleapis.com/auth/drive.file`, authorise with the same Google account, then in Step 2 press "Exchange authorization code for tokens" and copy the **refresh token**.
+5. Set the three secrets for each environment from `apps/api` (the values go straight to Cloudflare; do not paste them into chat or files):
+
+   ```bash
+   npx wrangler secret put GDRIVE_CLIENT_ID --env staging
+   npx wrangler secret put GDRIVE_CLIENT_SECRET --env staging
+   npx wrangler secret put GDRIVE_REFRESH_TOKEN --env staging
+   ```
+6. Press **Back up now** in Manage → Backups. The row should show "Copied" and the folder appears in My Drive.
+
+If the refresh token is revoked or expires, the Drive column shows "Failed" with Google's reason; repeat step 4 and set the token again. Production uses its own secrets and its own folder.
+
 ## Keep the key safe
 
-The copies can only be opened with `MFA_ENC_KEY`. It is a Worker secret per environment; **keep a second copy of each environment's key in the office password manager**. If the key is lost, the R2 copies cannot be read (the 30-day Cloudflare restore is not affected). Do not rotate the key without re-making the copies first. A separate backup key is still planned.
+The copies can only be opened with `MFA_ENC_KEY`. It is a Worker secret per environment; **keep a second copy of each environment's key in the office password manager**. If the key is lost, the R2 copies cannot be read (the 30-day Cloudflare restore is not affected). Do not rotate the key without re-making the copies first. A separate backup key is still planned. The Drive copy is encrypted with the same key, so the key is also what makes the Drive copy readable.
 
 ## Restore (a disaster, or a drill)
 

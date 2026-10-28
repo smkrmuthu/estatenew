@@ -1,6 +1,7 @@
 import { controlDb } from "../control/db";
 import { tenants } from "../control/schema";
 import { decryptSecret, encryptSecret, sha256Hex } from "./crypto";
+import { driveConfig, uploadToDrive } from "./gdrive";
 import { log } from "./log";
 import { tenantStub } from "./tenant-stub";
 
@@ -26,6 +27,8 @@ export interface BackupManifest {
   tables: Record<string, number>;
   /** True when the stored copy was read back, decrypted and matched. */
   verified: boolean;
+  /** The second copy in Google Drive; absent when Drive is not set up. */
+  offsite?: { provider: "google-drive"; ok: boolean; at: string; fileId?: string; error?: string };
 }
 
 /** Credentials that are useless after a restore and better not kept: sign-in sessions and refresh tokens. */
@@ -48,8 +51,25 @@ async function store(env: Env, prefix: string, plain: string, meta: Pick<BackupM
   const again = back ? await decryptSecret(await back.text(), env.MFA_ENC_KEY).catch(() => "") : "";
   const verified = again.length > 0 && (await sha256Hex(again)) === sha256;
   const manifest: BackupManifest = { ...meta, key, at: now.toISOString(), bytes: body.length, sha256, tables: countTables(plain), verified };
-  await env.FILES.put(`${prefix}/${stampOf(now)}.manifest.json`, JSON.stringify(manifest), { httpMetadata: { contentType: "application/json" } });
+  const manifestKey = `${prefix}/${stampOf(now)}.manifest.json`;
+  await env.FILES.put(manifestKey, JSON.stringify(manifest), { httpMetadata: { contentType: "application/json" } });
   if (!verified) throw new Error(`Backup ${key} could not be read back`);
+  // The second copy in Google Drive. A failure there is recorded and logged but never loses the R2 copy.
+  const drive = driveConfig(env);
+  if (drive) {
+    const name = key.replace(/^tenants\/([^/]+)\/backups\//, "tenant-$1-").replace(/^control\/backups\//, "control-");
+    try {
+      const sent = await uploadToDrive(drive, `CEMMS backups - ${env.ENVIRONMENT}`, [
+        { name, mime: "text/plain", body },
+        { name: name.replace(/\.json\.enc$/, ".manifest.json"), mime: "application/json", body: JSON.stringify({ ...manifest, offsite: undefined }) },
+      ]);
+      manifest.offsite = { provider: "google-drive", ok: true, at: new Date().toISOString(), fileId: sent.files[0]?.id };
+    } catch (e) {
+      manifest.offsite = { provider: "google-drive", ok: false, at: new Date().toISOString(), error: (e as Error).message.slice(0, 300) };
+      log("error", "backup.offsite.failed", { key, error: manifest.offsite.error });
+    }
+    await env.FILES.put(manifestKey, JSON.stringify(manifest), { httpMetadata: { contentType: "application/json" } });
+  }
   return manifest;
 }
 

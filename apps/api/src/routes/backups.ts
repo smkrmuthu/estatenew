@@ -2,6 +2,7 @@ import { can } from "@cemms/domain";
 import type { Context, Hono } from "hono";
 import { ageHours, backupTenant, listBackups } from "../core/backup";
 import { AppError, forbidden } from "../core/errors";
+import { driveConfig } from "../core/gdrive";
 import { route } from "../core/registry";
 import type { AppEnv } from "../core/types";
 
@@ -21,7 +22,7 @@ export function backupRoutes(app: Hono<AppEnv>) {
     const a = owner(c);
     const backups = await listBackups(c.env, `tenants/${a.tenant.id}/backups`, 10);
     const age = ageHours(backups);
-    return c.json({ backups, ageHours: age, late: age === null || age > LATE_AFTER_HOURS, schedule: "Every night at about 2:00 am (India time)" });
+    return c.json({ backups, ageHours: age, late: age === null || age > LATE_AFTER_HOURS, schedule: "Every night at about 2:00 am (India time)", googleDrive: driveConfig(c.env) !== null });
   });
 
   route(app, { method: "post", path: "/admin/backups/run", summary: "Back up my tenant's data now", tag: "admin", auth: "bearer", permission: "settings.manage" }, async (c) => {
