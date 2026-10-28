@@ -4,7 +4,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import type { z } from "zod";
 import { AppError } from "../../core/errors";
 import { assertFound, type Db, staleVersion, type TenantContext } from "../context";
-import { estates, fieldSubdivisions, fields, fieldVarieties, jobTypes, logKinds, varieties, workers } from "../schema";
+import { attendanceRecords, estates, fieldSubdivisions, fields, fieldVarieties, jobTypes, logKinds, musterEntries, varieties, workers } from "../schema";
 import { setting } from "./settings";
 
 const uniqueViolation = (e: unknown) => e instanceof Error && /UNIQUE constraint failed/i.test(e.message);
@@ -333,4 +333,39 @@ export function activeJobType(db: Db, jobTypeId: string) {
   const j = db.select().from(jobTypes).where(eq(jobTypes.id, jobTypeId)).get();
   if (!j?.active) throw new AppError(422, "JOB_UNKNOWN", "This job is not in use", { jobTypeId: "Unknown job" });
   return j;
+}
+
+const usedMessage = (what: string) => `${what} has attendance or weigh-in records, so it cannot be deleted. Set it to Inactive instead; it then leaves the daily register but stays in the history.`;
+
+/** Delete a worker that nothing refers to yet (for example sample data). Used workers are set Inactive instead. */
+export function deleteWorker(ctx: TenantContext, id: string, reason: string) {
+  const before = assertFound(ctx.db.select().from(workers).where(eq(workers.id, id)).get(), "Worker");
+  ctx.require("masters.write", before.estateId);
+  return ctx.tx((db) => {
+    const used =
+      db.select({ id: attendanceRecords.id }).from(attendanceRecords).where(eq(attendanceRecords.workerId, id)).limit(1).all().length +
+      db.select({ id: musterEntries.id }).from(musterEntries).where(eq(musterEntries.workerId, id)).limit(1).all().length;
+    if (used > 0) throw new AppError(409, "IN_USE", usedMessage(before.name));
+    db.delete(workers).where(eq(workers.id, id)).run();
+    ctx.audit(db, { action: "worker.delete", entityType: "worker", entityId: id, estateId: before.estateId, reason, before });
+    return { deleted: true, id };
+  });
+}
+
+/** Delete a field (and its subdivisions) that nothing refers to yet. Used fields are set Inactive instead. */
+export function deleteField(ctx: TenantContext, id: string, reason: string) {
+  const before = assertFound(ctx.db.select().from(fields).where(eq(fields.id, id)).get(), "Field");
+  ctx.require("masters.write", before.estateId);
+  return ctx.tx((db) => {
+    const used =
+      db.select({ id: attendanceRecords.id }).from(attendanceRecords).where(eq(attendanceRecords.fieldId, id)).limit(1).all().length +
+      db.select({ id: musterEntries.id }).from(musterEntries).where(eq(musterEntries.fieldId, id)).limit(1).all().length;
+    if (used > 0) throw new AppError(409, "IN_USE", usedMessage(before.name));
+    const subdivisions = db.select().from(fieldSubdivisions).where(eq(fieldSubdivisions.fieldId, id)).all();
+    db.delete(fieldSubdivisions).where(eq(fieldSubdivisions.fieldId, id)).run();
+    db.delete(fieldVarieties).where(eq(fieldVarieties.fieldId, id)).run();
+    db.delete(fields).where(eq(fields.id, id)).run();
+    ctx.audit(db, { action: "field.delete", entityType: "field", entityId: id, estateId: before.estateId, reason, before: { ...before, subdivisions } });
+    return { deleted: true, id };
+  });
 }

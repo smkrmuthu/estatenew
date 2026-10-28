@@ -140,7 +140,17 @@ function WorkerForm({ data, id, estateId, done }: { data: ReferenceData; id?: st
   );
 }
 
-function Workers({ data, canWrite, open }: { data: ReferenceData; canWrite: (estateId: string) => boolean; open: (id: string) => void }) {
+interface Pick {
+  sel: Set<string>;
+  toggle: (id: string) => void;
+  toggleAll: (ids: string[], on: boolean) => void;
+}
+
+function SelectBox({ label, checked, onChange }: { label: string; checked: boolean; onChange: (on: boolean) => void }) {
+  return <input type="checkbox" aria-label={label} checked={checked} onChange={(e) => onChange(e.target.checked)} />;
+}
+
+function Workers({ data, canWrite, open, pick }: { data: ReferenceData; canWrite: (estateId: string) => boolean; open: (id: string) => void; pick: Pick }) {
   return (
     <>
       {data.estates.map((e) => {
@@ -151,6 +161,20 @@ function Workers({ data, canWrite, open }: { data: ReferenceData; canWrite: (est
               <table className="w-full min-w-[34rem] text-sm">
                 <thead className="border-b border-line">
                   <tr>
+                    <Th>
+                      {canWrite(e.id) && (
+                        <SelectBox
+                          label={`Select all workers in ${e.name}`}
+                          checked={ws.length > 0 && ws.every((w) => pick.sel.has(w.id))}
+                          onChange={(on) =>
+                            pick.toggleAll(
+                              ws.map((w) => w.id),
+                              on,
+                            )
+                          }
+                        />
+                      )}
+                    </Th>
                     <Th>Code</Th>
                     <Th>Name</Th>
                     <Th>Gender</Th>
@@ -162,6 +186,7 @@ function Workers({ data, canWrite, open }: { data: ReferenceData; canWrite: (est
                 <tbody className="divide-y divide-line">
                   {ws.map((w) => (
                     <tr key={w.id}>
+                      <Td>{canWrite(e.id) && <SelectBox label={`Select ${w.name}`} checked={pick.sel.has(w.id)} onChange={() => pick.toggle(w.id)} />}</Td>
                       <Td className="font-mono">{w.employeeCode}</Td>
                       <Td>{w.name}</Td>
                       <Td>{w.gender ? GENDER_LABEL[w.gender] : <span className="text-muted">Not set</span>}</Td>
@@ -365,7 +390,7 @@ function FieldForm({ data, id, estateId, done }: { data: ReferenceData; id?: str
   );
 }
 
-function Fields({ data, canWrite, open }: { data: ReferenceData; canWrite: (estateId: string) => boolean; open: (id: string) => void }) {
+function Fields({ data, canWrite, open, pick }: { data: ReferenceData; canWrite: (estateId: string) => boolean; open: (id: string) => void; pick: Pick }) {
   const varietyName = (id: string | null) => data.varieties.find((v) => v.id === id)?.name;
   return (
     <>
@@ -387,6 +412,20 @@ function Fields({ data, canWrite, open }: { data: ReferenceData; canWrite: (esta
               <table className="w-full min-w-[44rem] text-sm">
                 <thead className="border-b border-line">
                   <tr>
+                    <Th>
+                      {canWrite(e.id) && (
+                        <SelectBox
+                          label={`Select all fields in ${e.name}`}
+                          checked={fs.length > 0 && fs.every((f) => pick.sel.has(f.id))}
+                          onChange={(on) =>
+                            pick.toggleAll(
+                              fs.map((f) => f.id),
+                              on,
+                            )
+                          }
+                        />
+                      )}
+                    </Th>
                     <Th>Code</Th>
                     <Th>Field</Th>
                     <Th right>Acres</Th>
@@ -399,6 +438,7 @@ function Fields({ data, canWrite, open }: { data: ReferenceData; canWrite: (esta
                 <tbody className="divide-y divide-line">
                   {fs.map((f) => (
                     <tr key={f.id}>
+                      <Td>{canWrite(e.id) && <SelectBox label={`Select ${f.name}`} checked={pick.sel.has(f.id)} onChange={() => pick.toggle(f.id)} />}</Td>
                       <Td className="font-mono">{f.code}</Td>
                       <Td>
                         {f.name}
@@ -665,6 +705,8 @@ export function Masters() {
   const qc = useQueryClient();
   const [tab, setTab] = useState<Tab>("fields");
   const [target, setTarget] = useState<Target>(null);
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const [note, setNote] = useState<{ tone: "ok" | "warn" | "bad"; text: string } | null>(null);
   const q = useQuery({ queryKey: ["reference-all"], queryFn: () => api<ReferenceData>("/reference?inactive=1"), enabled: app.online });
   if (!app.online) return <Notice tone="warn">Masters need signal. Fields, workers and jobs are changed on the server.</Notice>;
   const data = q.data;
@@ -680,6 +722,37 @@ export function Masters() {
   ];
   const addLabel = { fields: "Add field", workers: "Add worker", jobs: "Add job", logkinds: "Add kind" }[tab];
   const canAdd = tab === "jobs" ? jobsWrite : tab === "logkinds" ? kindsWrite : anyWrite;
+  const pick: Pick = {
+    sel,
+    toggle: (id) => setSel((cur) => (cur.has(id) ? new Set([...cur].filter((x) => x !== id)) : new Set([...cur, id]))),
+    toggleAll: (ids, on) => setSel((cur) => new Set(on ? [...cur, ...ids] : [...cur].filter((x) => !ids.includes(x)))),
+  };
+  /** Delete the ticked workers or fields. The server refuses any that have records and says to set them Inactive. */
+  async function deleteSelected() {
+    const kind = tab === "workers" ? "workers" : "fields";
+    const ids = [...sel];
+    const reason = window.prompt(
+      `Delete ${ids.length} ${kind === "workers" ? "worker" : "field"}${ids.length === 1 ? "" : "s"}? This cannot be undone. Only entries with no attendance or weigh-in records can be deleted; the others are kept and should be set Inactive.\n\nWhy are you deleting them? (kept in the audit trail)`,
+    );
+    if (!reason || reason.trim().length < 3) return;
+    let deleted = 0;
+    const kept: string[] = [];
+    for (const id of ids) {
+      try {
+        await api(`/${kind}/${id}/delete`, { body: { reason: reason.trim() } });
+        deleted++;
+      } catch (e) {
+        const name = kind === "workers" ? data?.workers.find((w) => w.id === id)?.name : data?.fields.find((f) => f.id === id)?.name;
+        kept.push(`${name ?? id}${e instanceof ApiError && e.code === "IN_USE" ? "" : ` (${msg(e)})`}`);
+      }
+    }
+    setSel(new Set());
+    setNote({
+      tone: kept.length ? "warn" : "ok",
+      text: `${deleted} deleted.${kept.length ? ` ${kept.length} kept because they have attendance or weigh-in records or could not be deleted: ${kept.join(", ")}. Set those to Inactive instead.` : ""}`,
+    });
+    done();
+  }
   const done = () => {
     setTarget(null);
     void qc.invalidateQueries({ queryKey: ["reference-all"] });
@@ -733,21 +806,32 @@ export function Masters() {
                 key={t.id}
                 type="button"
                 aria-pressed={tab === t.id}
-                onClick={() => setTab(t.id)}
+                onClick={() => {
+                  setTab(t.id);
+                  setSel(new Set());
+                  setNote(null);
+                }}
                 className={`min-h-9 rounded-lg px-3 text-sm font-medium transition-colors ${tab === t.id ? "bg-surface text-ink shadow-[0_0_0_1px_var(--color-line)]" : "text-muted hover:text-ink"}`}
               >
                 {t.label}
               </button>
             ))}
           </fieldset>
+          {sel.size > 0 && (tab === "workers" || tab === "fields") && (
+            <Button variant="danger" onClick={() => void deleteSelected()}>
+              Delete selected ({sel.size})
+            </Button>
+          )}
           {canAdd && <Button onClick={() => setTarget({ tab })}>{addLabel}</Button>}
         </div>
       </div>
 
+      {note && <Notice tone={note.tone}>{note.text}</Notice>}
+      {!canAdd && <Notice tone="info">You can view these lists. Only an owner or an estate manager can add or change fields, workers and jobs, and only an owner can change log kinds.</Notice>}
       {q.isLoading && <p>Loading…</p>}
       {q.error && <Notice tone="bad">Could not load the lists.</Notice>}
-      {data && tab === "fields" && <Fields data={data} canWrite={writeEstate} open={(id) => setTarget({ tab, id })} />}
-      {data && tab === "workers" && <Workers data={data} canWrite={writeEstate} open={(id) => setTarget({ tab, id })} />}
+      {data && tab === "fields" && <Fields data={data} canWrite={writeEstate} open={(id) => setTarget({ tab, id })} pick={pick} />}
+      {data && tab === "workers" && <Workers data={data} canWrite={writeEstate} open={(id) => setTarget({ tab, id })} pick={pick} />}
       {data && tab === "jobs" && <Jobs data={data} canWrite={jobsWrite} open={(id) => setTarget({ tab, id })} />}
       {data && tab === "logkinds" && <Kinds data={data} canWrite={kindsWrite} open={(id) => setTarget({ tab, id })} />}
 

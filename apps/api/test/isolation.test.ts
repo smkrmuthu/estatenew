@@ -33,6 +33,8 @@ describe("tenant and estate isolation", () => {
       ["POST", `/attendance-records/${m.entityId}/corrections`, { statusCode: "ABSENT", reason: "test reason", baseVersion: 1 }],
       ["PUT", `/fields/${a.f1.id}`, { estateId: a.estate.id, code: "F1", name: "x", crops: ["COFFEE"], varietyIds: [] }],
       ["PUT", `/workers/${a.w1.id}`, { estateId: a.estate.id, employeeCode: "W001", name: "x" }],
+      ["POST", `/workers/${a.w1.id}/delete`, { reason: "test reason" }],
+      ["POST", `/fields/${a.f1.id}/delete`, { reason: "test reason" }],
       ["GET", `/audit?estateId=${a.estate.id}`],
       ["GET", `/audit/history?entityType=attendance_record&entityId=${m.entityId}&estateId=${a.estate.id}`],
     ];

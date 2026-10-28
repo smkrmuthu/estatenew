@@ -3,6 +3,7 @@ import {
   attendanceCorrection,
   conflictResolution,
   dailyLogCorrection,
+  deleteMaster,
   estateInput,
   fieldInput,
   importCommit,
@@ -58,6 +59,8 @@ const OPS = {
     input: withIdVersion(workerInput),
     run: (c: TenantContext, i: { id?: string; baseVersion?: number; body: z.infer<typeof workerInput> }) => org.upsertWorker(c, i.body, i.id, i.baseVersion),
   },
+  "org.deleteWorker": { input: withId(deleteMaster), run: (c: TenantContext, i: { id: string; body: z.infer<typeof deleteMaster> }) => org.deleteWorker(c, i.id, i.body.reason) },
+  "org.deleteField": { input: withId(deleteMaster), run: (c: TenantContext, i: { id: string; body: z.infer<typeof deleteMaster> }) => org.deleteField(c, i.id, i.body.reason) },
   "org.upsertLogKind": {
     input: withIdVersion(logKindInput),
     run: (c: TenantContext, i: { id?: string; baseVersion?: number; body: z.infer<typeof logKindInput> }) => org.upsertLogKind(c, i.body, i.id, i.baseVersion),

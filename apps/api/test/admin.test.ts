@@ -1,6 +1,6 @@
 import { uuidv7 } from "@cemms/domain";
 import { describe, expect, it } from "vitest";
-import { api, createTenant, login, setupTenant } from "./helpers";
+import { api, createTenant, login, mutation, push, setupTenant, today } from "./helpers";
 
 describe("imports", () => {
   it("previews row errors, applies once, and treats a repeat as already imported", async () => {
@@ -196,6 +196,72 @@ describe("masters forms", () => {
     expect(f2.varietyIds).toEqual([s.cg.id]);
     // Another tenant's estate cannot be written to; a supervisor cannot write fields.
     expect((await api("/fields", { token: s.supervisor.token, body: base })).status).toBe(403);
+  });
+
+  it("never deletes on import, and a file cannot change a field that has subdivisions", async () => {
+    const s = await setupTenant();
+    const f = await api("/fields", {
+      token: s.owner.token,
+      body: { estateId: s.estate.id, code: "F9", name: "Middle", areaCentiAcres: 1000, crops: ["COFFEE"], subdivisions: [{ landUse: "BEARING", varietyId: s.cg.id, areaCentiAcres: 1000 }] },
+    });
+    expect(f.status).toBe(201);
+    const run = async (kind: string, csv: string) => {
+      const pre = (await api("/imports/preview", { token: s.owner.token, body: { kind, csv } })).body;
+      if (pre.errors.length) return pre;
+      return (await api("/imports/commit", { token: s.owner.token, body: { kind, csv, previewHash: pre.previewHash } })).body;
+    };
+    const ref = async () => (await api("/reference", { token: s.owner.token })).body;
+    const before = await ref();
+
+    // A workers file that lists only one worker leaves every other worker and field alone.
+    await run("workers", "estate_code,employee_code,name\nGLZ,W001,Worker A\n");
+    const after = await ref();
+    expect(after.workers).toHaveLength(before.workers.length);
+    expect(after.fields).toHaveLength(before.fields.length);
+
+    // Same acres, blank varieties: the subdivisions still decide the varieties.
+    await run("fields", "estate_code,code,name,area_acres,crops,varieties\nGLZ,F9,Middle Renamed,10,COFFEE,\n");
+    const f9 = (await ref()).fields.find((x: { code: string }) => x.code === "F9");
+    expect(f9).toMatchObject({ name: "Middle Renamed", varietyIds: [s.cg.id] });
+    expect(f9.subdivisions).toHaveLength(1);
+    // Different acres would break the subdivisions, so the row is refused.
+    const bad = await run("fields", "estate_code,code,name,area_acres\nGLZ,F9,Middle,12\n");
+    expect(bad.errors).toEqual([expect.objectContaining({ column: "area_acres" })]);
+  });
+
+  it("deletes unused sample workers and fields with a reason, and refuses ones that have records", async () => {
+    const s = await setupTenant();
+    // W001 gets an attendance record on F1, so both are in use.
+    const m = await mutation(s.supervisor.deviceId, s.estate.id, "attendance_record", "upsert", {
+      businessDate: today(),
+      workerId: s.w1.id,
+      statusCode: "PRESENT",
+      dayFraction: "FULL",
+      fieldId: s.f1.id,
+      jobTypeId: s.plk.id,
+    });
+    expect((await push(s.supervisor, [m])).body.results[0].status).toBe("accepted");
+    const del = (kind: "workers" | "fields", id: string, reason = "Removing sample data", token = s.owner.token) => api(`/${kind}/${id}/delete`, { token, body: { reason } });
+
+    const used = await del("workers", s.w1.id);
+    expect(used.status).toBe(409);
+    expect(used.body.code).toBe("IN_USE");
+    expect((await del("fields", s.f1.id)).body.code).toBe("IN_USE");
+
+    expect((await del("workers", s.w2.id, "x")).status).toBe(422); // reason too short
+    expect((await del("workers", s.w2.id, "Removing sample data", s.supervisor.token)).status).toBe(403);
+    const ok = await del("workers", s.w2.id);
+    expect(ok.status, JSON.stringify(ok.body)).toBe(200);
+    expect((await del("fields", s.f2.id)).status).toBe(200);
+
+    const ref = (await api("/reference", { token: s.owner.token })).body;
+    expect(ref.workers.map((w: { id: string }) => w.id)).not.toContain(s.w2.id);
+    expect(ref.workers.map((w: { id: string }) => w.id)).toContain(s.w1.id);
+    expect(ref.fields.map((f: { id: string }) => f.id)).not.toContain(s.f2.id);
+    const audit = (await api("/audit?entityType=worker", { token: s.owner.token })).body as { action: string; reason: string }[];
+    expect(audit).toContainEqual(expect.objectContaining({ action: "worker.delete", reason: "Removing sample data" }));
+    // Deleting twice is a plain not-found.
+    expect((await del("workers", s.w2.id)).status).toBe(404);
   });
 
   it("keeps the plucking flag on jobs and expected readings per day on log kinds", async () => {

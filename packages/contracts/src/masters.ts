@@ -1,6 +1,6 @@
 import { EMPLOYMENT_TYPES, GENDERS, IMPORT_KINDS, LAND_USES } from "@cemms/domain";
 import { z } from "zod";
-import { code, crop, id, name } from "./common";
+import { code, crop, id, name, reason } from "./common";
 
 export const estateInput = z.object({ code, name, timeZone: z.string().max(60).optional() });
 export const fieldInput = z.object({
@@ -22,6 +22,9 @@ export const fieldInput = z.object({
 });
 export const varietyInput = z.object({ code, name, crop, active: z.boolean().default(true) });
 export const jobTypeInput = z.object({ code, name, countsAsPlucking: z.boolean().default(false), active: z.boolean().default(true) });
+/** Deleting a worker or field needs a reason for the audit trail. */
+export const deleteMaster = z.object({ reason });
+
 /** Without an employeeCode the server allocates the next one for the estate. */
 export const workerInput = z.object({
   estateId: id,

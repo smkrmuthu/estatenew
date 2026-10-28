@@ -2,6 +2,7 @@ import {
   attendanceCorrection,
   conflictResolution,
   dailyLogCorrection,
+  deleteMaster,
   estateInput,
   fieldInput,
   importCommit,
@@ -87,6 +88,25 @@ export function tenantRoutes(app: Hono<AppEnv>) {
     app,
     { method: "put", path: "/workers/:id", summary: "Update a worker", tag: "masters", auth: "bearer", permission: "masters.write", body: workerInput },
     call("org.upsertWorker", async (c) => ({ id: p(c, "id"), baseVersion: version(c), body: await readJson(c) })),
+  );
+
+  route(
+    app,
+    {
+      method: "post",
+      path: "/workers/:id/delete",
+      summary: "Delete a worker nothing refers to yet (reason required)",
+      tag: "masters",
+      auth: "bearer",
+      permission: "masters.write",
+      body: deleteMaster,
+    },
+    call("org.deleteWorker", async (c) => ({ id: p(c, "id"), body: await readJson(c) })),
+  );
+  route(
+    app,
+    { method: "post", path: "/fields/:id/delete", summary: "Delete a field nothing refers to yet (reason required)", tag: "masters", auth: "bearer", permission: "masters.write", body: deleteMaster },
+    call("org.deleteField", async (c) => ({ id: p(c, "id"), body: await readJson(c) })),
   );
 
   route(app, { method: "get", path: "/imports/templates/:kind", summary: "CSV template for an import", tag: "imports", auth: "bearer" }, (c) => {

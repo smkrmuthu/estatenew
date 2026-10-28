@@ -16,6 +16,8 @@ The Masters and Users screens follow the prototype's forms and tables:
 
 All additions are optional columns or a new table (tenant migration 0002), so existing rows stay valid. Weigh-ins remain per field; subdivision is not on a weigh-in.
 
+- **Delete:** a worker or field can be deleted only while nothing refers to it (no attendance or weigh-in record), with a reason in the audit trail. Anything used is set Inactive, never deleted, so history keeps its names. Jobs, varieties and log kinds are never deleted. CSV import never deletes.
+
 ## Consequences
 
 - Items still open with the estate: OC-99 (gender use), AQ-24 and OC-69 (subdivisions), OC-74 and OC-75 (elevation, expected crop), OC-100 (log kinds).

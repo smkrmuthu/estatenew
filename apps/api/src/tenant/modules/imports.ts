@@ -2,7 +2,7 @@ import { type CsvError, type ImportKind, parseImport, sha256Hex, uuidv7, type Wo
 import { and, eq } from "drizzle-orm";
 import { AppError } from "../../core/errors";
 import type { Db, TenantContext } from "../context";
-import { estates, fields, fieldVarieties, importRuns, jobTypes, varieties, workers } from "../schema";
+import { estates, fieldSubdivisions, fields, fieldVarieties, importRuns, jobTypes, varieties, workers } from "../schema";
 import { setting } from "./settings";
 
 interface PlannedRow {
@@ -157,9 +157,9 @@ function plan(ctx: TenantContext, kind: ImportKind, csv: string): { ops: Op[]; e
           .where(and(eq(fields.estateId, estate.id), eq(fields.code, v.code as string)))
           .get();
         const values = { code: v.code as string, name: v.name as string, areaCentiAcres: v.areaCentiAcres as number | null, cropsJson: JSON.stringify(v.crops) };
-        const setVarieties = (d: Db, fieldId: string) => {
+        const setVarieties = (d: Db, fieldId: string, ids: string[] = varietyIds) => {
           d.delete(fieldVarieties).where(eq(fieldVarieties.fieldId, fieldId)).run();
-          for (const id of varietyIds) d.insert(fieldVarieties).values({ fieldId, varietyId: id }).run();
+          for (const id of ids) d.insert(fieldVarieties).values({ fieldId, varietyId: id }).run();
         };
         if (!existing) {
           const row = { id: uuidv7(), tenantId, estateId: estate.id, ...values, active: true, ...base };
@@ -181,8 +181,15 @@ function plan(ctx: TenantContext, kind: ImportKind, csv: string): { ops: Op[]; e
             .all()
             .map((x) => x.varietyId)
             .sort();
+          // A field with subdivisions keeps the varieties and acres they carry; those are changed in Masters, not by a file.
+          const hasSubdivisions = db.select().from(fieldSubdivisions).where(eq(fieldSubdivisions.fieldId, existing.id)).all().length > 0;
+          if (hasSubdivisions && values.areaCentiAcres !== existing.areaCentiAcres) {
+            errors.push({ row: r.row, column: "area_acres", message: "This field has subdivisions. Change its acres in Masters so the subdivisions still add up." });
+            continue;
+          }
+          const finalVarieties = hasSubdivisions ? currentVarieties : [...varietyIds].sort();
           const changes = diff(existing, values);
-          if (JSON.stringify(currentVarieties) !== JSON.stringify([...varietyIds].sort())) changes.push("varieties");
+          if (JSON.stringify(currentVarieties) !== JSON.stringify(finalVarieties)) changes.push("varieties");
           ops.push({
             row: r.row,
             key: r.key,
@@ -193,7 +200,7 @@ function plan(ctx: TenantContext, kind: ImportKind, csv: string): { ops: Op[]; e
                 .set({ ...values, version: existing.version + 1, updatedAt: now, updatedBy: by })
                 .where(eq(fields.id, existing.id))
                 .run();
-              setVarieties(d, existing.id);
+              setVarieties(d, existing.id, finalVarieties);
             },
           });
         }
