@@ -481,13 +481,18 @@ export function Attendance() {
                 <div className="flex items-center justify-between gap-2 md:block">
                   <p className="font-semibold">
                     <span className="font-mono text-sm text-muted">{w.employeeCode}</span> {w.name}
+                    {w.gender && (
+                      <span className={`ml-2 rounded-full px-2 py-0.5 align-middle text-xs font-medium ${w.gender === "FEMALE" ? "bg-cherry/15 text-cherry" : "bg-info/15 text-info"}`}>
+                        {w.gender === "FEMALE" ? "Woman" : "Man"}
+                      </span>
+                    )}
                     {w.employmentType && (
                       <span className={`ml-2 rounded-full px-2 py-0.5 align-middle text-xs font-medium ${w.employmentType === "PERMANENT" ? "bg-surface-2 text-muted" : "bg-warn/15 text-warn"}`}>
                         {w.employmentType === "PERMANENT" ? "Permanent" : w.employmentType === "CASUAL" ? "Casual" : w.employmentType === "CONTRACT" ? "Contract" : "North Indian"}
                       </span>
                     )}
                   </p>
-                  {(w.area || w.gender) && <p className="text-xs text-muted">{[w.area, w.gender === "FEMALE" ? "Woman" : w.gender === "MALE" ? "Man" : null].filter(Boolean).join(" · ")}</p>}
+                  {w.area && <p className="text-xs text-muted">{w.area}</p>}
                   <div className="text-sm">
                     <span className="mr-2 inline-flex gap-1">
                       <button type="button" className="min-h-8 px-1 text-xs font-medium text-roast hover:underline" aria-label={`History of ${w.name}`} onClick={() => setHistoryFor(w.id)}>

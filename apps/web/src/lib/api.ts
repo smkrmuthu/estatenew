@@ -69,6 +69,21 @@ export async function api<T = unknown>(path: string, init: { method?: string; bo
   return (await parse(res)) as T;
 }
 
+/** Download a file the API builds (for example an Excel export). Returns the bytes and the file name the server chose. */
+export async function apiFile(path: string): Promise<{ blob: Blob; filename: string }> {
+  if (!hasAccess()) await refreshAccess();
+  const go = () => fetch(`/api/v1${path}`, { credentials: "same-origin", headers: accessToken ? { authorization: `Bearer ${accessToken}` } : {} });
+  let res = await go();
+  if (res.status === 401 && (await refreshAccess())) res = await go();
+  if (!res.ok) {
+    const text = await res.text();
+    const body = text ? JSON.parse(text) : null;
+    throw new ApiError(res.status, body?.code ?? "HTTP_ERROR", body?.title ?? `Request failed (${res.status})`, body?.fieldErrors);
+  }
+  const filename = /filename="([^"]+)"/.exec(res.headers.get("content-disposition") ?? "")?.[1] ?? "export.xlsx";
+  return { blob: await res.blob(), filename };
+}
+
 export async function signIn(body: { tenant?: string; username: string; password: string; deviceId: string; deviceLabel?: string; totp?: string }) {
   const res = await fetch("/api/v1/auth/login", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   const data = await parse(res);

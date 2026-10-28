@@ -3,7 +3,7 @@ import { useQueries, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { useApp } from "../app-context";
 import { Button, Card, Field, Input, Notice } from "../components/ui";
-import { api } from "../lib/api";
+import { ApiError, api, apiFile } from "../lib/api";
 import { useDashboards } from "./Dashboard";
 
 interface Summary {
@@ -230,7 +230,9 @@ export function Summary() {
   const estates = app.ref?.estates ?? [];
   const scope = app.allEstates && estates.length > 1 ? estates : estates.filter((e) => e.id === app.estateId);
   const multi = scope.length > 1;
-  const [view, setView] = useState<"day" | "range">("day");
+  const [view, setView] = useState<"day" | "range" | "files">("day");
+  const [fileBusy, setFileBusy] = useState<string | null>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
   const [from, setFrom] = useState(addDays(app.date, -6));
   const [to, setTo] = useState(app.date);
   const [copied, setCopied] = useState<"ok" | "fail" | null>(null);
@@ -255,6 +257,26 @@ export function Summary() {
     }
   }
 
+  async function download(estate: { id: string; name: string }, format: "old" | "new") {
+    setFileError(null);
+    setFileBusy(`${estate.id}:${format}`);
+    try {
+      const { blob, filename } = await apiFile(`/estates/${estate.id}/reports/export?format=${format}&from=${from}&to=${to}`);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.append(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    } catch (e) {
+      setFileError(e instanceof ApiError ? `${estate.name}: ${e.message}` : "Could not reach the server.");
+    } finally {
+      setFileBusy(null);
+    }
+  }
+
   if (!app.online) return <Notice tone="warn">Reports need signal. {app.queue.waiting} entries are waiting on this phone.</Notice>;
   const pending = list.reduce((n, s) => n + s.sync.entriesWaitingOnDevices, 0);
   const conflicts = list.reduce((n, s) => n + s.sync.openConflicts, 0);
@@ -268,12 +290,7 @@ export function Summary() {
         </div>
         <fieldset className="inline-flex gap-0.5 rounded-xl border-0 bg-surface-2 p-[3px]">
           <legend className="sr-only">Report</legend>
-          {(
-            [
-              ["day", "Day summary"],
-              ["range", "Plucking by field and worker"],
-            ] as const
-          ).map(([id, label]) => (
+          {([["day", "Day summary"], ["range", "Plucking by field and worker"], ...(app.can("reports.workerDetail") ? ([["files", "Excel files"]] as const) : [])] as const).map(([id, label]) => (
             <button
               key={id}
               type="button"
@@ -315,6 +332,42 @@ export function Summary() {
             </>
           )}
         </>
+      )}
+
+      {view === "files" && (
+        <Card title="Excel files">
+          <p className="mb-3 max-w-2xl text-sm text-muted">
+            Choose the dates. <b>Old format</b> is the estate's daily sheet: one sheet for each date, attendance on the left and plucking on the right (up to 62 days). <b>New format</b> keeps the same
+            data as plain tables (summary by day, attendance, plucking) and is the one to keep as a backup. Only entries the server has received are included.
+          </p>
+          <div className="flex flex-wrap items-end gap-3">
+            <Field label="From" htmlFor="file-from">
+              <Input id="file-from" type="date" value={from} onChange={(e) => e.target.value && setFrom(e.target.value)} />
+            </Field>
+            <Field label="To" htmlFor="file-to">
+              <Input id="file-to" type="date" value={to} onChange={(e) => e.target.value && setTo(e.target.value)} />
+            </Field>
+          </div>
+          {from > to && <p className="mt-2 text-sm text-bad">The start date is after the end date.</p>}
+          {fileError && (
+            <div className="mt-3">
+              <Notice tone="bad">{fileError}</Notice>
+            </div>
+          )}
+          <div className="mt-4 flex flex-col gap-3">
+            {scope.map((e) => (
+              <div key={e.id} className="flex flex-wrap items-center gap-2 border-t border-line pt-3">
+                <b className="min-w-40">{e.name}</b>
+                <Button variant="secondary" disabled={from > to || fileBusy !== null} onClick={() => void download(e, "old")}>
+                  {fileBusy === `${e.id}:old` ? "Preparing…" : "Download old format (daily sheets)"}
+                </Button>
+                <Button variant="secondary" disabled={from > to || fileBusy !== null} onClick={() => void download(e, "new")}>
+                  {fileBusy === `${e.id}:new` ? "Preparing…" : "Download new format (backup)"}
+                </Button>
+              </div>
+            ))}
+          </div>
+        </Card>
       )}
 
       {view === "range" && (

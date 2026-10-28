@@ -107,6 +107,10 @@ const OPS = {
     input: z.object({ estateId: z.string(), from: z.string().refine(isBusinessDate), to: z.string().refine(isBusinessDate) }),
     run: (c: TenantContext, i: { estateId: string; from: string; to: string }) => reports.pluckingReport(c, i.estateId, i.from, i.to),
   },
+  "reports.export": {
+    input: z.object({ estateId: z.string(), from: z.string().refine(isBusinessDate), to: z.string().refine(isBusinessDate), format: z.enum(["old", "new"]) }),
+    run: (c: TenantContext, i: { estateId: string; from: string; to: string; format: "old" | "new" }) => reports.exportData(c, i.estateId, i.from, i.to, i.format),
+  },
   "dailylog.range": {
     input: z.object({ estateId: z.string(), from: z.string().refine(isBusinessDate), to: z.string().refine(isBusinessDate) }),
     run: (c: TenantContext, i: { estateId: string; from: string; to: string }) => reports.dailyLogRange(c, i.estateId, i.from, i.to),

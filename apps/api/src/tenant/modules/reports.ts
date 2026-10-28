@@ -1,8 +1,8 @@
-import { addDays, formatKg, formatScaled, halfDays } from "@cemms/domain";
+import { addDays, type ExportData, formatKg, formatScaled, halfDays, uuidv7 } from "@cemms/domain";
 import { and, eq, gte, inArray, lte } from "drizzle-orm";
 import { AppError } from "../../core/errors";
 import type { TenantContext } from "../context";
-import { attendanceRecords, attendanceSheets, dailylogEntries, deviceStatus, fields, jobTypes, logKinds, musterEntries, syncConflicts, workers } from "../schema";
+import { attendanceRecords, attendanceSheets, dailylogEntries, deviceStatus, fields, jobTypes, logKinds, musterEntries, syncConflicts, varieties, workers } from "../schema";
 import { getEstate, workerIdsIn } from "./organization";
 import { setting } from "./settings";
 
@@ -420,4 +420,93 @@ export function workerHistory(ctx: TenantContext, estateId: string, workerId: st
     })),
     daysWorked: rows.reduce((s, r) => s + (r.presence === "PRESENT" ? (r.dayFraction === "HALF" ? 0.5 : 1) : 0), 0),
   };
+}
+
+/** Most days one old-format file may hold: it has a sheet for every date. */
+export const OLD_FORMAT_MAX_DAYS = 62;
+
+/**
+ * The rows behind the Excel exports for one estate and date range: workers allotted to the estate, its fields,
+ * and the attendance records and weigh-ins the server has accepted. Needs worker detail because the files name workers.
+ */
+export function exportData(ctx: TenantContext, estateId: string, from: string, to: string, format: "old" | "new"): ExportData {
+  ctx.require("reports.read", estateId);
+  ctx.require("reports.workerDetail", estateId);
+  checkRange(from, to);
+  if (format === "old" && daysBetween(from, to) > OLD_FORMAT_MAX_DAYS)
+    throw new AppError(422, "RANGE_TOO_LONG", `The old format has a sheet for each date. Choose at most ${OLD_FORMAT_MAX_DAYS} days.`);
+  const estate = getEstate(ctx.db, estateId);
+  const db = ctx.db;
+  const data: ExportData = {
+    estate: { id: estate.id, code: estate.code, name: estate.name },
+    from,
+    to,
+    exportedAt: ctx.nowIso(),
+    workers: db
+      .select()
+      .from(workers)
+      .where(inArray(workers.id, workerIdsIn(db, estateId)))
+      .all()
+      .map((w) => ({ id: w.id, employeeCode: w.employeeCode, name: w.name, gender: w.gender, employmentType: w.employmentType, area: w.area, active: w.active })),
+    fields: db
+      .select()
+      .from(fields)
+      .where(eq(fields.estateId, estateId))
+      .all()
+      .map((f) => ({ id: f.id, name: f.name })),
+    jobTypes: db
+      .select()
+      .from(jobTypes)
+      .all()
+      .map((j) => ({ id: j.id, name: j.name })),
+    varieties: db
+      .select()
+      .from(varieties)
+      .all()
+      .map((v) => ({ id: v.id, name: v.name })),
+    records: db
+      .select()
+      .from(attendanceRecords)
+      .where(and(eq(attendanceRecords.estateId, estateId), gte(attendanceRecords.businessDate, from), lte(attendanceRecords.businessDate, to)))
+      .all()
+      .map((x) => ({
+        businessDate: x.businessDate,
+        shift: x.shift,
+        workerId: x.workerId,
+        statusCode: x.statusCode,
+        presence: x.presence,
+        dayFraction: x.dayFraction,
+        fieldId: x.fieldId,
+        jobTypeId: x.jobTypeId,
+        remarks: x.remarks,
+      })),
+    entries: db
+      .select()
+      .from(musterEntries)
+      .where(and(eq(musterEntries.estateId, estateId), eq(musterEntries.status, "ACTIVE"), gte(musterEntries.businessDate, from), lte(musterEntries.businessDate, to)))
+      .all()
+      .map((x) => ({
+        businessDate: x.businessDate,
+        workerId: x.workerId,
+        fieldId: x.fieldId,
+        varietyId: x.varietyId,
+        crop: x.crop,
+        grossG: x.grossG,
+        bags: x.bags,
+        tareG: x.tareG,
+        netG: x.netG,
+        remarks: x.remarks,
+      })),
+  };
+  // Worker-level figures leave the system in a file, so each export is audited.
+  ctx.tx((d) =>
+    ctx.audit(d, {
+      action: "report.export",
+      entityType: "report",
+      entityId: uuidv7(),
+      estateId,
+      after: { format, from, to, workers: data.workers.length, records: data.records.length, entries: data.entries.length },
+    }),
+  );
+  return data;
 }

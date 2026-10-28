@@ -16,7 +16,7 @@ import {
   varietyInput,
   workerInput,
 } from "@cemms/contracts";
-import { IMPORT_KINDS, type ImportKind, importTemplate } from "@cemms/domain";
+import { type ExportData, IMPORT_KINDS, type ImportKind, importTemplate, newFormatSheets, oldFormatSheets } from "@cemms/domain";
 import type { Context, Hono } from "hono";
 import { z } from "zod";
 import { AppError } from "../core/errors";
@@ -24,6 +24,7 @@ import { readJson } from "../core/http";
 import { route } from "../core/registry";
 import { callTenant } from "../core/tenant-stub";
 import type { AppEnv } from "../core/types";
+import { buildXlsx } from "../core/xlsx";
 import type { TenantOp } from "../tenant/tenant-db";
 
 const p = (c: Context<AppEnv>, name: string) => c.req.param(name) ?? "";
@@ -265,6 +266,31 @@ export function tenantRoutes(app: Hono<AppEnv>) {
     app,
     { method: "get", path: "/estates/:estateId/reports/dashboard/:date", summary: "Dashboard figures (server-accepted data only)", tag: "reports", auth: "bearer", permission: "reports.read" },
     call("reports.dashboard", day),
+  );
+  route(
+    app,
+    {
+      method: "get",
+      path: "/estates/:estateId/reports/export",
+      summary: "Excel file of attendance and plucking (?format=old|new&from=&to=). Old format is one sheet per date like the estate's daily sheet; new format is the app's own tables",
+      tag: "reports",
+      auth: "bearer",
+      permission: "reports.workerDetail",
+    },
+    async (c) => {
+      const format = c.req.query("format") === "old" ? "old" : "new";
+      const from = c.req.query("from") ?? "";
+      const to = c.req.query("to") ?? "";
+      const data = (await callTenant(c, "reports.export", { estateId: p(c, "estateId"), from, to, format })) as ExportData;
+      const sheets = format === "old" ? oldFormatSheets(data) : newFormatSheets(data);
+      if (sheets.length === 0) throw new AppError(404, "NO_DATA", "There is no attendance or plucking in these dates");
+      const name = `${data.estate.code}-${from}${to === from ? "" : `_to_${to}`}-${format === "old" ? "old-format" : "new-format"}.xlsx`;
+      return c.body(buildXlsx(sheets).buffer as ArrayBuffer, 200, {
+        "content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "content-disposition": `attachment; filename="${name}"`,
+        "cache-control": "no-store",
+      });
+    },
   );
   route(
     app,
