@@ -22,17 +22,6 @@ interface ServerEntry {
   version: number;
 }
 
-const PLUCKING_STEPS: [string, string][] = [
-  ["Morning", "Workers are marked present on the attendance register, with a field and a job."],
-  ["Evening muster", "Each worker brings their bags to the muster point. Pick the worker, the field and the crop (coffee or pepper). If the field has more than one variety, pick the variety."],
-  [
-    "Weigh",
-    "Enter the gross weight, the number of bags and the weight of one empty bag. Net weight is the gross weight less the bags. Add a remark for anything unusual, such as wet cherries. A worker can be weighed more than once.",
-  ],
-  ["Save", "The weigh-in is saved on the phone first and sent when there is signal. It shows Waiting until the server has accepted it, and only accepted weights are counted above."],
-  ["Mistakes", "A weigh-in is never changed in place. Cancel it with a reason, or ask a manager to correct it with a reason, and the history is kept."],
-];
-
 const KG_TEXT = /^\d{0,7}(\.\d{0,3})?$/;
 
 export function WeighIn() {
@@ -49,7 +38,6 @@ export function WeighIn() {
   const [tare, setTare] = useState("");
   const [remarks, setRemarks] = useState("");
   const [saved, setSaved] = useState<string | null>(null);
-  const [steps, setSteps] = useState(false);
   const [fieldFromAttendance, setFieldFromAttendance] = useState(false);
 
   const workers = useMemo(() => (ref?.workers ?? []).filter((w) => (w.estateIds ?? [w.estateId]).includes(estateId)), [ref, estateId]);
@@ -258,25 +246,6 @@ export function WeighIn() {
         <h1>Plucking</h1>
         <p className="mt-1 max-w-3xl text-sm text-muted">Each worker's cherry (coffee) or pepper is weighed at the evening muster. Weights count here once the server has accepted them.</p>
       </div>
-
-      <section className="rounded-2xl border border-line bg-surface p-4">
-        <div className="flex items-center justify-between gap-3">
-          <h2>How plucking is recorded</h2>
-          <button type="button" aria-expanded={steps} onClick={() => setSteps(!steps)} className="min-h-9 px-2 text-[0.9rem] font-medium text-roast hover:underline">
-            {steps ? "Hide steps" : "Show steps"}
-          </button>
-        </div>
-        {steps && (
-          <ol className="mt-3 flex flex-col gap-3">
-            {PLUCKING_STEPS.map(([title, text]) => (
-              <li key={title} className="flex flex-col gap-0.5 sm:flex-row sm:gap-4">
-                <b className="sm:w-40 sm:shrink-0">{title}</b>
-                <span className="text-muted">{text}</span>
-              </li>
-            ))}
-          </ol>
-        )}
-      </section>
 
       <KpiStrip
         items={[
