@@ -1,4 +1,4 @@
-import { userCreate } from "@cemms/contracts";
+import { passwordReset, userCreate } from "@cemms/contracts";
 import { can, uuidv7 } from "@cemms/domain";
 import { and, eq, isNull } from "drizzle-orm";
 import type { Context, Hono } from "hono";
@@ -111,6 +111,45 @@ export function userRoutes(app: Hono<AppEnv>) {
           .where(and(eq(sessions.userId, id), isNull(sessions.revokedAt))),
       ]);
       await audit(db, { actor: a.user.id, action: "user.disable", tenantId: a.tenant.id, userId: id, requestId: c.get("requestId"), detail: { reason } });
+      return c.json({ ok: true });
+    },
+  );
+
+  route(
+    app,
+    {
+      method: "post",
+      path: "/admin/users/:id/password",
+      summary: "Set a temporary password; the user must change it at next sign-in",
+      tag: "admin",
+      auth: "bearer",
+      permission: "users.manage",
+      body: passwordReset,
+    },
+    async (c) => {
+      const a = auth(c);
+      const { password } = passwordReset.parse(await readJson(c));
+      const id = c.req.param("id") ?? "";
+      if (id === a.user.id) throw new AppError(422, "USE_CHANGE_PASSWORD", "Change your own password from your account menu");
+      const db = controlDb(c.env);
+      const target = await db
+        .select()
+        .from(users)
+        .where(and(eq(users.id, id), eq(users.tenantId, a.tenant.id)))
+        .get();
+      if (!target) throw new AppError(404, "NOT_FOUND", "User not found");
+      const now = new Date().toISOString();
+      await db.batch([
+        db
+          .update(users)
+          .set({ passwordHash: await hashPassword(password), mustChangePassword: true, passwordChangedAt: now, failedAttempts: 0, lockedUntil: null })
+          .where(eq(users.id, id)),
+        db
+          .update(sessions)
+          .set({ revokedAt: now, revokedReason: "password-reset" })
+          .where(and(eq(sessions.userId, id), isNull(sessions.revokedAt))),
+      ]);
+      await audit(db, { actor: a.user.id, action: "user.password.reset", tenantId: a.tenant.id, userId: id, requestId: c.get("requestId") });
       return c.json({ ok: true });
     },
   );

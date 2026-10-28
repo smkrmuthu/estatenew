@@ -124,78 +124,164 @@ function Imports() {
   );
 }
 
+const ROLE_LABEL: Record<string, string> = { OWNER: "Owner", ESTATE_MANAGER: "Estate manager", FIELD_SUPERVISOR: "Field supervisor", AUDITOR: "Auditor (read only)" };
+
+/** A readable temporary password, shown once so the owner can pass it on. */
+function tempPassword() {
+  const words = ["coffee", "pepper", "estate", "harvest", "garden", "monsoon", "valley", "berry", "shade", "pulper"];
+  const rand = (n: number) => (crypto.getRandomValues(new Uint32Array(1))[0] ?? 0) % n;
+  const pick = () => words[rand(words.length)];
+  return `${pick()}-${pick()}-${String(rand(10000)).padStart(4, "0")}`;
+}
+
+interface UserRow {
+  id: string;
+  username: string;
+  displayName: string;
+  status: string;
+  mfaEnabled: boolean;
+  lockedUntil: string | null;
+  grants: { role: string; estateId: string | null }[];
+}
+
 function Users() {
   const app = useApp();
   const qc = useQueryClient();
-  const users = useQuery({
-    queryKey: ["users"],
-    queryFn: () => api<{ id: string; username: string; displayName: string; status: string; grants: { role: string; estateId: string | null }[] }[]>("/admin/users"),
-    enabled: app.online,
-  });
-  const [form, setForm] = useState({ username: "", displayName: "", password: "", role: "FIELD_SUPERVISOR", estateId: app.estateId });
-  const [note, setNote] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
+  const users = useQuery({ queryKey: ["users"], queryFn: () => api<UserRow[]>("/admin/users"), enabled: app.online });
   const estates = app.ref?.estates ?? [];
-  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setForm({ ...form, [k]: e.target.value });
+  const blank = { username: "", displayName: "", password: tempPassword(), role: "FIELD_SUPERVISOR", allEstates: true, estateIds: [] as string[] };
+  const [form, setForm] = useState(blank);
+  const [note, setNote] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
+  const estateName = (id: string | null) => (id ? (estates.find((e) => e.id === id)?.name ?? "estate") : "all estates");
+  const describe = (u: UserRow) => {
+    const byRole = new Map<string, (string | null)[]>();
+    for (const g of u.grants) byRole.set(g.role, [...(byRole.get(g.role) ?? []), g.estateId]);
+    return [...byRole].map(([role, ids]) => `${ROLE_LABEL[role] ?? role} · ${ids.map(estateName).join(", ")}`).join("; ");
+  };
+  const refresh = () => qc.invalidateQueries({ queryKey: ["users"] });
+
+  async function add() {
+    setNote(null);
+    const owner = form.role === "OWNER";
+    const grants = owner || form.allEstates ? [{ role: form.role, estateId: null }] : form.estateIds.map((estateId) => ({ role: form.role, estateId }));
+    if (grants.length === 0) return setNote({ tone: "bad", text: "Choose at least one estate." });
+    try {
+      await api("/admin/users", { body: { username: form.username, displayName: form.displayName, password: form.password, grants } });
+      setNote({
+        tone: "ok",
+        text: `Added ${form.username}. Temporary password: ${form.password} (they choose their own at first sign-in${owner || form.role === "ESTATE_MANAGER" ? " and set up an authenticator app" : ""}).`,
+      });
+      setForm({ ...blank, password: tempPassword() });
+      void refresh();
+    } catch (e) {
+      setNote({ tone: "bad", text: msg(e) });
+    }
+  }
+
+  async function resetPassword(u: UserRow) {
+    const password = tempPassword();
+    if (!window.confirm(`Give ${u.displayName} a new temporary password? They will be signed out everywhere and must choose their own at next sign-in.`)) return;
+    try {
+      await api(`/admin/users/${u.id}/password`, { body: { password } });
+      setNote({ tone: "ok", text: `New temporary password for ${u.username}: ${password}` });
+      void refresh();
+    } catch (e) {
+      setNote({ tone: "bad", text: msg(e) });
+    }
+  }
+
+  async function disable(u: UserRow) {
+    const reason = window.prompt(`Why disable ${u.displayName}?`);
+    if (!reason || reason.trim().length < 3) return;
+    try {
+      await api(`/admin/users/${u.id}/disable`, { body: { reason: reason.trim() } });
+      setNote({ tone: "ok", text: `${u.username} is disabled and signed out.` });
+      void refresh();
+    } catch (e) {
+      setNote({ tone: "bad", text: msg(e) });
+    }
+  }
+
   return (
-    <Card title="Users">
-      <ul className="mb-3 divide-y divide-line">
-        {(users.data ?? []).map((u) => (
-          <li key={u.id} className="py-2">
-            <span className="font-semibold">{u.displayName}</span>{" "}
-            <span className="text-muted">
-              ({u.username}){u.status !== "ACTIVE" ? " · disabled" : ""}
-            </span>
-            <p className="text-sm text-muted">
-              {u.grants.map((g) => `${g.role.replace("_", " ").toLowerCase()} · ${g.estateId ? (estates.find((e) => e.id === g.estateId)?.name ?? "estate") : "all estates"}`).join("; ")}
-            </p>
-          </li>
-        ))}
-      </ul>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="User name" htmlFor="u-name">
-          <Input id="u-name" autoCapitalize="none" value={form.username} onChange={set("username")} />
-        </Field>
-        <Field label="Full name" htmlFor="u-display">
-          <Input id="u-display" value={form.displayName} onChange={set("displayName")} />
-        </Field>
-        <Field label="First password (they change it)" htmlFor="u-pass" hint="At least 12 characters">
-          <Input id="u-pass" type="password" autoComplete="new-password" value={form.password} onChange={set("password")} />
-        </Field>
-        <Field label="Role" htmlFor="u-role">
-          <Select id="u-role" value={form.role} onChange={set("role")}>
-            <option value="FIELD_SUPERVISOR">Field supervisor</option>
-            <option value="ESTATE_MANAGER">Estate manager (needs authenticator app)</option>
-            <option value="AUDITOR">Auditor (read only)</option>
-          </Select>
-        </Field>
-        <Field label="Estate" htmlFor="u-estate">
-          <Select id="u-estate" value={form.estateId} onChange={set("estateId")}>
-            {estates.map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.name}
-              </option>
-            ))}
-          </Select>
-        </Field>
-      </div>
-      {note && <Notice tone={note.tone}>{note.text}</Notice>}
-      <Button
-        className="mt-3"
-        disabled={!app.online || form.password.length < 12 || !form.username || !form.displayName}
-        onClick={async () => {
-          try {
-            await api("/admin/users", { body: { username: form.username, displayName: form.displayName, password: form.password, grants: [{ role: form.role, estateId: form.estateId }] } });
-            setNote({ tone: "ok", text: "User added." });
-            setForm({ ...form, username: "", displayName: "", password: "" });
-            void qc.invalidateQueries({ queryKey: ["users"] });
-          } catch (e) {
-            setNote({ tone: "bad", text: msg(e) });
-          }
-        }}
-      >
-        Add user
-      </Button>
-    </Card>
+    <>
+      <Card title="Users">
+        {note && <Notice tone={note.tone}>{note.text}</Notice>}
+        <ul className="mt-2 divide-y divide-line">
+          {(users.data ?? []).map((u) => (
+            <li key={u.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+              <div className="min-w-0">
+                <p className="font-semibold">
+                  {u.displayName} <span className="font-normal text-muted">({u.username})</span>
+                </p>
+                <p className="text-sm text-muted">
+                  {describe(u)}
+                  {u.status !== "ACTIVE" ? " · disabled" : ""}
+                  {u.lockedUntil && new Date(u.lockedUntil) > new Date() ? " · locked after wrong passwords" : ""}
+                </p>
+              </div>
+              {u.status === "ACTIVE" && u.id !== app.session.user.id && (
+                <div className="flex gap-2">
+                  <Button size="sm" variant="secondary" onClick={() => resetPassword(u)}>
+                    New password
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => disable(u)}>
+                    Disable
+                  </Button>
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      </Card>
+      <Card title="Add a user">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="User name" htmlFor="u-name" hint="Lower case, for example manager">
+            <Input id="u-name" autoCapitalize="none" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value.trim().toLowerCase() })} />
+          </Field>
+          <Field label="Full name" htmlFor="u-display">
+            <Input id="u-display" value={form.displayName} onChange={(e) => setForm({ ...form, displayName: e.target.value })} />
+          </Field>
+          <Field label="Temporary password" htmlFor="u-pass" hint="They choose their own at first sign-in">
+            <div className="flex gap-2">
+              <Input id="u-pass" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
+              <Button variant="secondary" onClick={() => setForm({ ...form, password: tempPassword() })}>
+                New
+              </Button>
+            </div>
+          </Field>
+          <Field label="Role" htmlFor="u-role" hint={form.role === "OWNER" || form.role === "ESTATE_MANAGER" ? "Needs an authenticator app at sign-in" : undefined}>
+            <Select id="u-role" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
+              <option value="FIELD_SUPERVISOR">Field supervisor: attendance, weigh-in, daily log</option>
+              <option value="ESTATE_MANAGER">Estate manager: also approvals, corrections, lists</option>
+              <option value="OWNER">Owner: everything, including users and settings</option>
+              <option value="AUDITOR">Auditor: read only</option>
+            </Select>
+          </Field>
+        </div>
+        {form.role !== "OWNER" && (
+          <fieldset className="mt-3">
+            <legend className="text-sm font-semibold">Estates</legend>
+            <label className="mt-1 flex min-h-11 items-center gap-2">
+              <input type="checkbox" checked={form.allEstates} onChange={(e) => setForm({ ...form, allEstates: e.target.checked })} /> All estates
+            </label>
+            {!form.allEstates &&
+              estates.map((e) => (
+                <label key={e.id} className="flex min-h-11 items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={form.estateIds.includes(e.id)}
+                    onChange={(ev) => setForm({ ...form, estateIds: ev.target.checked ? [...form.estateIds, e.id] : form.estateIds.filter((x) => x !== e.id) })}
+                  />{" "}
+                  {e.name}
+                </label>
+              ))}
+          </fieldset>
+        )}
+        <Button className="mt-3" disabled={!app.online || form.password.length < 12 || !/^[a-z0-9._-]{2,60}$/.test(form.username) || !form.displayName.trim()} onClick={add}>
+          Add user
+        </Button>
+      </Card>
+    </>
   );
 }
 

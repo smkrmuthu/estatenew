@@ -1,3 +1,4 @@
+import { uuidv7 } from "@cemms/domain";
 import { describe, expect, it } from "vitest";
 import { api, createTenant, login, setupTenant } from "./helpers";
 
@@ -71,5 +72,30 @@ describe("settings and readiness", () => {
     });
     expect(rec.status).toBe(200);
     expect(((await api("/admin/readiness", { token: owner.token })).body.blocking as { id: string }[]).map((g) => g.id)).not.toContain("OC-7");
+  });
+});
+
+describe("passwords", () => {
+  it("an owner sets a temporary password; the user must change it, then other devices are signed out", async () => {
+    const s = await setupTenant();
+    const users = (await api("/admin/users", { token: s.owner.token })).body as { id: string; username: string }[];
+    const sup = users.find((u) => u.username === "sup1");
+    expect((await api(`/admin/users/${sup?.id}/password`, { token: s.supervisor.token, body: { password: "temporary-pass-1" } })).status).toBe(403);
+    expect((await api(`/admin/users/${sup?.id}/password`, { token: s.owner.token, body: { password: "short" } })).status).toBe(422);
+    expect((await api(`/admin/users/${s.owner.user.id}/password`, { token: s.owner.token, body: { password: "temporary-pass-1" } })).body.code).toBe("USE_CHANGE_PASSWORD");
+    expect((await api(`/admin/users/${sup?.id}/password`, { token: s.owner.token, body: { password: "temporary-pass-1" } })).status).toBe(200);
+    // The reset ends the supervisor's sessions and the old password stops working.
+    expect((await api("/auth/me", { token: s.supervisor.token })).status).toBe(401);
+    expect((await api("/auth/login", { body: { tenant: s.code, username: "sup1", password: "supervisor-pass-1", deviceId: uuidv7() } })).status).toBe(401);
+
+    const first = await login(s.code, "sup1", "temporary-pass-1");
+    expect(first.user.mustChangePassword).toBe(true);
+    const second = await login(s.code, "sup1", "temporary-pass-1");
+    expect((await api("/auth/password", { token: first.token, body: { currentPassword: "temporary-pass-1", newPassword: "temporary-pass-1" } })).status).toBe(422);
+    expect((await api("/auth/password", { token: first.token, body: { currentPassword: "wrong-password", newPassword: "my-own-password-9" } })).body.code).toBe("PASSWORD_WRONG");
+    expect((await api("/auth/password", { token: first.token, body: { currentPassword: "temporary-pass-1", newPassword: "my-own-password-9" } })).status).toBe(200);
+    expect((await api("/auth/me", { token: first.token })).status).toBe(200);
+    expect((await api("/auth/me", { token: second.token })).status).toBe(401);
+    expect((await login(s.code, "sup1", "my-own-password-9")).user.mustChangePassword).toBe(false);
   });
 });

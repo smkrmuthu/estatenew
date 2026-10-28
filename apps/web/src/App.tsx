@@ -7,6 +7,7 @@ import { signOut as apiSignOut, refreshAccess } from "./lib/api";
 import { getMeta, setMeta } from "./lib/db";
 import { deviceId as getDeviceId, loadSession, type StoredSession, saveSession, sessionUsable } from "./lib/session";
 import { Attendance } from "./screens/Attendance";
+import { ChangePassword } from "./screens/ChangePassword";
 import { DailyLog } from "./screens/DailyLog";
 import { Manage } from "./screens/Manage";
 import { SignIn } from "./screens/SignIn";
@@ -16,7 +17,7 @@ import { WeighIn } from "./screens/WeighIn";
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1, staleTime: 15_000, networkMode: "online" } } });
 
-type Tab = "attendance" | "weighin" | "dailylog" | "summary" | "sync" | "manage";
+type Tab = "attendance" | "weighin" | "dailylog" | "summary" | "sync" | "manage" | "password";
 
 function Shell() {
   const app = useApp();
@@ -56,6 +57,9 @@ function Shell() {
             </span>
             {app.queue.waiting > 0 && <span className="rounded-full bg-waiting/15 px-2 py-1 text-xs font-semibold text-waiting">{app.queue.waiting} waiting</span>}
             {app.queue.rejected > 0 && <span className="rounded-full bg-bad/15 px-2 py-1 text-xs font-semibold text-bad">{app.queue.rejected} not accepted</span>}
+            <Button size="sm" variant="ghost" onClick={() => setTab("password")}>
+              Password
+            </Button>
             <Button size="sm" variant="ghost" onClick={() => app.signOut()}>
               Sign out
             </Button>
@@ -89,6 +93,16 @@ function Shell() {
         {tab === "summary" && <Summary />}
         {tab === "sync" && <Sync />}
         {tab === "manage" && <Manage />}
+        {tab === "password" && (
+          <ChangePassword
+            required={false}
+            onDone={() => {
+              window.alert("Password changed. Your other devices are signed out.");
+              setTab("attendance");
+            }}
+            onCancel={() => setTab("attendance")}
+          />
+        )}
       </main>
       <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-10 grid grid-cols-5 border-t border-line bg-surface sm:hidden">
         {tabs
@@ -176,6 +190,18 @@ export function App() {
           await setMeta("lastTenant", tenantCode);
           setSession(s);
         }}
+      />
+    );
+  if (session.user.mustChangePassword && navigator.onLine)
+    return (
+      <ChangePassword
+        required
+        onDone={async () => {
+          const s: StoredSession = { ...session, user: { ...session.user, mustChangePassword: false } };
+          await saveSession(s);
+          setSession(s);
+        }}
+        onCancel={signOut}
       />
     );
   return (

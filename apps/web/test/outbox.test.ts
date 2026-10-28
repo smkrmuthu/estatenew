@@ -14,7 +14,7 @@ beforeEach(async () => {
     accessToken: "tok",
     expiresAt: new Date(Date.now() + 600_000).toISOString(),
     sessionExpiresAt: new Date(Date.now() + 3_600_000).toISOString(),
-    user: { id: "u1", username: "s", displayName: "S", tenantId: "t1", tenantName: "T", grants: [] },
+    user: { id: "u1", username: "s", displayName: "S", tenantId: "t1", tenantName: "T", grants: [], mustChangePassword: false },
   });
 });
 

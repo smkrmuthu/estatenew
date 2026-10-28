@@ -1,11 +1,11 @@
 import { loginRequest, passwordChange } from "@cemms/contracts";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull, ne } from "drizzle-orm";
 import type { Context, Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { requireAuth } from "../auth/middleware";
 import { audit, login, REFRESH_COOKIE, refresh, revokeSession } from "../auth/service";
 import { controlDb } from "../control/db";
-import { users } from "../control/schema";
+import { sessions, users } from "../control/schema";
 import { hashPassword, verifyPassword } from "../core/crypto";
 import { AppError } from "../core/errors";
 import { clientIp, rateLimit, readJson } from "../core/http";
@@ -94,10 +94,18 @@ export function authRoutes(app: Hono<AppEnv>) {
     const body = passwordChange.parse(await readJson(c));
     if (!(await verifyPassword(body.currentPassword, a.user.passwordHash))) throw new AppError(422, "PASSWORD_WRONG", "The current password is not right", { currentPassword: "Not right" });
     const db = controlDb(c.env);
-    await db
-      .update(users)
-      .set({ passwordHash: await hashPassword(body.newPassword), passwordChangedAt: new Date().toISOString(), mustChangePassword: false })
-      .where(eq(users.id, a.user.id));
+    const now = new Date().toISOString();
+    await db.batch([
+      db
+        .update(users)
+        .set({ passwordHash: await hashPassword(body.newPassword), passwordChangedAt: now, mustChangePassword: false })
+        .where(eq(users.id, a.user.id)),
+      // Sign out the user's other devices; this session stays.
+      db
+        .update(sessions)
+        .set({ revokedAt: now, revokedReason: "password-change" })
+        .where(and(eq(sessions.userId, a.user.id), isNull(sessions.revokedAt), ne(sessions.id, a.session.id))),
+    ]);
     await audit(db, { actor: a.user.id, action: "auth.password.change", tenantId: a.tenant.id, userId: a.user.id, requestId: c.get("requestId") });
     return c.json({ ok: true });
   });

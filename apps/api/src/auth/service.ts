@@ -157,7 +157,7 @@ async function issueTokens(
     accessToken,
     expiresAt: new Date(exp * 1000).toISOString(),
     sessionExpiresAt: session.expiresAt,
-    user: { id: user.id, username: user.username, displayName: user.displayName, tenantId: tenant.id, tenantName: tenant.name, grants },
+    user: { id: user.id, username: user.username, displayName: user.displayName, tenantId: tenant.id, tenantName: tenant.name, grants, mustChangePassword: user.mustChangePassword },
   };
   return { body, refreshToken, refreshExpires: new Date(session.expiresAt) };
 }

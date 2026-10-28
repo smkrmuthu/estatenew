@@ -27,7 +27,16 @@ export const sessionResponse = z.object({
   accessToken: z.string(),
   expiresAt: z.string(),
   sessionExpiresAt: z.string(),
-  user: z.object({ id, username: z.string(), displayName: z.string(), tenantId: id, tenantName: z.string(), grants: z.array(grant) }),
+  user: z.object({
+    id,
+    username: z.string(),
+    displayName: z.string(),
+    tenantId: id,
+    tenantName: z.string(),
+    grants: z.array(grant),
+    /** True after an account is created or its password is reset: the app asks for a new password first. */
+    mustChangePassword: z.boolean(),
+  }),
 });
 export type SessionResponse = z.infer<typeof sessionResponse>;
 
@@ -38,7 +47,12 @@ export const mfaChallenge = z.object({
   otpauthUri: z.string().optional(),
 });
 
-export const passwordChange = z.object({ currentPassword: z.string().min(1).max(200), newPassword: z.string().min(12, "Use at least 12 characters").max(200) });
+export const passwordChange = z
+  .object({ currentPassword: z.string().min(1).max(200), newPassword: z.string().min(12, "Use at least 12 characters").max(200) })
+  .refine((v) => v.newPassword !== v.currentPassword, { message: "Choose a password different from the current one", path: ["newPassword"] });
+
+/** An owner sets a temporary password for someone; they must change it at next sign-in. */
+export const passwordReset = z.object({ password: z.string().min(12, "Use at least 12 characters").max(200) });
 
 export const userCreate = z.object({
   username: z
