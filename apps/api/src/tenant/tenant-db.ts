@@ -202,6 +202,60 @@ export class TenantDb extends DurableObject<Env> {
     return JSON.stringify({ tenantId, at: new Date().toISOString(), migration: this.migration.version, tables: out });
   }
 
+  /**
+   * Load a backup into this database, for recovery. Only an empty database accepts it (never a live one), the backup
+   * must come from the same tenant and the same migration version, and the row counts are checked before the work is kept.
+   */
+  async restore(tenantId: string, snapshot: string): Promise<RunResult<{ tables: Record<string, number> }>> {
+    const fail = (status: RpcError["status"], code: string, message: string): RunResult<never> => ({ ok: false, error: { __appError: true, status, code, message } });
+    if (this.migration.error) return fail(503, "MIGRATION_FAILED", "Tenant database is not ready");
+    const bound = this.tenantId();
+    if (bound && bound !== tenantId) return fail(409, "TENANT_MISMATCH", "This database belongs to another tenant");
+    let data: { tenantId: string; migration: number; tables: Record<string, Record<string, unknown>[]> };
+    try {
+      data = JSON.parse(snapshot);
+    } catch {
+      return fail(422, "BACKUP_UNREADABLE", "The backup is not readable");
+    }
+    if (data.tenantId !== tenantId) return fail(409, "TENANT_MISMATCH", "This backup belongs to another tenant");
+    if (data.migration !== this.migration.version)
+      return fail(409, "VERSION_MISMATCH", `The backup is from database version ${data.migration} but this one is ${this.migration.version}. Restore with the matching app version.`);
+    const sql = this.ctx.storage.sql;
+    for (const t of ["estates", "workers", "attendance_records", "muster_entries", "dailylog_entries"]) {
+      if (sql.exec<{ n: number }>(`SELECT count(*) AS n FROM "${t}"`).one().n > 0) return fail(409, "NOT_EMPTY", "This database already holds data. Restore into a new, empty database.");
+    }
+    const NAME = /^[A-Za-z0-9_]+$/;
+    const existing = new Set(
+      sql
+        .exec<{ name: string }>("SELECT name FROM sqlite_master WHERE type = 'table'")
+        .toArray()
+        .map((r) => r.name),
+    );
+    const counts: Record<string, number> = {};
+    try {
+      this.ctx.storage.transactionSync(() => {
+        sql.exec("PRAGMA defer_foreign_keys = ON");
+        for (const [name, rows] of Object.entries(data.tables)) {
+          if (name === "_migrations" || name.startsWith("sqlite_") || name.startsWith("_cf_")) continue;
+          if (!NAME.test(name) || !existing.has(name)) throw new Error(`Unknown table ${name}`);
+          sql.exec(`DELETE FROM "${name}"`);
+          for (const row of rows) {
+            const cols = Object.keys(row);
+            if (!cols.every((c) => NAME.test(c))) throw new Error(`Unexpected column in ${name}`);
+            sql.exec(`INSERT INTO "${name}" (${cols.map((c) => `"${c}"`).join(", ")}) VALUES (${cols.map(() => "?").join(", ")})`, ...cols.map((c) => row[c] as string | number | null));
+          }
+          const n = sql.exec<{ n: number }>(`SELECT count(*) AS n FROM "${name}"`).one().n;
+          if (n !== rows.length) throw new Error(`Row count differs in ${name}`);
+          counts[name] = n;
+        }
+      });
+    } catch (e) {
+      log("error", "restore.failed", { tenantId, error: (e as Error).message });
+      return fail(500, "RESTORE_FAILED", "The restore did not complete and nothing was kept");
+    }
+    return { ok: true, value: { tables: counts } };
+  }
+
   async health(): Promise<{ migration: MigrationState; provisioned: boolean; sizeBytes: number; outboxBacklog: number }> {
     const backlog = this.migration.error ? 0 : this.db.select().from(schema.outboxEvents).where(isNull(schema.outboxEvents.publishedAt)).all().length;
     return { migration: this.migration, provisioned: !this.migration.error && this.tenantId() !== null, sizeBytes: this.ctx.storage.sql.databaseSize, outboxBacklog: backlog };

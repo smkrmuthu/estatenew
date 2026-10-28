@@ -2,7 +2,7 @@ import { IMPORT_KINDS, importTemplate } from "@cemms/domain";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useApp } from "../app-context";
-import { Button, Card, Field, Input, Notice, Select } from "../components/ui";
+import { Button, Card, Chip, Field, Input, Notice, Select } from "../components/ui";
 import { ApiError, api } from "../lib/api";
 
 const msg = (e: unknown) => (e instanceof ApiError ? e.message : "Could not reach the server.");
@@ -301,14 +301,104 @@ function Setup() {
   );
 }
 
+interface BackupRow {
+  key: string;
+  at: string;
+  trigger: "nightly" | "manual";
+  bytes: number;
+  verified: boolean;
+  tables: Record<string, number>;
+}
+
+function Backups() {
+  const qc = useQueryClient();
+  const q = useQuery({ queryKey: ["backups"], queryFn: () => api<{ backups: BackupRow[]; ageHours: number | null; late: boolean; schedule: string }>("/admin/backups") });
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
+  async function backUpNow() {
+    setBusy(true);
+    setNote(null);
+    try {
+      await api("/admin/backups/run", { method: "POST", body: {} });
+      setNote({ tone: "ok", text: "Backup finished and checked." });
+      await qc.invalidateQueries({ queryKey: ["backups"] });
+    } catch (e) {
+      setNote({ tone: "bad", text: msg(e) });
+    } finally {
+      setBusy(false);
+    }
+  }
+  const d = q.data;
+  return (
+    <Card
+      title="Backups"
+      actions={
+        <Button onClick={backUpNow} disabled={busy}>
+          {busy ? "Backing up…" : "Back up now"}
+        </Button>
+      }
+    >
+      <p className="mb-3 max-w-2xl text-sm text-muted">
+        {d?.schedule ?? "Every night"} the office makes an encrypted copy of all your estates' data, reads it back and checks it. Copies are kept in addition to the 30-day restore. Entries still
+        waiting on a phone are not in a copy until the phone syncs.
+      </p>
+      {q.isLoading && <p>Loading…</p>}
+      {q.error && <Notice tone="bad">Could not load the backups.</Notice>}
+      {d && (
+        <Notice tone={d.late ? "warn" : "info"}>
+          {d.ageHours === null
+            ? "There is no backup yet. Press Back up now."
+            : d.late
+              ? `The last good backup is ${Math.round(d.ageHours)} hours old. Press Back up now and tell the office if this keeps happening.`
+              : `Last good backup: ${d.ageHours} hours ago.`}
+        </Notice>
+      )}
+      {note && (
+        <div className="mt-3">
+          <Notice tone={note.tone}>{note.text}</Notice>
+        </div>
+      )}
+      {d && d.backups.length > 0 && (
+        <div className="mt-3 overflow-x-auto">
+          <table className="w-full min-w-[34rem] text-sm">
+            <thead className="border-b border-line">
+              <tr>
+                {["Made", "How", "Workers", "Attendance", "Weigh-ins", "Size", "Checked"].map((h) => (
+                  <th key={h} className="px-3 py-2 text-left text-[0.8rem] font-medium text-muted">
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-line">
+              {d.backups.map((b) => (
+                <tr key={b.key}>
+                  <td className="px-3 py-2 tabular-nums">{new Date(b.at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false })}</td>
+                  <td className="px-3 py-2">{b.trigger === "nightly" ? "Nightly" : "On request"}</td>
+                  <td className="px-3 py-2 tabular-nums">{b.tables.workers ?? 0}</td>
+                  <td className="px-3 py-2 tabular-nums">{b.tables.attendance_records ?? 0}</td>
+                  <td className="px-3 py-2 tabular-nums">{b.tables.muster_entries ?? 0}</td>
+                  <td className="px-3 py-2 tabular-nums">{Math.max(1, Math.round(b.bytes / 1024))} KB</td>
+                  <td className="px-3 py-2">{b.verified ? <Chip tone="ok">Checked</Chip> : <Chip tone="bad">Not checked</Chip>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 export function Manage() {
   const app = useApp();
-  const [tab, setTab] = useState<"import" | "conflicts" | "setup">("import");
+  const [tab, setTab] = useState<"import" | "conflicts" | "setup" | "backups">("import");
   if (!app.online) return <Notice tone="warn">Managing lists and users needs signal.</Notice>;
   const tabs = [
     { id: "import", label: "Import", show: app.canAny("masters.import") },
     { id: "conflicts", label: "Conflicts", show: app.can("conflicts.resolve") },
     { id: "setup", label: "Setup", show: app.canAny("settings.configure") },
+    { id: "backups", label: "Backups", show: app.isOwner },
   ] as const;
   return (
     <div className="flex flex-col gap-4">
@@ -324,6 +414,7 @@ export function Manage() {
       {tab === "import" && <Imports />}
       {tab === "conflicts" && <Conflicts />}
       {tab === "setup" && <Setup />}
+      {tab === "backups" && <Backups />}
     </div>
   );
 }

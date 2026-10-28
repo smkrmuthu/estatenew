@@ -19,3 +19,4 @@ Each decision records its source, approver and date. Business decisions come onl
 | [ADR-0013](0013-workers-shared-across-estates.md) | Workers allotted to the estates chosen for them; one present mark per shift | Interim | Project lead instruction | Muthu Kumar | 2026-10-28 |
 | [ADR-0014](0014-day-and-night-attendance.md) | Day and Night attendance registers (a worker can have both) | Interim | Project lead instruction | Muthu Kumar | 2026-10-28 |
 | [ADR-0015](0015-excel-exports-old-and-new-format.md) | Excel exports: old-format daily sheets and a new-format backup | Interim | Project lead instruction | Muthu Kumar | 2026-10-28 |
+| [ADR-0016](0016-verified-backups-and-restore.md) | Verified nightly backups and restore into a new database | Interim | Project lead instruction | Muthu Kumar | 2026-10-28 |

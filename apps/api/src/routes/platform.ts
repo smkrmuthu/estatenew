@@ -5,6 +5,7 @@ import { z } from "zod";
 import { audit } from "../auth/service";
 import { controlDb } from "../control/db";
 import { tenantDomains, tenants, userGrants, users } from "../control/schema";
+import { listBackups, readBackup, runAllBackups } from "../core/backup";
 import { hashPassword, safeEqual } from "../core/crypto";
 import { AppError } from "../core/errors";
 import { readJson } from "../core/http";
@@ -101,6 +102,77 @@ export function platformRoutes(app: Hono<AppEnv>) {
       if (!existing) await db.insert(tenantDomains).values({ domain, tenantId: tenant.id, createdAt: new Date().toISOString() });
       await audit(db, { actor: "platform", action: "tenant.domain.add", tenantId: tenant.id, requestId: c.get("requestId"), detail: { domain } });
       return c.json({ code: tenant.code, domain }, 201);
+    },
+  );
+
+  route(
+    app,
+    { method: "post", path: "/platform/backups/run", summary: "Back up the control database and every tenant now (bootstrap credential)", tag: "platform", auth: "platform-token" },
+    async (c) => {
+      requirePlatform(c);
+      const run = await runAllBackups(c.env, "manual");
+      await audit(controlDb(c.env), {
+        actor: "platform",
+        action: "backup.run",
+        requestId: c.get("requestId"),
+        detail: { ok: run.ok, results: run.results.map((r) => ({ kind: r.kind, code: r.code, ok: r.ok })) },
+      });
+      return c.json(run, run.ok ? 200 : 500);
+    },
+  );
+
+  route(
+    app,
+    { method: "get", path: "/platform/backups", summary: "Newest backups of the control database and each tenant (bootstrap credential)", tag: "platform", auth: "platform-token" },
+    async (c) => {
+      requirePlatform(c);
+      const all = await controlDb(c.env).select().from(tenants).all();
+      return c.json({
+        control: await listBackups(c.env, "control/backups", 5),
+        tenants: await Promise.all(all.map(async (t) => ({ code: t.code, backups: await listBackups(c.env, `tenants/${t.id}/backups`, 5) }))),
+      });
+    },
+  );
+
+  const restoreBody = z.object({
+    /** A new database name; a restore never goes into the live database. */
+    targetDbName: z
+      .string()
+      .trim()
+      .regex(/^[a-z0-9-]{8,80}$/)
+      .optional(),
+    /** The backup to use (its R2 key ending in .json.enc); the newest verified one when left out. */
+    backupKey: z.string().trim().max(300).optional(),
+  });
+  route(
+    app,
+    {
+      method: "post",
+      path: "/platform/tenants/:code/restore",
+      summary: "Restore a tenant's backup into a new, empty database. Switching the tenant over is a separate step (bootstrap credential)",
+      tag: "platform",
+      auth: "platform-token",
+      body: restoreBody,
+    },
+    async (c) => {
+      requirePlatform(c);
+      const body = restoreBody.parse(await readJson(c));
+      const code = c.req.param("code") ?? "";
+      const db = controlDb(c.env);
+      const tenant = await db.select().from(tenants).where(eq(tenants.code, code)).get();
+      if (!tenant) throw new AppError(404, "NOT_FOUND", "Tenant not found");
+      const target = body.targetDbName ?? `${tenant.dbName}-restore-${new Date().toISOString().replace(/\D/g, "").slice(0, 14)}`;
+      if (target === tenant.dbName) throw new AppError(422, "TARGET_IS_LIVE", "Restore into a new database, never the live one");
+      const manifests = await listBackups(c.env, `tenants/${tenant.id}/backups`, 50);
+      const manifest = body.backupKey ? manifests.find((m) => m.key === body.backupKey) : manifests.find((m) => m.verified);
+      if (!manifest) throw new AppError(404, "NO_BACKUP", "No matching verified backup");
+      const plain = await readBackup(c.env, manifest).catch((e) => {
+        throw new AppError(422, "BACKUP_UNREADABLE", (e as Error).message);
+      });
+      const restored = await tenantStub(c.env, target).restore(tenant.id, plain);
+      if (!restored.ok) throw new AppError(restored.error.status, restored.error.code, restored.error.message);
+      await audit(db, { actor: "platform", action: "tenant.restore", tenantId: tenant.id, requestId: c.get("requestId"), detail: { target, backup: manifest.key, at: manifest.at } });
+      return c.json({ code, target, backup: manifest.key, backupAt: manifest.at, tables: restored.value.tables, switchOver: `UPDATE tenants SET db_name = '${target}' WHERE code = '${code}';` });
     },
   );
 }

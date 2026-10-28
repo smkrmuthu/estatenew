@@ -91,7 +91,7 @@ Production Workers refuse PBKDF2 above 100,000 iterations per call (local worker
 - No local PIN lock: after a reload without signal, the phone keeps accepting entries for the signed-in supervisor until the session ends (12 hours default).
 - Manager correction screens, monthly attendance view, exports and single-record master editing exist only as API endpoints or not at all.
 - English only (OC-64). No SMS/WhatsApp summaries (OC-94).
-- Nightly backups reuse the MFA encryption key; a separate key is planned.
+- Nightly backups (control database and every tenant) are encrypted with the MFA encryption key, read back and checked, shown to the owner in Manage → Backups, and can be restored into a new database (docs/operations/backup-and-restore.md). A separate backup key is planned; keep a second copy of each environment's key. Backups are not yet copied outside Cloudflare.
 - Rate limiting binding is approximate per location; lockout in D1 is the strict control.
 - Queue consumer only logs events (no Phase 1A subscribers).
 - WAF rules are not yet configured on the zone.

@@ -341,6 +341,103 @@
         }
       }
     },
+    "/api/v1/platform/backups/run": {
+      "post": {
+        "summary": "Back up the control database and every tenant now (bootstrap credential)",
+        "tags": ["platform"],
+        "security": [
+          {
+            "platformToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "default": {
+            "description": "Problem details (RFC 9457)",
+            "content": {
+              "application/problem+json": {}
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/platform/backups": {
+      "get": {
+        "summary": "Newest backups of the control database and each tenant (bootstrap credential)",
+        "tags": ["platform"],
+        "security": [
+          {
+            "platformToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "default": {
+            "description": "Problem details (RFC 9457)",
+            "content": {
+              "application/problem+json": {}
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/platform/tenants/{code}/restore": {
+      "post": {
+        "summary": "Restore a tenant's backup into a new, empty database. Switching the tenant over is a separate step (bootstrap credential)",
+        "tags": ["platform"],
+        "parameters": [
+          {
+            "name": "code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "targetDbName": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9-]{8,80}$"
+                  },
+                  "backupKey": {
+                    "type": "string",
+                    "maxLength": 300
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "platformToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "default": {
+            "description": "Problem details (RFC 9457)",
+            "content": {
+              "application/problem+json": {}
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/users": {
       "get": {
         "summary": "List users of my tenant",
@@ -636,6 +733,52 @@
             }
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "default": {
+            "description": "Problem details (RFC 9457)",
+            "content": {
+              "application/problem+json": {}
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/backups": {
+      "get": {
+        "summary": "Newest backups of my tenant's data",
+        "tags": ["admin"],
+        "description": "Requires permission `settings.manage` on the estate in scope.",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "default": {
+            "description": "Problem details (RFC 9457)",
+            "content": {
+              "application/problem+json": {}
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/backups/run": {
+      "post": {
+        "summary": "Back up my tenant's data now",
+        "tags": ["admin"],
+        "description": "Requires permission `settings.manage` on the estate in scope.",
         "security": [
           {
             "bearer": []

@@ -1,15 +1,13 @@
 import { Hono } from "hono";
 import { requireAuth } from "./auth/middleware";
-import { controlDb } from "./control/db";
-import { tenants } from "./control/schema";
-import { encryptSecret } from "./core/crypto";
+import { runAllBackups } from "./core/backup";
 import { problemResponse } from "./core/errors";
 import { clientIp, rateLimit, requestId, sameOriginOnly, securityHeaders } from "./core/http";
 import { log } from "./core/log";
 import { openApiDocument } from "./core/registry";
-import { tenantStub } from "./core/tenant-stub";
 import type { AppEnv } from "./core/types";
 import { authRoutes } from "./routes/auth";
+import { backupRoutes } from "./routes/backups";
 import { platformRoutes } from "./routes/platform";
 import { tenantRoutes } from "./routes/tenant";
 import { userRoutes } from "./routes/users";
@@ -29,6 +27,7 @@ secured.use(
   rateLimit("API_LIMIT", (c) => `s:${c.get("auth")?.session.id ?? clientIp(c)}`),
 );
 userRoutes(secured);
+backupRoutes(secured);
 tenantRoutes(secured);
 api.route("/", secured);
 
@@ -53,23 +52,12 @@ export default {
     }
   },
 
-  /** Nightly encrypted copy of every tenant database to R2 (on top of 30-day PITR). */
+  /** Nightly encrypted copy of the control database and every tenant database to R2 (on top of 30-day point-in-time restore). */
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
-    const rows = await controlDb(env).select().from(tenants).all();
-    const date = new Date().toISOString().slice(0, 10);
     ctx.waitUntil(
-      Promise.all(
-        rows.map(async (t) => {
-          try {
-            const snapshot = await tenantStub(env, t.dbName).snapshot(t.id);
-            const body = await encryptSecret(snapshot, env.MFA_ENC_KEY);
-            await env.FILES.put(`tenants/${t.id}/backups/${date}.json.enc`, body, { customMetadata: { tenantId: t.id, kind: "nightly-snapshot" } });
-            log("info", "backup.done", { tenantId: t.id, bytes: body.length });
-          } catch (e) {
-            log("error", "backup.failed", { tenantId: t.id, error: (e as Error).message });
-          }
-        }),
-      ),
+      runAllBackups(env, "nightly").then((run) => {
+        if (!run.ok) log("error", "backup.run.incomplete", { failed: run.results.filter((r) => !r.ok).map((r) => `${r.kind}:${r.code ?? ""}`) });
+      }),
     );
   },
 } satisfies ExportedHandler<Env, { eventId: string; type: string }>;
