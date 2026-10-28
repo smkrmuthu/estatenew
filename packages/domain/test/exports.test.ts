@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { type ExportData, newFormatSheets, OLD_FORMAT_COLUMNS, oldFormatSheets } from "../src/exports";
+import { type ExportData, newFormatSheets, newFormatSheetsFor, OLD_FORMAT_COLUMNS, oldFormatSheets, oldFormatSheetsFor } from "../src/exports";
 
 const data: ExportData = {
   estate: { id: "e1", code: "GLZ", name: "Glazebrooke" },
@@ -81,5 +81,33 @@ describe("new format", () => {
     const plucking = grid(sheets[3]?.rows ?? []);
     expect(plucking[1]?.slice(0, 4)).toEqual(["2026-10-26", "GLZ002", "Sanjay", "Coffee"]);
     expect(plucking).toHaveLength(3);
+  });
+});
+
+describe("several estates in one file", () => {
+  const other: ExportData = {
+    ...data,
+    estate: { id: "e2", code: "BYV", name: "Byson Valley" },
+    records: [{ ...(data.records[0] as ExportData["records"][number]), businessDate: "2026-10-27" }],
+    entries: [],
+  };
+
+  it("gives each date a sheet per estate, in date and estate order", () => {
+    const sheets = oldFormatSheetsFor([data, other]);
+    expect(sheets.map((s) => s.name)).toEqual(["26-10-2026 GLZ", "27-10-2026 GLZ", "27-10-2026 BYV"]);
+    expect(grid(sheets[2]?.rows ?? [])[1]).toEqual(expect.arrayContaining(["Byson Valley", "27.10.2026"]));
+  });
+
+  it("keeps a single estate's file as it was", () => {
+    expect(oldFormatSheetsFor([data]).map((s) => s.name)).toEqual(["26-10-2026", "27-10-2026"]);
+    expect(newFormatSheetsFor([data]).map((s) => s.name)).toEqual(["About", "Summary by day", "Attendance", "Plucking"]);
+  });
+
+  it("adds an Estate column to the new-format tables", () => {
+    const sheets = newFormatSheetsFor([data, other]);
+    const attendance = grid(sheets[2]?.rows ?? []);
+    expect(attendance[0]?.[0]).toBe("Estate");
+    expect(attendance.slice(1).map((r) => r[0])).toEqual(["GLZ", "GLZ", "GLZ", "BYV"]);
+    expect(grid(sheets[0]?.rows ?? [])[1]?.[1]).toContain("Byson Valley (BYV)");
   });
 });

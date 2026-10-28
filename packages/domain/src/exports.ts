@@ -136,7 +136,7 @@ function pluckGroups(entries: ExportEntry[]): PluckGroup[] {
 }
 
 /** One sheet per date, in the layout of the estate's old daily sheet. */
-export function oldFormatSheets(data: ExportData): SheetModel[] {
+export function oldFormatSheets(data: ExportData, withEstateInName = false): SheetModel[] {
   const fieldName = new Map(data.fields.map((f) => [f.id, f.name]));
   const jobName = new Map(data.jobTypes.map((j) => [j.id, j.name]));
   const varietyName = new Map(data.varieties.map((v) => [v.id, v.name]));
@@ -196,7 +196,13 @@ export function oldFormatSheets(data: ExportData): SheetModel[] {
     band[8] = { v: "Plucking", s: "title" };
     const head: Cell[] = OLD_FORMAT_COLUMNS.map((h) => ({ v: h, s: "center" as const }));
 
-    return { name: dashed(date), look: "old" as const, rows: [title, info, band, head, ...body], merges: ["A1:O1", "E2:F2", "A3:H3", "I3:O3"], widths: OLD_WIDTHS };
+    return {
+      name: withEstateInName ? `${dashed(date)} ${data.estate.code}` : dashed(date),
+      look: "old" as const,
+      rows: [title, info, band, head, ...body],
+      merges: ["A1:O1", "E2:F2", "A3:H3", "I3:O3"],
+      widths: OLD_WIDTHS,
+    };
   });
 }
 
@@ -291,4 +297,43 @@ export function newFormatSheets(data: ExportData): SheetModel[] {
     { name: "Attendance", look: "new", rows: attendance, widths: [12, 8, 10, 24, 9, 16, 14, 11, 18, 24, 24], frozenRows: 1 },
     { name: "Plucking", look: "new", rows: plucking, widths: [12, 10, 24, 9, 18, 16, 11, 7, 10, 10, 24], frozenRows: 1 },
   ];
+}
+
+/** Old-format sheets for several estates in one file: each date gets a sheet per estate, named like "26-10-2026 GLZ". */
+export function oldFormatSheetsFor(all: ExportData[]): SheetModel[] {
+  if (all.length === 1 && all[0]) return oldFormatSheets(all[0]);
+  const order = new Map(all.map((d, i) => [d.estate.code, i]));
+  return all
+    .flatMap((d) => oldFormatSheets(d, true))
+    .sort((a, b) => {
+      const key = (n: string) => `${n.slice(6, 10)}${n.slice(3, 5)}${n.slice(0, 2)}`;
+      return key(a.name).localeCompare(key(b.name)) || (order.get(a.name.slice(11)) ?? 0) - (order.get(b.name.slice(11)) ?? 0);
+    });
+}
+
+/** New-format workbook for several estates: the same tables with an Estate column in front. */
+export function newFormatSheetsFor(all: ExportData[]): SheetModel[] {
+  if (all.length === 1 && all[0]) return newFormatSheets(all[0]);
+  const first = all[0];
+  if (!first) return [];
+  const per = all.map((d) => ({ d, sheets: newFormatSheets(d) }));
+  const merged = (name: string): SheetModel => {
+    const model = per[0]?.sheets.find((x) => x.name === name) as SheetModel;
+    const rows: Cell[][] = [[{ v: "Estate", s: "head" as const }, ...(model.rows[0] ?? [])]];
+    for (const { d, sheets } of per) {
+      const sheet = sheets.find((x) => x.name === name);
+      for (const row of (sheet?.rows ?? []).slice(1)) rows.push([{ v: d.estate.code, s: "body" as const }, ...row]);
+    }
+    return { ...model, rows, widths: [8, ...model.widths] };
+  };
+  const about: Cell[][] = [
+    [{ v: "CEMMS export (new format)", s: "bold" }],
+    [{ v: "Estates", s: "bold" }, all.map((d) => `${d.estate.name} (${d.estate.code})`).join(", ")],
+    [{ v: "From", s: "bold" }, first.from],
+    [{ v: "To", s: "bold" }, first.to],
+    [{ v: "Made at", s: "bold" }, first.exportedAt],
+    [{ v: "Basis", s: "bold" }, "Only entries the server has received. Entries still waiting on a phone are not included."],
+    [{ v: "Sheets", s: "bold" }, "Summary by day, Attendance (one row per worker per shift) and Plucking (one row per weigh-in), each with an Estate column."],
+  ];
+  return [{ name: "About", look: "new", rows: about, widths: [14, 90] }, merged("Summary by day"), merged("Attendance"), merged("Plucking")];
 }

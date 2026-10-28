@@ -257,11 +257,11 @@ export function Summary() {
     }
   }
 
-  async function download(estate: { id: string; name: string }, format: "old" | "new") {
+  async function download(estate: { id: string; name: string }, format: "old" | "new", all = false) {
     setFileError(null);
-    setFileBusy(`${estate.id}:${format}`);
+    setFileBusy(`${all ? "all" : estate.id}:${format}`);
     try {
-      const { blob, filename } = await apiFile(`/estates/${estate.id}/reports/export?format=${format}&from=${from}&to=${to}`);
+      const { blob, filename } = await apiFile(all ? `/reports/export?format=${format}&from=${from}&to=${to}` : `/estates/${estate.id}/reports/export?format=${format}&from=${from}&to=${to}`);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -355,7 +355,18 @@ export function Summary() {
             </div>
           )}
           <div className="mt-4 flex flex-col gap-3">
-            {scope.map((e) => (
+            {estates.length > 1 && (
+              <div className="flex flex-wrap items-center gap-2">
+                <b className="min-w-40">Both estates in one file</b>
+                <Button disabled={from > to || fileBusy !== null} onClick={() => void download({ id: "all", name: "All estates" }, "old", true)}>
+                  {fileBusy === "all:old" ? "Preparing…" : "Download old format (daily sheets)"}
+                </Button>
+                <Button disabled={from > to || fileBusy !== null} onClick={() => void download({ id: "all", name: "All estates" }, "new", true)}>
+                  {fileBusy === "all:new" ? "Preparing…" : "Download new format (backup)"}
+                </Button>
+              </div>
+            )}
+            {estates.map((e) => (
               <div key={e.id} className="flex flex-wrap items-center gap-2 border-t border-line pt-3">
                 <b className="min-w-40">{e.name}</b>
                 <Button variant="secondary" disabled={from > to || fileBusy !== null} onClick={() => void download(e, "old")}>

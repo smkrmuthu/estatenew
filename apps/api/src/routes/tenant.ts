@@ -16,7 +16,7 @@ import {
   varietyInput,
   workerInput,
 } from "@cemms/contracts";
-import { type ExportData, IMPORT_KINDS, type ImportKind, importTemplate, newFormatSheets, oldFormatSheets } from "@cemms/domain";
+import { type ExportData, IMPORT_KINDS, type ImportKind, importTemplate, newFormatSheets, newFormatSheetsFor, oldFormatSheets, oldFormatSheetsFor } from "@cemms/domain";
 import type { Context, Hono } from "hono";
 import { z } from "zod";
 import { AppError } from "../core/errors";
@@ -266,6 +266,31 @@ export function tenantRoutes(app: Hono<AppEnv>) {
     app,
     { method: "get", path: "/estates/:estateId/reports/dashboard/:date", summary: "Dashboard figures (server-accepted data only)", tag: "reports", auth: "bearer", permission: "reports.read" },
     call("reports.dashboard", day),
+  );
+  route(
+    app,
+    {
+      method: "get",
+      path: "/reports/export",
+      summary: "Excel file for every estate you may export, in one workbook (?format=old|new&from=&to=). Old format has a sheet per date and estate",
+      tag: "reports",
+      auth: "bearer",
+      permission: "reports.workerDetail",
+    },
+    async (c) => {
+      const format = c.req.query("format") === "old" ? "old" : "new";
+      const from = c.req.query("from") ?? "";
+      const to = c.req.query("to") ?? "";
+      const all = (await callTenant(c, "reports.exportAll", { from, to, format })) as ExportData[];
+      const sheets = format === "old" ? oldFormatSheetsFor(all) : newFormatSheetsFor(all);
+      if (sheets.length === 0) throw new AppError(404, "NO_DATA", "There is no attendance or plucking in these dates");
+      const name = `all-estates-${from}${to === from ? "" : `_to_${to}`}-${format === "old" ? "old-format" : "new-format"}.xlsx`;
+      return c.body(buildXlsx(sheets).buffer as ArrayBuffer, 200, {
+        "content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "content-disposition": `attachment; filename="${name}"`,
+        "cache-control": "no-store",
+      });
+    },
   );
   route(
     app,

@@ -3,7 +3,7 @@ import { and, eq, gte, inArray, lte } from "drizzle-orm";
 import { AppError } from "../../core/errors";
 import type { TenantContext } from "../context";
 import { attendanceRecords, attendanceSheets, dailylogEntries, deviceStatus, fields, jobTypes, logKinds, musterEntries, syncConflicts, varieties, workers } from "../schema";
-import { getEstate, workerIdsIn } from "./organization";
+import { getEstate, listEstates, workerIdsIn } from "./organization";
 import { setting } from "./settings";
 
 /**
@@ -509,4 +509,13 @@ export function exportData(ctx: TenantContext, estateId: string, from: string, t
     }),
   );
   return data;
+}
+
+/** The export for every estate this user may export (needs report and worker-detail permission on each), in estate-code order. */
+export function exportAllEstates(ctx: TenantContext, from: string, to: string, format: "old" | "new"): ExportData[] {
+  const ids = listEstates(ctx)
+    .filter((e) => ctx.can("reports.read", e.id) && ctx.can("reports.workerDetail", e.id))
+    .sort((a, b) => a.code.localeCompare(b.code));
+  if (ids.length === 0) throw new AppError(403, "FORBIDDEN", "You do not have permission to do this");
+  return ids.map((e) => exportData(ctx, e.id, from, to, format));
 }

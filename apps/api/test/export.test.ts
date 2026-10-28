@@ -63,6 +63,16 @@ describe("excel exports", () => {
     expect(fresh.headers.get("content-disposition")).toMatch(/new-format\.xlsx/);
     for (const sheet of ["About", "Summary by day", "Attendance", "Plucking"]) expect(fresh.text).toContain(`name="${sheet}"`);
 
+    // Both estates in one file: a sheet per date and estate. Estate Two has nothing yet, so only Estate One's sheet appears.
+    const both = await file(`/reports/export?format=old&from=${d}&to=${d}`, s.owner.token);
+    expect(both.status).toBe(200);
+    expect(both.headers.get("content-disposition")).toMatch(/all-estates-.*-old-format\.xlsx/);
+    expect(both.text).toContain(`name="${dd}-${mm}-${yyyy} GLZ"`);
+    const bothNew = await file(`/reports/export?format=new&from=${d}&to=${d}`, s.owner.token);
+    expect(bothNew.status).toBe(200);
+    expect(bothNew.text).toContain("BYV");
+    expect((await file(`/reports/export?format=old&from=${d}&to=${d}`, s.supervisor.token)).status).toBe(403);
+
     // A supervisor has no worker-detail permission, and another estate's data is out of reach.
     expect((await file(`/estates/${s.estate.id}/reports/export?format=old&from=${d}&to=${d}`, s.supervisor.token)).status).toBe(403);
     expect((await file(`/estates/${s.estate2.id}/reports/export?format=new&from=${d}&to=${d}`, s.supervisor.token)).status).toBe(403);
