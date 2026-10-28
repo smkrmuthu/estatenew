@@ -1,36 +1,54 @@
 @import "tailwindcss";
+/* Fonts are bundled (not fetched from Google) so they work offline and under the strict CSP. */
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/fraunces/opsz.css";
+@import "@fontsource-variable/jetbrains-mono";
 
-/* Warm coffee palette (from the prototype's visual language). Light and dark. */
+/* Palette, type and radii follow the prototype: warm cream surfaces, one roasted-brown action colour,
+   cherry red on the brand mark; Fraunces headings, Inter text, JetBrains Mono for codes and weights. */
 @theme {
-  --color-bg: #f6f1ea;
-  --color-surface: #fffaf3;
-  --color-line: #e4d8c8;
-  --color-ink: #2b1f17;
-  --color-muted: #6f5f52;
-  --color-roast: #3b2a1f;
-  --color-roast-ink: #fff8ef;
-  --color-caramel: #b8702f;
-  --color-ok: #2f6f4f;
-  --color-warn: #8a5a12;
-  --color-bad: #a33a2b;
-  --color-waiting: #7a5c12;
-  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
+  --color-bg: #f8f3ea;
+  --color-surface: #fffdf9;
+  --color-surface-2: #f3ece0;
+  --color-line: #e7ddcf;
+  --color-line-strong: #d6c9b6;
+  --color-ink: #1d1a17;
+  --color-muted: #74685d;
+  --color-roast: #5b3a1e;
+  --color-roast-ink: #ffffff;
+  --color-caramel: #5b3a1e;
+  --color-accent-soft: #f1e6d6;
+  --color-cherry: #a8322d;
+  --color-ok: #2f6b3a;
+  --color-warn: #8a5a00;
+  --color-bad: #a8322d;
+  --color-info: #0e7f77;
+  --color-waiting: #8a5a00;
+  --font-sans: "Inter Variable", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-serif: "Fraunces Variable", "Fraunces", Georgia, "Times New Roman", serif;
+  --font-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --color-bg: #1c1612;
-    --color-surface: #261e18;
-    --color-line: #3d3128;
-    --color-ink: #f3ebe1;
-    --color-muted: #bba998;
-    --color-roast: #e6c9a8;
-    --color-roast-ink: #1c1612;
-    --color-caramel: #e0a066;
-    --color-ok: #7fc49f;
-    --color-warn: #e5b866;
-    --color-bad: #f08a7a;
-    --color-waiting: #e5c06a;
+    --color-bg: #14110e;
+    --color-surface: #1e1a16;
+    --color-surface-2: #26201a;
+    --color-line: #352d25;
+    --color-line-strong: #4a3f34;
+    --color-ink: #f1ebe3;
+    --color-muted: #a99b8c;
+    --color-roast: #e0ad6e;
+    --color-roast-ink: #1a120a;
+    --color-caramel: #e0ad6e;
+    --color-accent-soft: #2f2419;
+    --color-cherry: #ff9b8f;
+    --color-ok: #8fd19a;
+    --color-warn: #f2c26b;
+    --color-bad: #ff9b8f;
+    --color-info: #4fc1b5;
+    --color-waiting: #f2c26b;
+    color-scheme: dark;
   }
 }
 
@@ -39,12 +57,61 @@ body {
   background: var(--color-bg);
   color: var(--color-ink);
   font-family: var(--font-sans);
+  font-size: 14.5px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
 }
 
+@layer base {
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-serif);
+    font-weight: 600;
+    letter-spacing: -0.015em;
+    line-height: 1.2;
+    text-wrap: balance;
+  }
+  h1 {
+    font-size: 1.65rem;
+    letter-spacing: -0.025em;
+  }
+  h2 {
+    font-size: 1.05rem;
+  }
+  h3 {
+    font-size: 0.95rem;
+  }
+  td,
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+  /* Drop-down arrow like the prototype's selects. */
+  select {
+    appearance: none;
+    padding-right: 28px;
+    background-image: linear-gradient(45deg, transparent 50%, var(--color-muted) 50%), linear-gradient(135deg, var(--color-muted) 50%, transparent 50%);
+    background-position: calc(100% - 14px) 52%, calc(100% - 10px) 52%;
+    background-size: 4px 4px, 4px 4px;
+    background-repeat: no-repeat;
+  }
+  input[type="checkbox"],
+  input[type="radio"] {
+    accent-color: var(--color-roast);
+  }
+  input:focus,
+  select:focus {
+    outline: none;
+    border-color: var(--color-roast);
+    box-shadow: 0 0 0 3px var(--color-accent-soft);
+  }
+}
+
 :focus-visible {
-  outline: 3px solid var(--color-caramel);
+  outline: 2px solid var(--color-roast);
   outline-offset: 2px;
+  border-radius: 6px;
 }
 
 @media (prefers-reduced-motion: reduce) {

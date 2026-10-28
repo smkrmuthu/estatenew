@@ -23,9 +23,10 @@ Last updated: 28 October 2026 (staging deployed).
 | Weigh-in | Coffee and pepper with the same capture; crop must be grown in the field; optional variety checked against crop and field; server recomputes net; cancel own entry with reason; manager correction with reason; several entries per worker kept and flagged | `muster-dailylog.test.ts` |
 | Daily log | Configurable kinds (no readings hard-coded), range and decimal checks, correction with reason | `muster-dailylog.test.ts` |
 | Sync | Per-item accepted/rejected/conflict results, stored acknowledgements for retries, payload hash check, mutation id reuse refused, device binding, clock-ahead and too-old refusal, batch limit 100, device waiting counts | `sync.test.ts` (4 tests) |
+| Dashboard | `GET /estates/:id/reports/dashboard/:date`: today's roll call, 14 days of accepted weigh-ins, items awaiting approval, open conflicts and entries still on phones; estate-scoped, in the cross-tenant isolation list | `muster-dailylog.test.ts`, `isolation.test.ts` |
 | Daily summary | Server-accepted counts only, with devices' waiting counts and open conflicts shown separately | Covered in several suites |
 | Readiness | `GET /admin/readiness` lists open owner questions that block Phase 1A; first tenant can be seeded with the owner's recorded answers | `admin.test.ts` |
-| Web app (PWA) | Sign-in with MFA, estate and date picker, roll call (fill from previous day, submit, approve/send back), weigh-in with live net, Daily log, Sync screen (waiting/not accepted/conflict, retry, remove), Summary, Manage (CSV import, users, conflicts, Daily log kinds, readiness), installable with service worker app shell, IndexedDB outbox written atomically, auto-sync on open/focus/online/every minute, error screen | 3 outbox/sync tests; checked by hand in a phone-size browser, including an API outage and a reload while entries were waiting |
+| Web app (PWA) | Portal layout like the prototype: left sidebar with icons on desktop and an icon bar on phones, top bar with online/waiting state, clock, user and role; Dashboard (workers today, coffee and pepper weighed today, daily log count, needs-attention list, 14-day chart; server-accepted data only, no season total or targets until the season start and expected crop are confirmed). Sign-in with MFA, estate and day picker with previous/next, roll call (fill from previous day, submit, approve/send back), weigh-in with live net, Daily log, Sync screen (waiting/not accepted/conflict, retry, remove), Summary, Manage (CSV import, users, conflicts, Daily log kinds, readiness), installable with service worker app shell, IndexedDB outbox written atomically, auto-sync on open/focus/online/every minute, error screen | 3 outbox/sync tests; checked by hand in a phone-size browser, including an API outage and a reload while entries were waiting |
 | Tooling | Biome lint/format, module boundary check, register render check, OpenAPI 3.1 generated from the route registry and pinned in `docs/api/openapi.json`, CI workflow (checks on every PR; staging deploy on main; production only by manual approval) | `npm run check` |
 
 ## Checks run on 28 October 2026
@@ -33,6 +34,10 @@ Last updated: 28 October 2026 (staging deployed).
 `npm run check` passed: Biome (107 files), module boundaries, owner register render, TypeScript in all four packages, 83 tests (45 domain, 4 contracts, 31 API in workerd, 3 web), web build, Worker dry-run build. `npm audit --audit-level=high` passed; 4 low-severity advisories remain in the PWA build tooling (`deepmerge` via `workbox-build`), build time only.
 
 Not run: browser end-to-end suite (Playwright), load test, OWASP ZAP scan, staging restore drill. These need staging (see below).
+
+## Prototype pages not built yet
+
+Washing, Processing, Packing, Trace a bag and Process settings from the prototype are Phase 1B and are not in the menu. Plucking is the Weigh-in page (it also covers pepper). Masters and Users are inside Manage. Daily log "expected readings per day" is not shown because the reading list is open (OC-100).
 
 ## Phase 1A exit criteria
 

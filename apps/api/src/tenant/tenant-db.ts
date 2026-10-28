@@ -97,6 +97,7 @@ const OPS = {
   "dailylog.correct": { input: withId(dailyLogCorrection), run: (c: TenantContext, i: { id: string; body: z.infer<typeof dailyLogCorrection> }) => dailylog.correctDailyLog(c, i.id, i.body) },
   "sync.push": { input: syncPush, run: pushMutations },
   "reports.daily": { input: day, run: (c: TenantContext, i: z.infer<typeof day>) => reports.dailySummary(c, i.estateId, i.businessDate) },
+  "reports.dashboard": { input: day, run: (c: TenantContext, i: z.infer<typeof day>) => reports.dashboard(c, i.estateId, i.businessDate) },
   "audit.list": {
     input: z.object({ estateId: z.string().optional(), entityType: z.string().optional(), entityId: z.string().optional(), limit: z.number().int().min(1).max(500).default(100) }),
     run: (c: TenantContext, i: { estateId?: string; entityType?: string; entityId?: string; limit: number }) => history.listAudit(c, i),

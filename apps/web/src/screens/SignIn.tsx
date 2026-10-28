@@ -39,7 +39,7 @@ export function SignIn({ onSignedIn, lastTenant }: { onSignedIn: (tenantCode: st
     <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center gap-6 p-4">
       <div className="text-center">
         <img src="/icon.svg" alt="" className="mx-auto h-16 w-16" />
-        <h1 className="mt-3 text-2xl font-bold">{site?.name ?? "CEMMS Estate"}</h1>
+        <h1 className="mt-3">{site?.name ?? "CEMMS Estate"}</h1>
         <p className="text-muted">Attendance, weigh-in and daily log</p>
       </div>
       <Card>

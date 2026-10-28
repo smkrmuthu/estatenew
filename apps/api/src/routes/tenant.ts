@@ -243,6 +243,11 @@ export function tenantRoutes(app: Hono<AppEnv>) {
   );
   route(
     app,
+    { method: "get", path: "/estates/:estateId/reports/dashboard/:date", summary: "Dashboard figures (server-accepted data only)", tag: "reports", auth: "bearer", permission: "reports.read" },
+    call("reports.dashboard", day),
+  );
+  route(
+    app,
     { method: "get", path: "/audit", summary: "Audit trail", tag: "audit", auth: "bearer", permission: "audit.read" },
     call("audit.list", (c) => ({ estateId: c.req.query("estateId"), entityType: c.req.query("entityType"), entityId: c.req.query("entityId"), limit: Number(c.req.query("limit") ?? 100) })),
   );

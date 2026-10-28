@@ -92,4 +92,19 @@ describe("daily log", () => {
     const fix = await api(`/daily-log-entries/${ok.entityId}/corrections`, { token: s.owner.token, body: { value: "25.0", reason: "Read wrong thermometer", baseVersion: 1 } });
     expect(fix.body).toMatchObject({ valueScaled: 250, version: 2 });
   });
+
+  it("dashboard counts only accepted weigh-ins, per day, and lists what needs attention", async () => {
+    const s = await setupTenant();
+    const m = await mutation(s.supervisor.deviceId, s.estate.id, "muster_entry", "create", weigh(s));
+    const pepper = await mutation(s.supervisor.deviceId, s.estate.id, "muster_entry", "create", weigh(s, { fieldId: s.f2.id, crop: "PEPPER", grossKg: "3.25", bags: 1, tareKg: null }));
+    await push(s.supervisor, [m, pepper]);
+    const res = await api(`/estates/${s.estate.id}/reports/dashboard/${today()}`, { token: s.supervisor.token });
+    expect(res.status).toBe(200);
+    expect(res.body.basis).toBe("server-accepted");
+    expect(res.body.days).toHaveLength(14);
+    expect(res.body.days.at(-1)).toMatchObject({ date: today(), coffeeNetKg: "19.500", pepperNetKg: "3.250" });
+    expect(res.body.days[0]).toMatchObject({ coffeeNetKg: "0.000", pepperNetKg: "0.000" });
+    expect(res.body.today).toMatchObject({ sheetState: "NOT_STARTED", activeWorkers: 3, weighIns: 2, coffeeNetKg: "19.500", dailyLogReadings: 0 });
+    expect(res.body.attention).toMatchObject({ sheetsAwaitingApproval: [], openConflicts: 0 });
+  });
 });

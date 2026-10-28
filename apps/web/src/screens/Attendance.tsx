@@ -1,11 +1,11 @@
-import { addDays, uuidv7 } from "@cemms/domain";
+import { uuidv7 } from "@cemms/domain";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { useApp } from "../app-context";
 import { Button, Card, Input, Notice, Select, StatusBadge } from "../components/ui";
 import { ApiError, api } from "../lib/api";
 import { db, getMeta, type LocalRecord, setMeta } from "../lib/db";
-import { todayIn, useLive } from "../lib/hooks";
+import { useLive } from "../lib/hooks";
 import { queueChange } from "../lib/outbox";
 
 interface ServerRecord {
@@ -48,8 +48,6 @@ const DEFAULT_STATUSES: StatusDef[] = [
   { code: "PRESENT", label: "Present", active: true, requiresAssignment: true },
   { code: "ABSENT", label: "Absent", active: true, requiresAssignment: false },
 ];
-
-const weekday = (d: string) => new Date(`${d}T00:00:00Z`).toLocaleDateString("en-GB", { weekday: "short", timeZone: "UTC" });
 
 export function Attendance() {
   const app = useApp();
@@ -269,7 +267,6 @@ export function Attendance() {
 
   if (!ref) return <Notice>Connect to the internet once to download the worker and field lists.</Notice>;
 
-  const today = todayIn(ref.estates.find((e) => e.id === estateId)?.timeZone ?? "Asia/Kolkata");
   const allSelected = shown.length > 0 && shown.every((w) => selected.has(w.id));
   const fieldCounts = new Map<string, { name: string; workers: number }>();
   for (const w of workers) {
@@ -281,29 +278,16 @@ export function Attendance() {
       fieldCounts.set(d.fieldId, cur);
     }
   }
-  const gridCols = "md:grid-cols-[2rem_minmax(9rem,1.2fr)_auto_minmax(8rem,1fr)_minmax(7rem,0.8fr)_minmax(7rem,1fr)]";
+  const gridCols = "md:grid-cols-[2rem_minmax(9rem,1.2fr)_9.5rem_minmax(8rem,1fr)_minmax(7rem,0.8fr)_minmax(7rem,1fr)]";
 
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <h1 className="text-2xl font-bold">Attendance</h1>
+        <h1>Attendance</h1>
         <p className="mt-1 max-w-3xl text-sm text-muted">
           One register per estate per day. Each worker gets a status, a field from the field list and a job. It starts with the previous day's fields and jobs, so only changes need entering.
         </p>
       </div>
-
-      <Card>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="secondary" aria-label="Previous day" onClick={() => app.setDate(addDays(date, -1))}>
-            ‹
-          </Button>
-          <span className="font-semibold">{date}</span>
-          <Button variant="secondary" aria-label="Next day" disabled={date >= today} onClick={() => app.setDate(addDays(date, 1))}>
-            ›
-          </Button>
-          <span className="text-muted">{weekday(date)}</span>
-        </div>
-      </Card>
 
       <Card>
         <div className="flex flex-wrap items-center gap-2">
@@ -365,7 +349,7 @@ export function Attendance() {
         )}
 
         {canCapture && (
-          <fieldset className="mt-4 flex flex-wrap items-center gap-2 rounded-xl bg-bg p-3">
+          <fieldset className="mt-4 flex flex-wrap items-center gap-2 rounded-xl bg-surface-2 p-3">
             <legend className="sr-only">Change selected workers together</legend>
             <b className="text-sm">{selected.size ? `${selected.size} selected` : "Select workers to change them together"}</b>
             <span className="flex items-center gap-1 text-sm text-muted">
@@ -479,7 +463,7 @@ export function Attendance() {
                         aria-pressed={on}
                         disabled={!canCapture}
                         onClick={() => mark(w.id, { statusCode: c.statusCode, dayFraction: c.dayFraction })}
-                        className={`min-h-11 min-w-11 rounded-lg border px-2 text-sm font-bold transition-colors disabled:opacity-50 md:min-h-9 md:min-w-9 ${on ? "border-roast bg-roast text-roast-ink" : "border-line bg-bg text-ink hover:bg-surface"}`}
+                        className={`min-h-11 min-w-11 rounded-lg border px-2 text-sm font-semibold transition-colors disabled:opacity-50 md:min-h-9 md:min-w-9 ${on ? "border-roast bg-roast text-roast-ink" : "border-line bg-bg text-ink hover:bg-surface"}`}
                       >
                         {c.short}
                       </button>

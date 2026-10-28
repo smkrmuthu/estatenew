@@ -233,7 +233,14 @@ export function WeighIn() {
             </Select>
           </Field>
           <Field label="Gross weight (kg)" htmlFor="gross" error={preview.error ?? undefined}>
-            <Input id="gross" inputMode="decimal" className="text-2xl font-bold" placeholder="0.0" value={gross} onChange={(e) => KG_TEXT.test(e.target.value) && setGross(e.target.value)} />
+            <Input
+              id="gross"
+              inputMode="decimal"
+              className="font-mono text-2xl font-semibold"
+              placeholder="0.0"
+              value={gross}
+              onChange={(e) => KG_TEXT.test(e.target.value) && setGross(e.target.value)}
+            />
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Bags" htmlFor="bags">

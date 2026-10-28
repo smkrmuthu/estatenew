@@ -1,5 +1,5 @@
-import { formatKg, formatScaled, halfDays } from "@cemms/domain";
-import { and, eq } from "drizzle-orm";
+import { addDays, formatKg, formatScaled, halfDays } from "@cemms/domain";
+import { and, eq, gte, lte } from "drizzle-orm";
 import type { TenantContext } from "../context";
 import { attendanceRecords, attendanceSheets, dailylogEntries, deviceStatus, fields, jobTypes, logKinds, musterEntries, syncConflicts, workers } from "../schema";
 import { getEstate } from "./organization";
@@ -130,6 +130,90 @@ export function dailySummary(ctx: TenantContext, estateId: string, businessDate:
           .sort()
           .at(-1) ?? null,
       note: "Counts include only entries the server has received. Entries still waiting on phones are listed separately.",
+    },
+  };
+}
+
+const DASHBOARD_DAYS = 14;
+
+/**
+ * Dashboard figures for one estate: today's roll call, the last 14 days of accepted weigh-ins,
+ * and what needs a person's attention. Like the daily summary it counts only server-accepted
+ * records. Season totals and targets are left out until the season start and expected crop are
+ * confirmed (OC-100 and the owner's targets are open).
+ */
+export function dashboard(ctx: TenantContext, estateId: string, businessDate: string) {
+  ctx.require("reports.read", estateId);
+  const estate = getEstate(ctx.db, estateId);
+  const db = ctx.db;
+  const from = addDays(businessDate, -(DASHBOARD_DAYS - 1));
+
+  const sheets = db
+    .select()
+    .from(attendanceSheets)
+    .where(and(eq(attendanceSheets.estateId, estateId), gte(attendanceSheets.businessDate, from), lte(attendanceSheets.businessDate, businessDate)))
+    .all();
+  const today = sheets.find((s) => s.businessDate === businessDate);
+  const todayRecords = today ? db.select().from(attendanceRecords).where(eq(attendanceRecords.sheetId, today.id)).all() : [];
+  const activeWorkers = db
+    .select()
+    .from(workers)
+    .where(and(eq(workers.estateId, estateId), eq(workers.active, true)))
+    .all().length;
+
+  const entries = db
+    .select()
+    .from(musterEntries)
+    .where(and(eq(musterEntries.estateId, estateId), eq(musterEntries.status, "ACTIVE"), gte(musterEntries.businessDate, from), lte(musterEntries.businessDate, businessDate)))
+    .all();
+  const days = Array.from({ length: DASHBOARD_DAYS }, (_, i) => {
+    const date = addDays(from, i);
+    const net = (crop: string) => entries.filter((e) => e.businessDate === date && e.crop === crop).reduce((s, e) => s + e.netG, 0);
+    return { date, coffeeNetKg: formatKg(net("COFFEE")), pepperNetKg: formatKg(net("PEPPER")), coffeeNetG: net("COFFEE"), pepperNetG: net("PEPPER") };
+  });
+  const todayEntries = entries.filter((e) => e.businessDate === businessDate);
+
+  const readingsToday = db
+    .select()
+    .from(dailylogEntries)
+    .where(and(eq(dailylogEntries.estateId, estateId), eq(dailylogEntries.businessDate, businessDate), eq(dailylogEntries.status, "ACTIVE")))
+    .all().length;
+  const openConflicts = db
+    .select()
+    .from(syncConflicts)
+    .where(and(eq(syncConflicts.estateId, estateId), eq(syncConflicts.state, "OPEN")))
+    .all().length;
+  const waiting = db
+    .select()
+    .from(deviceStatus)
+    .all()
+    .filter((d) => d.pendingCount > 0 && (JSON.parse(d.estateIdsJson) as string[]).includes(estateId));
+
+  return {
+    estate: { id: estate.id, name: estate.name },
+    businessDate,
+    basis: "server-accepted" as const,
+    today: {
+      sheetState: today?.state ?? "NOT_STARTED",
+      activeWorkers,
+      marked: todayRecords.length,
+      present: todayRecords.filter((r) => r.presence === "PRESENT").length,
+      halfDayCount: todayRecords.filter((r) => r.presence === "PRESENT" && r.dayFraction === "HALF").length,
+      absent: todayRecords.filter((r) => r.presence === "ABSENT").length,
+      weighIns: todayEntries.length,
+      coffeeNetKg: formatKg(todayEntries.filter((e) => e.crop === "COFFEE").reduce((s, e) => s + e.netG, 0)),
+      pepperNetKg: formatKg(todayEntries.filter((e) => e.crop === "PEPPER").reduce((s, e) => s + e.netG, 0)),
+      dailyLogReadings: readingsToday,
+    },
+    days,
+    attention: {
+      sheetsAwaitingApproval: sheets
+        .filter((s) => s.state === "SUBMITTED")
+        .map((s) => ({ date: s.businessDate, submittedBy: s.submittedBy }))
+        .sort((a, b) => a.date.localeCompare(b.date)),
+      openConflicts,
+      devicesWaiting: waiting.length,
+      entriesWaitingOnDevices: waiting.reduce((s, d) => s + d.pendingCount, 0),
     },
   };
 }

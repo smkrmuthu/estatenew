@@ -29,6 +29,8 @@ export default defineConfig({
         navigateFallback: "/index.html",
         navigateFallbackDenylist: [/^\/api\//],
         globPatterns: ["**/*.{js,css,html,svg,png,woff2}"],
+        // Offline needs only the Latin fonts; other scripts load from the network when a name needs them.
+        globIgnores: ["**/*-{latin-ext,cyrillic,cyrillic-ext,greek,greek-ext,vietnamese}-*.woff2"],
         runtimeCaching: [],
       },
     }),

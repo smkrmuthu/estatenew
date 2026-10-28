@@ -23,9 +23,9 @@ export function Sync() {
             ["Need a manager", app.queue.conflict],
             ["Last sync", lastSync ? new Date(lastSync).toLocaleString() : "Never"],
           ].map(([k, v]) => (
-            <div key={String(k)} className="rounded-xl bg-bg p-3">
+            <div key={String(k)} className="rounded-xl bg-surface-2 p-3">
               <dt className="text-sm text-muted">{k}</dt>
-              <dd className="text-xl font-bold">{v}</dd>
+              <dd className="font-serif text-xl font-semibold">{v}</dd>
             </div>
           ))}
         </dl>
