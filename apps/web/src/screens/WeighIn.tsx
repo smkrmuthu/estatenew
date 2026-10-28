@@ -52,7 +52,7 @@ export function WeighIn() {
   const [steps, setSteps] = useState(false);
   const [fieldFromAttendance, setFieldFromAttendance] = useState(false);
 
-  const workers = useMemo(() => (ref?.workers ?? []).filter((w) => w.estateId === estateId), [ref, estateId]);
+  const workers = useMemo(() => (ref?.workers ?? []).filter((w) => w.estateId === estateId || w.allEstates), [ref, estateId]);
   const fields = useMemo(() => (ref?.fields ?? []).filter((f) => f.estateId === estateId), [ref, estateId]);
   const field = fields.find((f) => f.id === fieldId);
   const crops = field?.crops ?? ["COFFEE"];

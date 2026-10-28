@@ -74,6 +74,49 @@ describe("imports", () => {
     expect(made.body).toMatchObject({ employmentType: "NORTH_INDIAN", area: "Bihar" });
   });
 
+  it("shows a worker marked for all estates in every estate and allows presence in only one on a day", async () => {
+    const s = await setupTenant();
+    const csv = "estate_code,employee_code,name,all_estates\nGLZ,W001,Worker A,yes\n";
+    const pre = (await api("/imports/preview", { token: s.owner.token, body: { kind: "workers", csv } })).body;
+    expect((await api("/imports/commit", { token: s.owner.token, body: { kind: "workers", csv, previewHash: pre.previewHash } })).status).toBe(200);
+    const bad = (await api("/imports/preview", { token: s.owner.token, body: { kind: "workers", csv: "estate_code,employee_code,name,all_estates\nGLZ,W002,Worker B,maybe\n" } })).body;
+    expect(bad.errors[0]).toMatchObject({ column: "all_estates" });
+
+    // A Byson Valley-only user sees the shared worker but not the other Glazebrooke workers.
+    const byv = (
+      await api("/admin/users", {
+        token: s.owner.token,
+        body: { username: "byvsup", displayName: "BYV Sup", password: "supervisor-pass-9", grants: [{ role: "FIELD_SUPERVISOR", estateId: s.estate2.id }] },
+      })
+    ).body;
+    expect(byv.username ?? "byvsup").toBe("byvsup");
+    const sup2 = await login(s.code, "byvsup", "supervisor-pass-9");
+    const seen = ((await api("/reference", { token: sup2.token })).body.workers as { employeeCode: string }[]).map((w) => w.employeeCode).sort();
+    expect(seen).toEqual(["W001", "W101"]);
+
+    const d = today();
+    const a = await mutation(s.supervisor.deviceId, s.estate.id, "attendance_record", "upsert", {
+      businessDate: d,
+      workerId: s.w1.id,
+      statusCode: "PRESENT",
+      dayFraction: "FULL",
+      fieldId: s.f1.id,
+      jobTypeId: s.plk.id,
+    });
+    expect((await push(s.supervisor, [a])).body.results[0].status).toBe("accepted");
+    const b = await mutation(sup2.deviceId, s.estate2.id, "attendance_record", "upsert", {
+      businessDate: d,
+      workerId: s.w1.id,
+      statusCode: "PRESENT",
+      dayFraction: "FULL",
+      fieldId: s.b1.id,
+      jobTypeId: s.plk.id,
+    });
+    expect((await push(sup2, [b])).body.results[0]).toMatchObject({ status: "rejected", errorCode: "WORKER_ELSEWHERE" });
+    const c = await mutation(sup2.deviceId, s.estate2.id, "attendance_record", "upsert", { businessDate: d, workerId: s.w1.id, statusCode: "ABSENT" });
+    expect((await push(sup2, [c])).body.results[0].status).toBe("accepted");
+  });
+
   it("rejects formula injection and unknown columns", async () => {
     const s = await setupTenant();
     const res = (await api("/imports/preview", { token: s.owner.token, body: { kind: "workers", csv: "estate_code,employee_code,name,phone\nGLZ,W1,=HYPERLINK(1),9\n" } })).body;

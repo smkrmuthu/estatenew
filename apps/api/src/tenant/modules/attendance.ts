@@ -1,9 +1,9 @@
 import type { AttendanceRecordPayload } from "@cemms/contracts";
 import { type AttendanceStatusDef, DEFAULT_ATTENDANCE_STATUSES, editRequiresCorrection, normalizeAttendanceRecord, type SheetState, transitionSheet, uuidv7 } from "@cemms/domain";
-import { and, desc, eq, lt } from "drizzle-orm";
+import { and, desc, eq, lt, ne } from "drizzle-orm";
 import { AppError } from "../../core/errors";
 import { assertFound, type Db, staleVersion, type TenantContext } from "../context";
-import { attendanceRecords, attendanceSheets, syncConflicts } from "../schema";
+import { attendanceRecords, attendanceSheets, estates, syncConflicts } from "../schema";
 import { checkCaptureDate } from "./capture";
 import { activeField, activeJobType, activeWorker, getEstate } from "./organization";
 import { setting } from "./settings";
@@ -56,6 +56,25 @@ export function applyAttendanceRecord(ctx: TenantContext, db: Db, meta: ApplyMet
   checkCaptureDate(ctx, estate, payload.businessDate, meta.capturedAt, "attendance.correct");
   activeWorker(db, payload.workerId, estate.id);
   const normalized = validateRecord(db, estate.id, payload);
+  // A worker shared by several estates cannot be present in two estates on one day (the duplicate-attendance policy is not confirmed yet).
+  if (normalized.presence === "PRESENT") {
+    const elsewhere = db
+      .select()
+      .from(attendanceRecords)
+      .where(
+        and(
+          eq(attendanceRecords.businessDate, payload.businessDate),
+          eq(attendanceRecords.workerId, payload.workerId),
+          eq(attendanceRecords.presence, "PRESENT"),
+          ne(attendanceRecords.estateId, estate.id),
+        ),
+      )
+      .get();
+    if (elsewhere) {
+      const where = db.select().from(estates).where(eq(estates.id, elsewhere.estateId)).get();
+      throw new AppError(409, "WORKER_ELSEWHERE", `This worker is already marked present in ${where?.name ?? "another estate"} on this day`, { workerId: "Already present in another estate" });
+    }
+  }
   const sheet = sheetFor(db, ctx, estate.id, payload.businessDate, true);
   if (!sheet) throw new Error("sheet missing");
   if (editRequiresCorrection(sheet.state)) throw new AppError(409, "SHEET_LOCKED", "This day's attendance has been submitted. A manager must correct it.");
@@ -82,7 +101,6 @@ export function applyAttendanceRecord(ctx: TenantContext, db: Db, meta: ApplyMet
     .where(and(eq(attendanceRecords.estateId, estate.id), eq(attendanceRecords.businessDate, payload.businessDate), eq(attendanceRecords.workerId, payload.workerId)))
     .get();
   if (sameWorker) return openConflict(ctx, db, meta, sameWorker, data, "This worker already has attendance for this day from another entry");
-
   const row = {
     id: meta.entityId,
     tenantId: ctx.scope.tenantId,

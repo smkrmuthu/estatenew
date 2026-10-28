@@ -1306,6 +1306,9 @@
                       }
                     ]
                   },
+                  "allEstates": {
+                    "type": "boolean"
+                  },
                   "active": {
                     "default": true,
                     "type": "boolean"
@@ -1402,6 +1405,9 @@
                         "type": "null"
                       }
                     ]
+                  },
+                  "allEstates": {
+                    "type": "boolean"
                   },
                   "active": {
                     "default": true,

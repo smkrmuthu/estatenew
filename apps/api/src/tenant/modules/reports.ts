@@ -1,5 +1,5 @@
 import { addDays, formatKg, formatScaled, halfDays } from "@cemms/domain";
-import { and, eq, gte, lte } from "drizzle-orm";
+import { and, eq, gte, lte, or } from "drizzle-orm";
 import { AppError } from "../../core/errors";
 import type { TenantContext } from "../context";
 import { attendanceRecords, attendanceSheets, dailylogEntries, deviceStatus, fields, jobTypes, logKinds, musterEntries, syncConflicts, workers } from "../schema";
@@ -38,7 +38,7 @@ export function dailySummary(ctx: TenantContext, estateId: string, businessDate:
   const activeWorkers = db
     .select()
     .from(workers)
-    .where(and(eq(workers.estateId, estateId), eq(workers.active, true)))
+    .where(and(or(eq(workers.estateId, estateId), eq(workers.allEstates, true)), eq(workers.active, true)))
     .all().length;
 
   const byFieldJob = new Map<string, { field: string; job: string; workers: number; halfDays: number }>();
@@ -160,7 +160,7 @@ export function dashboard(ctx: TenantContext, estateId: string, businessDate: st
   const activeWorkers = db
     .select()
     .from(workers)
-    .where(and(eq(workers.estateId, estateId), eq(workers.active, true)))
+    .where(and(or(eq(workers.estateId, estateId), eq(workers.allEstates, true)), eq(workers.active, true)))
     .all().length;
 
   const entries = db
@@ -284,7 +284,7 @@ export function pluckingReport(ctx: TenantContext, estateId: string, from: strin
     db
       .select()
       .from(workers)
-      .where(eq(workers.estateId, estateId))
+      .where(or(eq(workers.estateId, estateId), eq(workers.allEstates, true)))
       .all()
       .map((w) => [w.id, w]),
   );
@@ -375,7 +375,7 @@ export function workerHistory(ctx: TenantContext, estateId: string, workerId: st
   const worker = db
     .select()
     .from(workers)
-    .where(and(eq(workers.id, workerId), eq(workers.estateId, estateId)))
+    .where(and(eq(workers.id, workerId), or(eq(workers.estateId, estateId), eq(workers.allEstates, true))))
     .get();
   if (!worker) throw new AppError(404, "NOT_FOUND", "Worker not found on this estate");
   const fieldName = new Map(

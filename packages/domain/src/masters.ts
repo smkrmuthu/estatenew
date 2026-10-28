@@ -63,6 +63,8 @@ export interface WorkerRow {
   employmentType?: EmploymentType | null;
   /** Where the worker comes from (village or state). undefined: no area column in the file, so leave it as is. */
   area?: string | null;
+  /** True: works in all estates. undefined: no all_estates column in the file, so leave it as is. */
+  allEstates?: boolean;
   gender?: Gender | null;
 }
 
@@ -74,7 +76,7 @@ const COLUMNS: Record<ImportKind, { required: string[]; optional: string[] }> = 
   varieties: { required: ["code", "name", "crop"], optional: [] },
   job_types: { required: ["code", "name"], optional: [] },
   // Gender is deliberately not imported (OC-99 open; collect only for a confirmed need).
-  workers: { required: ["estate_code", "employee_code", "name"], optional: ["employment_type", "area", "gender"] },
+  workers: { required: ["estate_code", "employee_code", "name"], optional: ["employment_type", "area", "all_estates", "gender"] },
 };
 
 export function importTemplate(kind: ImportKind): string {
@@ -160,6 +162,11 @@ export function parseImport<K extends ImportKind>(kind: K, csvText: string): Par
           r.employmentType = (t || null) as EmploymentType | null;
         }
         if (header.includes("area")) r.area = get("area") || null;
+        if (header.includes("all_estates")) {
+          const a = get("all_estates").toLowerCase();
+          if (a && !["yes", "no", "true", "false", "y", "n", "1", "0"].includes(a)) err("all_estates", "Use YES or NO");
+          r.allEstates = ["yes", "true", "y", "1"].includes(a);
+        }
         if (header.includes("gender")) {
           const g = get("gender").toUpperCase();
           const full = g === "M" ? "MALE" : g === "F" ? "FEMALE" : g;

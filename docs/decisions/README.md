@@ -16,3 +16,4 @@ Each decision records its source, approver and date. Business decisions come onl
 | [ADR-0010](0010-site-address-decides-tenant.md) | Each tenant has its own address (Glazebrooke: glazebrooke-staging / glazebrooke.oneuptech.co); no group code on sign-in | Accepted | Project owner | Project owner | 2026-10-28 |
 | [ADR-0011](0011-masters-follow-the-prototype.md) | Masters and Users forms follow the prototype: worker type and gender, field subdivisions, job plucking flag, log kind expected per day | Interim | Project lead instruction | Muthu Kumar | 2026-10-28 |
 | [ADR-0012](0012-real-masters-on-staging.md) | Real Glazebrooke masters allowed on staging (exception to synthetic-only) | Interim | Project lead instruction | Muthu Kumar | 2026-10-28 |
+| [ADR-0013](0013-workers-shared-across-estates.md) | Workers can work in all estates; one present mark per day | Interim | Project lead instruction | Muthu Kumar | 2026-10-28 |

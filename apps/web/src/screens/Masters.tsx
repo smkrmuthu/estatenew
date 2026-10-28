@@ -91,6 +91,7 @@ function WorkerForm({ data, id, estateId, done }: { data: ReferenceData; id?: st
   const [gender, setGender] = useState<string>(w?.gender ?? "");
   const [type, setType] = useState<string>(w?.employmentType ?? "PERMANENT");
   const [area, setArea] = useState(w?.area ?? "");
+  const [allEstates, setAllEstates] = useState(w?.allEstates === true);
   const [active, setActive] = useState(w?.active !== false);
   const { busy, error, setError, save } = useSaver(done);
   return (
@@ -103,7 +104,7 @@ function WorkerForm({ data, id, estateId, done }: { data: ReferenceData; id?: st
           api(w ? `/workers/${w.id}` : "/workers", {
             method: w ? "PUT" : "POST",
             ...(w ? { headers: { "if-match": String(w.version ?? 1) } } : {}),
-            body: { estateId: estate, name: name.trim(), gender: gender || null, employmentType: type || null, area: area.trim() || null, active },
+            body: { estateId: estate, name: name.trim(), gender: gender || null, employmentType: type || null, area: area.trim() || null, allEstates, active },
           }),
         );
       }}
@@ -133,6 +134,10 @@ function WorkerForm({ data, id, estateId, done }: { data: ReferenceData; id?: st
           </Select>
         </Field>
       </div>
+      <label className="flex items-center gap-2 text-sm">
+        <input type="checkbox" checked={allEstates} onChange={(e) => setAllEstates(e.target.checked)} />
+        Works in all estates (shows in every estate's register and plucking list)
+      </label>
       <Field label="Status" htmlFor="w-active">
         <Select id="w-active" className="sm:max-w-48" value={active ? "1" : "0"} onChange={(e) => setActive(e.target.value === "1")}>
           <option value="1">Active</option>
@@ -194,7 +199,14 @@ function Workers({ data, canWrite, open, pick }: { data: ReferenceData; canWrite
                     <tr key={w.id}>
                       <Td>{canWrite(e.id) && <SelectBox label={`Select ${w.name}`} checked={pick.sel.has(w.id)} onChange={() => pick.toggle(w.id)} />}</Td>
                       <Td className="whitespace-nowrap font-mono">{w.employeeCode}</Td>
-                      <Td>{w.name}</Td>
+                      <Td>
+                        {w.name}
+                        {w.allEstates && (
+                          <span className="ml-2">
+                            <Chip tone="plain">All estates</Chip>
+                          </span>
+                        )}
+                      </Td>
                       <Td>{w.area || <span className="text-muted">Not set</span>}</Td>
                       <Td>{w.gender ? GENDER_LABEL[w.gender] : <span className="text-muted">Not set</span>}</Td>
                       <Td>{w.employmentType ? <Chip tone={w.employmentType === "PERMANENT" ? "plain" : "warn"}>{TYPE_LABEL[w.employmentType]}</Chip> : <span className="text-muted">Not set</span>}</Td>

@@ -78,6 +78,7 @@ export interface ReferenceData {
     gender?: Gender | null;
     employmentType?: EmploymentType | null;
     area?: string | null;
+    allEstates?: boolean;
     active?: boolean;
     version?: number;
   }[];

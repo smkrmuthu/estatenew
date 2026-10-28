@@ -99,6 +99,7 @@ export const workers = sqliteTable("workers", {
   gender: text("gender", { enum: ["MALE", "FEMALE"] }),
   employmentType: text("employment_type", { enum: ["PERMANENT", "CASUAL", "CONTRACT", "NORTH_INDIAN"] }),
   area: text("area"),
+  allEstates: integer("all_estates", { mode: "boolean" }).notNull().default(false),
   active: integer("active", { mode: "boolean" }).notNull().default(true),
   ...audit,
 });

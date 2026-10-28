@@ -43,6 +43,9 @@ describe("parseImport", () => {
       { estateCode: "GLZ", employeeCode: "W2", name: "Bob", employmentType: null, area: null },
     ]);
     expect(parseImport("workers", "estate_code,employee_code,name\nGLZ,W1,Ann\n").rows[0]?.value).toEqual({ estateCode: "GLZ", employeeCode: "W1", name: "Ann" });
+    const a = parseImport("workers", "estate_code,employee_code,name,all_estates\nGLZ,W1,Ann,yes\nGLZ,W2,Bob,\nGLZ,W3,Cy,maybe\n");
+    expect(a.errors.map((e) => e.column)).toEqual(["all_estates"]);
+    expect(a.rows.map((x) => (x.value as { allEstates?: boolean }).allEstates)).toEqual([true, false]);
   });
   it("reports row errors, duplicates and formula injection", () => {
     const r = parseImport("workers", "estate_code,employee_code,name\nGLZ,W1,Ann\nGLZ,w1,Bob\nGLZ,W2,=cmd()\nGLZ,,Cat\n");

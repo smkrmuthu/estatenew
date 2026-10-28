@@ -1,6 +1,6 @@
 import type { estateInput, fieldInput, jobTypeInput, logKindInput, varietyInput, workerInput } from "@cemms/contracts";
 import { uuidv7 } from "@cemms/domain";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, or } from "drizzle-orm";
 import type { z } from "zod";
 import { AppError } from "../../core/errors";
 import { assertFound, type Db, staleVersion, type TenantContext } from "../context";
@@ -94,7 +94,12 @@ export function referenceData(ctx: TenantContext, includeInactive = false): Refe
       })),
     varieties: ctx.db.select().from(varieties).all().filter(keep),
     jobTypes: ctx.db.select().from(jobTypes).all().filter(keep),
-    workers: ctx.db.select().from(workers).where(inArray(workers.estateId, ids)).all().filter(keep),
+    workers: ctx.db
+      .select()
+      .from(workers)
+      .where(or(inArray(workers.estateId, ids), eq(workers.allEstates, true)))
+      .all()
+      .filter(keep),
     logKinds: ctx.db.select().from(logKinds).all().filter(keep),
   };
 }
@@ -313,7 +318,7 @@ export function activeWorker(db: Db, workerId: string, estateId: string) {
   const w = db
     .select()
     .from(workers)
-    .where(and(eq(workers.id, workerId), eq(workers.estateId, estateId)))
+    .where(and(eq(workers.id, workerId), or(eq(workers.estateId, estateId), eq(workers.allEstates, true))))
     .get();
   if (!w?.active) throw new AppError(422, "WORKER_UNKNOWN", "This worker is not active on this estate", { workerId: "Unknown worker" });
   return w;

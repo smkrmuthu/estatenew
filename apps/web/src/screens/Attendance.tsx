@@ -116,7 +116,7 @@ export function Attendance() {
   const statuses = sheet.data?.statuses ?? cachedStatuses ?? DEFAULT_STATUSES;
   const chips = CHIPS.filter((c) => c.statusCode === "PRESENT" || statuses.some((s) => s.code === c.statusCode && s.active));
 
-  const workers = useMemo(() => (ref?.workers ?? []).filter((w) => w.estateId === estateId), [ref, estateId]);
+  const workers = useMemo(() => (ref?.workers ?? []).filter((w) => w.estateId === estateId || w.allEstates), [ref, estateId]);
   const fields = useMemo(() => (ref?.fields ?? []).filter((f) => f.estateId === estateId), [ref, estateId]);
   const jobs = ref?.jobTypes ?? [];
   const byWorker = useMemo(() => {
