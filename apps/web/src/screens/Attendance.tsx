@@ -1,11 +1,11 @@
-import { uuidv7 } from "@cemms/domain";
+import { addDays, uuidv7 } from "@cemms/domain";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { useApp } from "../app-context";
-import { Button, Card, Field, Input, Notice, Select, StatusBadge } from "../components/ui";
+import { Button, Card, Input, Notice, Select, StatusBadge } from "../components/ui";
 import { ApiError, api } from "../lib/api";
 import { db, getMeta, type LocalRecord, setMeta } from "../lib/db";
-import { useLive } from "../lib/hooks";
+import { todayIn, useLive } from "../lib/hooks";
 import { queueChange } from "../lib/outbox";
 
 interface ServerRecord {
@@ -18,15 +18,38 @@ interface ServerRecord {
   remarks: string | null;
   version: number;
 }
+interface StatusDef {
+  code: string;
+  label: string;
+  active: boolean;
+  requiresAssignment: boolean;
+}
 interface SheetResponse {
   sheet: { id: string | null; state: "DRAFT" | "SUBMITTED" | "APPROVED"; version: number; returnedReason?: string | null };
   records: ServerRecord[];
   prefill: { fromDate: string | null; assignments: { workerId: string; fieldId: string; jobTypeId: string; dayFraction: "FULL" | "HALF" | null }[] };
-  statuses: { code: string; label: string; active: boolean; requiresAssignment: boolean }[];
+  statuses: StatusDef[];
   approvalRequired: boolean;
   openConflicts: number;
 }
 type Prefill = SheetResponse["prefill"];
+type Draft = { dayFraction: "FULL" | "HALF"; fieldId: string | null; jobTypeId: string | null };
+
+/** The status buttons of the register, in the order of the prototype: P, half, A, L, Off, Hol. */
+const CHIPS = [
+  { id: "P", short: "P", long: "Present, full day", statusCode: "PRESENT", dayFraction: "FULL" as const },
+  { id: "H", short: "½", long: "Half day", statusCode: "PRESENT", dayFraction: "HALF" as const },
+  { id: "A", short: "A", long: "Absent", statusCode: "ABSENT", dayFraction: null },
+  { id: "L", short: "L", long: "Leave", statusCode: "LEAVE", dayFraction: null },
+  { id: "O", short: "Off", long: "Off day", statusCode: "OFF_DAY", dayFraction: null },
+  { id: "F", short: "Hol", long: "Holiday", statusCode: "HOLIDAY", dayFraction: null },
+];
+const DEFAULT_STATUSES: StatusDef[] = [
+  { code: "PRESENT", label: "Present", active: true, requiresAssignment: true },
+  { code: "ABSENT", label: "Absent", active: true, requiresAssignment: false },
+];
+
+const weekday = (d: string) => new Date(`${d}T00:00:00Z`).toLocaleDateString("en-GB", { weekday: "short", timeZone: "UTC" });
 
 export function Attendance() {
   const app = useApp();
@@ -36,7 +59,11 @@ export function Attendance() {
   const [message, setMessage] = useState<{ tone: "ok" | "bad" | "warn"; text: string } | null>(null);
   const [returnReason, setReturnReason] = useState("");
   /** Present marks waiting for a field and a job; nothing is queued until they are complete. */
-  const [drafts, setDrafts] = useState<Record<string, { dayFraction: "FULL" | "HALF"; fieldId: string | null; jobTypeId: string | null }>>({});
+  const [drafts, setDrafts] = useState<Record<string, Draft>>({});
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkField, setBulkField] = useState("");
+  const [bulkJob, setBulkJob] = useState("");
+  const [bulkStatus, setBulkStatus] = useState("P");
   const tenantId = session.user.tenantId;
 
   const sheet = useQuery({
@@ -46,7 +73,7 @@ export function Attendance() {
     refetchInterval: 60_000,
   });
 
-  // Keep server records on the phone so the roll call still shows them offline.
+  // Keep server records on the phone so the register still shows them offline.
   useEffect(() => {
     const data = sheet.data;
     if (!data) return;
@@ -72,6 +99,7 @@ export function Attendance() {
       }
       await setMeta(`prefill:${estateId}:${date}`, data.prefill);
       await setMeta(`sheet:${estateId}:${date}`, data.sheet.state);
+      await setMeta(`statuses:${estateId}`, data.statuses);
     });
   }, [sheet.data, tenantId, estateId, date]);
 
@@ -82,7 +110,10 @@ export function Attendance() {
   );
   const prefill = useLive(() => getMeta<Prefill>(`prefill:${estateId}:${date}`), [estateId, date], undefined);
   const cachedState = useLive(() => getMeta<SheetResponse["sheet"]["state"]>(`sheet:${estateId}:${date}`), [estateId, date], undefined);
+  const cachedStatuses = useLive(() => getMeta<StatusDef[]>(`statuses:${estateId}`), [estateId], undefined);
   const sheetState = sheet.data?.sheet.state ?? cachedState ?? "DRAFT";
+  const statuses = sheet.data?.statuses ?? cachedStatuses ?? DEFAULT_STATUSES;
+  const chips = CHIPS.filter((c) => c.statusCode === "PRESENT" || statuses.some((s) => s.code === c.statusCode && s.active));
 
   const workers = useMemo(() => (ref?.workers ?? []).filter((w) => w.estateId === estateId), [ref, estateId]);
   const fields = useMemo(() => (ref?.fields ?? []).filter((f) => f.estateId === estateId), [ref, estateId]);
@@ -96,9 +127,31 @@ export function Attendance() {
   const locked = sheetState !== "DRAFT";
   const canCapture = app.can("attendance.capture") && !locked;
   const shown = workers.filter((w) => !search || `${w.name} ${w.employeeCode}`.toLowerCase().includes(search.toLowerCase()));
-  const marked = workers.filter((w) => byWorker.has(w.id)).length;
 
-  async function mark(workerId: string, change: { statusCode: string; dayFraction?: "FULL" | "HALF" | null; fieldId?: string | null; jobTypeId?: string | null }) {
+  /** What the register shows for a worker: the saved record, or a present mark still missing its field or job. */
+  const viewOf = (workerId: string) => {
+    const r = byWorker.get(workerId);
+    const draft = drafts[workerId];
+    const d = { ...((r?.data ?? {}) as Partial<ServerRecord>), ...(draft ? { statusCode: "PRESENT", ...draft } : {}) };
+    return { r, draft, d };
+  };
+  const counts = (() => {
+    let P = 0;
+    let H = 0;
+    let A = 0;
+    let O = 0;
+    let none = 0;
+    for (const w of workers) {
+      const { r, draft, d } = viewOf(w.id);
+      if (!r || draft) none++;
+      else if (d.statusCode === "PRESENT") d.dayFraction === "HALF" ? H++ : P++;
+      else if (d.statusCode === "ABSENT" || d.statusCode === "LEAVE") A++;
+      else O++;
+    }
+    return { P, H, A, O, none };
+  })();
+
+  async function mark(workerId: string, change: { statusCode: string; dayFraction?: "FULL" | "HALF" | null; fieldId?: string | null; jobTypeId?: string | null; remarks?: string | null }) {
     const current = byWorker.get(workerId);
     const prev = { ...((current?.data ?? {}) as Partial<ServerRecord>), ...(drafts[workerId] ? { statusCode: "PRESENT", ...drafts[workerId] } : {}) };
     const a = assignment(workerId);
@@ -110,17 +163,19 @@ export function Attendance() {
       dayFraction: present ? (change.dayFraction ?? prev.dayFraction ?? a?.dayFraction ?? "FULL") : null,
       fieldId: present ? (change.fieldId ?? prev.fieldId ?? a?.fieldId ?? null) : null,
       jobTypeId: present ? (change.jobTypeId ?? prev.jobTypeId ?? a?.jobTypeId ?? null) : null,
-      remarks: prev.remarks ?? null,
+      remarks: change.remarks === undefined ? (prev.remarks ?? null) : change.remarks,
     };
     if (present && (!payload.fieldId || !payload.jobTypeId)) {
-      setDrafts({ ...drafts, [workerId]: { dayFraction: payload.dayFraction ?? "FULL", fieldId: payload.fieldId, jobTypeId: payload.jobTypeId } });
+      setDrafts((d) => ({ ...d, [workerId]: { dayFraction: payload.dayFraction ?? "FULL", fieldId: payload.fieldId, jobTypeId: payload.jobTypeId } }));
       return;
     }
-    if (drafts[workerId]) {
-      const { [workerId]: _, ...rest } = drafts;
-      setDrafts(rest);
-    }
+    setDrafts((d) => {
+      if (!d[workerId]) return d;
+      const { [workerId]: _, ...rest } = d;
+      return rest;
+    });
     const worker = workers.find((w) => w.id === workerId);
+    const chip = CHIPS.find((c) => c.statusCode === payload.statusCode && (c.dayFraction ?? null) === (payload.dayFraction ?? null));
     await queueChange({
       tenantId,
       userId: session.user.id,
@@ -131,24 +186,58 @@ export function Attendance() {
       businessDate: date,
       entityId: current?.entityId,
       payload,
-      label: `Attendance: ${worker?.name ?? "worker"} ${payload.statusCode === "PRESENT" ? (payload.dayFraction === "HALF" ? "half day" : "full day") : "absent"}`,
+      label: `Attendance: ${worker?.name ?? "worker"} ${chip?.long.toLowerCase() ?? payload.statusCode.toLowerCase()}`,
     });
     void app.sync();
   }
 
-  async function markAllFromPrevious() {
-    let n = 0;
+  async function markRest() {
+    let done = 0;
+    let waiting = 0;
     for (const w of workers) {
+      if (byWorker.has(w.id) && !drafts[w.id]) continue;
       const a = assignment(w.id);
-      if (byWorker.has(w.id) || !a) continue;
-      await mark(w.id, { statusCode: "PRESENT", dayFraction: a.dayFraction ?? "FULL", fieldId: a.fieldId, jobTypeId: a.jobTypeId });
-      n++;
+      const fieldId = a?.fieldId ?? (bulkField || null);
+      const jobTypeId = a?.jobTypeId ?? (bulkJob || null);
+      await mark(w.id, { statusCode: "PRESENT", dayFraction: a?.dayFraction ?? "FULL", fieldId, jobTypeId });
+      if (fieldId && jobTypeId) done++;
+      else waiting++;
     }
-    setMessage({ tone: "ok", text: n ? `${n} workers marked present with the previous day's field and job. Change anyone who is different.` : "Nobody left to fill from the previous day." });
+    setMessage({
+      tone: waiting ? "warn" : "ok",
+      text:
+        done || waiting
+          ? `${done} workers marked present${prefill?.fromDate ? ` with the field and job from ${prefill.fromDate}` : ""}.${waiting ? ` ${waiting} still need a field and a job (choose them in their row).` : " Change anyone who is different."}`
+          : "Nobody left to mark.",
+    });
+  }
+
+  async function bulkAssign() {
+    if (!bulkField || !bulkJob) return;
+    let skipped = 0;
+    for (const id of selected) {
+      const { r, d } = viewOf(id);
+      if (r && d.statusCode !== "PRESENT") {
+        skipped++;
+        continue;
+      }
+      await mark(id, { statusCode: "PRESENT", fieldId: bulkField, jobTypeId: bulkJob });
+    }
+    setMessage({ tone: skipped ? "warn" : "ok", text: `Field and job set for ${selected.size - skipped} workers.${skipped ? ` ${skipped} who are not working that day were left as they are.` : ""}` });
+    setSelected(new Set());
+  }
+
+  async function bulkSetStatus() {
+    const chip = chips.find((c) => c.id === bulkStatus);
+    if (!chip) return;
+    for (const id of selected) await mark(id, { statusCode: chip.statusCode, dayFraction: chip.dayFraction, fieldId: bulkField || undefined, jobTypeId: bulkJob || undefined });
+    setMessage({ tone: "ok", text: `${selected.size} workers set to ${chip.long.toLowerCase()}.` });
+    setSelected(new Set());
   }
 
   async function submitDay() {
-    if (!window.confirm(`Submit attendance for ${date}? After this, changes need a manager.`)) return;
+    const extra = counts.none ? ` ${counts.none} workers are not marked and will be left out.` : "";
+    if (!window.confirm(`Submit attendance for ${date}? After this, changes need a manager.${extra}`)) return;
     await queueChange({
       tenantId,
       userId: session.user.id,
@@ -180,34 +269,68 @@ export function Attendance() {
 
   if (!ref) return <Notice>Connect to the internet once to download the worker and field lists.</Notice>;
 
+  const today = todayIn(ref.estates.find((e) => e.id === estateId)?.timeZone ?? "Asia/Kolkata");
+  const allSelected = shown.length > 0 && shown.every((w) => selected.has(w.id));
+  const fieldCounts = new Map<string, { name: string; workers: number }>();
+  for (const w of workers) {
+    const { r, d } = viewOf(w.id);
+    if (r && d.statusCode === "PRESENT" && d.fieldId) {
+      const f = fields.find((x) => x.id === d.fieldId);
+      const cur = fieldCounts.get(d.fieldId) ?? { name: f?.name ?? "Field", workers: 0 };
+      cur.workers++;
+      fieldCounts.set(d.fieldId, cur);
+    }
+  }
+  const gridCols = "md:grid-cols-[2rem_minmax(9rem,1.2fr)_auto_minmax(8rem,1fr)_minmax(7rem,0.8fr)_minmax(7rem,1fr)]";
+
   return (
     <div className="flex flex-col gap-4">
-      <Card
-        title={`Attendance · ${date}`}
-        actions={
-          <span className="text-sm text-muted">
-            {marked} of {workers.length} marked · {sheetState === "DRAFT" ? "Open" : sheetState === "SUBMITTED" ? "Submitted" : "Approved"}
-          </span>
-        }
-      >
-        {!app.online && <Notice tone="warn">No signal. Marks are saved on this phone and upload later.</Notice>}
-        {sheet.data?.sheet.returnedReason && sheetState === "DRAFT" && <Notice tone="warn">Sent back: {sheet.data.sheet.returnedReason}</Notice>}
-        {(sheet.data?.openConflicts ?? 0) > 0 && <Notice tone="warn">{sheet.data?.openConflicts} worker(s) were marked on two phones. A manager must choose which entry to keep.</Notice>}
-        {message && <Notice tone={message.tone}>{message.text}</Notice>}
-        <div className="mt-3 flex flex-wrap gap-2">
+      <div>
+        <h1 className="text-2xl font-bold">Attendance</h1>
+        <p className="mt-1 max-w-3xl text-sm text-muted">
+          One register per estate per day. Each worker gets a status, a field from the field list and a job. It starts with the previous day's fields and jobs, so only changes need entering.
+        </p>
+      </div>
+
+      <Card>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="secondary" aria-label="Previous day" onClick={() => app.setDate(addDays(date, -1))}>
+            ‹
+          </Button>
+          <span className="font-semibold">{date}</span>
+          <Button variant="secondary" aria-label="Next day" disabled={date >= today} onClick={() => app.setDate(addDays(date, 1))}>
+            ›
+          </Button>
+          <span className="text-muted">{weekday(date)}</span>
+        </div>
+      </Card>
+
+      <Card>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded-full bg-bg px-2 py-1 text-xs font-semibold">{sheetState === "DRAFT" ? "Draft" : sheetState === "SUBMITTED" ? "Submitted" : "Approved"}</span>
+          <small className="text-muted">
+            {counts.P} present · {counts.H} half day · {counts.A} absent or leave{counts.O ? ` · ${counts.O} off or holiday` : ""}
+            {counts.none ? (
+              <>
+                {" · "}
+                <b className="text-ink">{counts.none} not marked</b>
+              </>
+            ) : null}
+          </small>
+          <span className="flex-1" />
           {canCapture && (
-            <Button variant="secondary" onClick={markAllFromPrevious} disabled={!prefill?.assignments.length}>
-              Fill from {prefill?.fromDate ?? "previous day"}
+            <Button variant="secondary" onClick={markRest} disabled={counts.none === 0}>
+              Mark the rest present
             </Button>
           )}
           {canCapture && app.can("attendance.submit") && (
-            <Button onClick={submitDay} disabled={marked === 0}>
-              Submit day
+            <Button onClick={submitDay} disabled={counts.P + counts.H + counts.A + counts.O === 0}>
+              {counts.none ? `Submit (${counts.none} not marked)` : "Submit for approval"}
             </Button>
           )}
           {app.can("attendance.approve") && app.online && sheetState === "SUBMITTED" && (
             <>
-              <Button onClick={() => managerAction("approve")}>Approve</Button>
+              <Button onClick={() => managerAction("approve")}>Approve attendance</Button>
               <Input aria-label="Reason for sending back" placeholder="Reason for sending back" value={returnReason} onChange={(e) => setReturnReason(e.target.value)} className="max-w-xs" />
               <Button variant="secondary" disabled={returnReason.trim().length < 3} onClick={() => managerAction("return")}>
                 Send back
@@ -215,50 +338,155 @@ export function Attendance() {
             </>
           )}
         </div>
-        <div className="mt-3">
-          <Field label="Find a worker" htmlFor="search">
-            <Input id="search" type="search" placeholder="Name or code" value={search} onChange={(e) => setSearch(e.target.value)} />
-          </Field>
+        {!app.online && (
+          <div className="mt-3">
+            <Notice tone="warn">No signal. Marks are saved on this phone and upload later.</Notice>
+          </div>
+        )}
+        {sheet.data?.sheet.returnedReason && sheetState === "DRAFT" && (
+          <div className="mt-3">
+            <Notice tone="warn">Sent back: {sheet.data.sheet.returnedReason}</Notice>
+          </div>
+        )}
+        {(sheet.data?.openConflicts ?? 0) > 0 && (
+          <div className="mt-3">
+            <Notice tone="warn">{sheet.data?.openConflicts} worker(s) were marked on two phones. A manager must choose which entry to keep (Manage → Conflicts).</Notice>
+          </div>
+        )}
+        {message && (
+          <div className="mt-3">
+            <Notice tone={message.tone}>{message.text}</Notice>
+          </div>
+        )}
+        {locked && (
+          <p className="mt-3 text-sm text-muted">
+            This day is {sheetState === "SUBMITTED" ? "submitted" : "approved"}. Changes now go through a manager's correction with a reason; the old entry is kept in the history.
+          </p>
+        )}
+
+        {canCapture && (
+          <fieldset className="mt-4 flex flex-wrap items-center gap-2 rounded-xl bg-bg p-3">
+            <legend className="sr-only">Change selected workers together</legend>
+            <b className="text-sm">{selected.size ? `${selected.size} selected` : "Select workers to change them together"}</b>
+            <span className="flex items-center gap-1 text-sm text-muted">
+              Field
+              <Select aria-label="Field for the selected workers" value={bulkField} onChange={(e) => setBulkField(e.target.value)} className="min-w-36" disabled={!selected.size}>
+                <option value="">Choose…</option>
+                {fields.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name}
+                  </option>
+                ))}
+              </Select>
+            </span>
+            <span className="flex items-center gap-1 text-sm text-muted">
+              Job
+              <Select aria-label="Job for the selected workers" value={bulkJob} onChange={(e) => setBulkJob(e.target.value)} className="min-w-32" disabled={!selected.size}>
+                <option value="">Choose…</option>
+                {jobs.map((j) => (
+                  <option key={j.id} value={j.id}>
+                    {j.name}
+                  </option>
+                ))}
+              </Select>
+            </span>
+            <Button size="sm" disabled={!selected.size || !bulkField || !bulkJob} onClick={bulkAssign}>
+              Assign field and job
+            </Button>
+            <span className="mx-1 hidden h-6 w-px bg-line md:block" aria-hidden="true" />
+            <span className="flex items-center gap-1 text-sm text-muted">
+              Status
+              <Select aria-label="Status for the selected workers" value={bulkStatus} onChange={(e) => setBulkStatus(e.target.value)} className="min-w-32" disabled={!selected.size}>
+                {chips.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.long}
+                  </option>
+                ))}
+              </Select>
+            </span>
+            <Button size="sm" variant="secondary" disabled={!selected.size} onClick={bulkSetStatus}>
+              Set status
+            </Button>
+            {selected.size > 0 && (
+              <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
+                Clear selection
+              </Button>
+            )}
+          </fieldset>
+        )}
+
+        <div className="mt-3 max-w-sm">
+          <label className="text-sm font-semibold" htmlFor="search">
+            Find a worker
+          </label>
+          <Input id="search" type="search" placeholder="Name or code" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
       </Card>
 
-      <ul className="flex flex-col gap-2" aria-label="Workers">
-        {shown.map((w) => {
-          const r = byWorker.get(w.id);
-          const draft = drafts[w.id];
-          const d = { ...((r?.data ?? {}) as Partial<ServerRecord>), ...(draft ? { statusCode: "PRESENT", ...draft } : {}) };
-          const present = d.statusCode === "PRESENT";
-          const a = assignment(w.id);
-          return (
-            <li key={w.id} className="rounded-2xl border border-line bg-surface p-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <p className="font-semibold">{w.name}</p>
-                  <p className="text-sm text-muted">{w.employeeCode}</p>
+      <div className="rounded-2xl border border-line bg-surface">
+        <div className={`hidden items-center gap-2 border-b border-line px-3 py-2 text-sm font-semibold text-muted md:grid ${gridCols}`}>
+          <input
+            type="checkbox"
+            aria-label="Select all workers"
+            checked={allSelected}
+            disabled={!canCapture}
+            onChange={(e) => setSelected(e.target.checked ? new Set(shown.map((w) => w.id)) : new Set())}
+          />
+          <span>Worker</span>
+          <span>Status</span>
+          <span>Field</span>
+          <span>Job</span>
+          <span>Remark</span>
+        </div>
+        <ul aria-label="Workers" className="divide-y divide-line">
+          {shown.map((w) => {
+            const { r, draft, d } = viewOf(w.id);
+            const present = d.statusCode === "PRESENT";
+            const showAssign = !r || present;
+            const a = assignment(w.id);
+            return (
+              <li key={w.id} className={`grid gap-2 px-3 py-3 md:items-center ${gridCols} ${selected.has(w.id) ? "bg-bg" : ""}`}>
+                <input
+                  type="checkbox"
+                  aria-label={`Select ${w.name}`}
+                  disabled={!canCapture}
+                  checked={selected.has(w.id)}
+                  onChange={(e) => {
+                    const next = new Set(selected);
+                    if (e.target.checked) next.add(w.id);
+                    else next.delete(w.id);
+                    setSelected(next);
+                  }}
+                />
+                <div className="flex items-center justify-between gap-2 md:block">
+                  <p className="font-semibold">
+                    <span className="font-mono text-sm text-muted">{w.employeeCode}</span> {w.name}
+                  </p>
+                  <div className="text-sm">
+                    {draft ? <span className="font-semibold text-warn">Choose field and job</span> : r ? <StatusBadge status={r.status} compact /> : <span className="text-muted">Not marked</span>}
+                  </div>
                 </div>
-                {draft ? (
-                  <span className="text-sm font-semibold text-warn">Choose field and job</span>
-                ) : r ? (
-                  <StatusBadge status={r.status} compact />
-                ) : (
-                  <span className="text-sm text-muted">Not marked</span>
-                )}
-              </div>
-              {r?.message && r.status !== "accepted" && <p className="mt-1 text-sm text-bad">{r.message}</p>}
-              <fieldset className="mt-2 grid grid-cols-3 gap-2">
-                <legend className="sr-only">Attendance for {w.name}</legend>
-                {[
-                  { label: "Full day", on: present && d.dayFraction !== "HALF", act: () => mark(w.id, { statusCode: "PRESENT", dayFraction: "FULL" }) },
-                  { label: "Half day", on: present && d.dayFraction === "HALF", act: () => mark(w.id, { statusCode: "PRESENT", dayFraction: "HALF" }) },
-                  { label: "Absent", on: d.statusCode === "ABSENT", act: () => mark(w.id, { statusCode: "ABSENT" }) },
-                ].map((b) => (
-                  <Button key={b.label} variant={b.on ? "primary" : "secondary"} aria-pressed={b.on} disabled={!canCapture} onClick={b.act}>
-                    {b.label}
-                  </Button>
-                ))}
-              </fieldset>
-              {present && (
-                <div className="mt-2 grid grid-cols-2 gap-2">
+                <fieldset className="flex flex-wrap gap-1">
+                  <legend className="sr-only">Attendance for {w.name}</legend>
+                  {chips.map((c) => {
+                    const on = d.statusCode === c.statusCode && (c.dayFraction === null || (c.dayFraction === "HALF" ? d.dayFraction === "HALF" : d.dayFraction !== "HALF"));
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        title={c.long}
+                        aria-label={c.long}
+                        aria-pressed={on}
+                        disabled={!canCapture}
+                        onClick={() => mark(w.id, { statusCode: c.statusCode, dayFraction: c.dayFraction })}
+                        className={`min-h-11 min-w-11 rounded-lg border px-2 text-sm font-bold transition-colors disabled:opacity-50 md:min-h-9 md:min-w-9 ${on ? "border-roast bg-roast text-roast-ink" : "border-line bg-bg text-ink hover:bg-surface"}`}
+                      >
+                        {c.short}
+                      </button>
+                    );
+                  })}
+                </fieldset>
+                {showAssign ? (
                   <Select
                     aria-label={`Field for ${w.name}`}
                     value={d.fieldId ?? a?.fieldId ?? ""}
@@ -272,6 +500,10 @@ export function Attendance() {
                       </option>
                     ))}
                   </Select>
+                ) : (
+                  <span className="hidden text-muted md:block">–</span>
+                )}
+                {showAssign ? (
                   <Select
                     aria-label={`Job for ${w.name}`}
                     value={d.jobTypeId ?? a?.jobTypeId ?? ""}
@@ -285,13 +517,57 @@ export function Attendance() {
                       </option>
                     ))}
                   </Select>
-                </div>
-              )}
-            </li>
-          );
-        })}
-        {shown.length === 0 && <Notice>No workers match. Workers come from the master list (Manage → Import).</Notice>}
-      </ul>
+                ) : (
+                  <span className="hidden text-muted md:block">–</span>
+                )}
+                <Input
+                  key={`${w.id}-${r?.nextBase ?? 0}`}
+                  aria-label={`Remark for ${w.name}`}
+                  placeholder="Remark"
+                  maxLength={500}
+                  defaultValue={(d.remarks as string | null) ?? ""}
+                  disabled={!canCapture || !r}
+                  onBlur={(e) => {
+                    const value = e.target.value.trim();
+                    if (r && value !== ((d.remarks as string | null) ?? "")) void mark(w.id, { statusCode: d.statusCode ?? "PRESENT", dayFraction: d.dayFraction ?? null, remarks: value || null });
+                  }}
+                />
+                {r?.message && r.status !== "accepted" && <p className="text-sm text-bad md:col-span-6">{r.message}</p>}
+              </li>
+            );
+          })}
+        </ul>
+        {shown.length === 0 && (
+          <div className="p-3">
+            <Notice>No workers match. Workers come from the master list (Manage → Import).</Notice>
+          </div>
+        )}
+      </div>
+
+      <Card title="Workers by field">
+        {fieldCounts.size === 0 ? (
+          <p className="text-muted">No one is marked present yet.</p>
+        ) : (
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="text-muted">
+                <th className="py-1">Field</th>
+                <th className="text-right">Workers</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[...fieldCounts.values()]
+                .sort((x, y) => y.workers - x.workers)
+                .map((f) => (
+                  <tr key={f.name} className="border-t border-line">
+                    <td className="py-1">{f.name}</td>
+                    <td className="text-right font-semibold">{f.workers}</td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        )}
+      </Card>
     </div>
   );
 }

@@ -331,6 +331,53 @@ function Conflicts() {
   );
 }
 
+const TYPE_LABEL: Record<string, string> = { PRESENT: "Present (full or half day)", ABSENT: "Absent", LEAVE: "Leave", OFF_DAY: "Off day", HOLIDAY: "Holiday" };
+
+/** Which attendance types the register offers. Leave, Off day and Holiday wait for the owner's answer (OC-8). */
+function AttendanceTypes() {
+  const app = useApp();
+  const qc = useQueryClient();
+  const settings = useQuery({ queryKey: ["settings"], queryFn: () => api<{ key: string; value: unknown; gates: { id: string; status: string }[] }[]>("/admin/settings"), enabled: app.online });
+  const entry = settings.data?.find((x) => x.key === "attendance.statuses.enabled");
+  const enabled = (entry?.value as string[] | undefined) ?? ["PRESENT", "ABSENT"];
+  const [note, setNote] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
+  const toggle = async (code: string, on: boolean) => {
+    const next = Object.keys(TYPE_LABEL).filter((c) => (c === code ? on : enabled.includes(c)));
+    try {
+      await api("/admin/settings/attendance.statuses.enabled", { method: "PUT", body: { value: next } });
+      setNote({ tone: "ok", text: "Saved. The register now offers these types." });
+      await qc.invalidateQueries({ queryKey: ["settings"] });
+      await qc.invalidateQueries({ queryKey: ["sheet"] });
+    } catch (e) {
+      setNote({ tone: "bad", text: msg(e) });
+    }
+  };
+  return (
+    <Card title="Attendance types">
+      <p className="mb-2 text-sm text-muted">
+        The owner has not yet said which attendance types the estate uses (question OC-8). Present and Absent are on. Leave, Off day and Holiday can be switched on to try them here; the live site
+        refuses to switch them on until the owner confirms.
+      </p>
+      <ul>
+        {Object.entries(TYPE_LABEL).map(([code, label]) => (
+          <li key={code}>
+            <label className="flex min-h-11 items-center gap-2">
+              <input
+                type="checkbox"
+                checked={enabled.includes(code)}
+                disabled={code === "PRESENT" || code === "ABSENT" || !app.can("settings.manage", null)}
+                onChange={(e) => toggle(code, e.target.checked)}
+              />{" "}
+              {label}
+            </label>
+          </li>
+        ))}
+      </ul>
+      {note && <Notice tone={note.tone}>{note.text}</Notice>}
+    </Card>
+  );
+}
+
 function Setup() {
   const app = useApp();
   const qc = useQueryClient();
@@ -343,6 +390,7 @@ function Setup() {
   const [note, setNote] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
   return (
     <>
+      <AttendanceTypes />
       <Card title="Daily log types">
         <p className="mb-2 text-sm text-muted">Which readings to take is still to be confirmed with the owner (question OC-100). Add only the readings the estate has agreed.</p>
         <ul className="mb-3 text-sm">
