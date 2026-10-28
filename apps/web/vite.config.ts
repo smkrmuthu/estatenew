@@ -36,6 +36,7 @@ export default defineConfig({
     }),
   ],
   server: { port: 5173, proxy: { "/api": "http://localhost:8787" } },
-  build: { sourcemap: true, target: "es2022" },
+  // No inlining: the CSP allows fonts only from this site, so small font files must stay separate files.
+  build: { sourcemap: true, target: "es2022", assetsInlineLimit: 0 },
   test: { environment: "node", include: ["test/**/*.test.ts"], setupFiles: ["fake-indexeddb/auto"] },
 });
