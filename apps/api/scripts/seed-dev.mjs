@@ -1,15 +1,23 @@
-// Seeds a local development tenant with synthetic data (no real workers or figures).
-// Usage: node apps/api/scripts/seed-dev.mjs [baseUrl]   (reads PLATFORM_BOOTSTRAP_TOKEN from apps/api/.dev.vars)
-import { readFileSync } from "node:fs";
+// Seeds a tenant with synthetic data (no real workers or figures).
+// Local:   node apps/api/scripts/seed-dev.mjs                     (token from apps/api/.dev.vars, known demo passwords)
+// Staging: node apps/api/scripts/seed-dev.mjs https://estate-staging.oneuptech.co apps/api/.secrets.staging.json
+//          (random passwords, written with the authenticator secret to apps/api/.secrets.staging-users.json, mode 600)
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 
 const base = process.argv[2] ?? "http://localhost:8787";
-const vars = Object.fromEntries(
-  readFileSync(new URL("../.dev.vars", import.meta.url), "utf8")
-    .split("\n")
-    .filter((l) => l && !l.startsWith("#"))
-    .map((l) => [l.slice(0, l.indexOf("=")), l.slice(l.indexOf("=") + 1)]),
-);
-const origin = "http://localhost:5173";
+const local = base.includes("localhost");
+const vars = process.argv[3]
+  ? JSON.parse(readFileSync(process.argv[3], "utf8"))
+  : Object.fromEntries(
+      readFileSync(new URL("../.dev.vars", import.meta.url), "utf8")
+        .split("\n")
+        .filter((l) => l && !l.startsWith("#"))
+        .map((l) => [l.slice(0, l.indexOf("=")), l.slice(l.indexOf("=") + 1)]),
+    );
+const origin = local ? "http://localhost:5173" : base;
+const usersFile = new URL("../.secrets.staging-users.json", import.meta.url);
+const randomPassword = () => Buffer.from(crypto.getRandomValues(new Uint8Array(18))).toString("base64url");
+const saved = !local && existsSync(usersFile) ? JSON.parse(readFileSync(usersFile, "utf8")) : {};
 const call = async (path, { body, token, headers = {} } = {}) => {
   const res = await fetch(`${base}/api/v1${path}`, {
     method: body ? "POST" : "GET",
@@ -46,7 +54,8 @@ async function totp(secret) {
 }
 
 const tenant = "demo";
-const ownerPassword = "demo-owner-password";
+const ownerPassword = local ? "demo-owner-password" : (saved.ownerPassword ?? randomPassword());
+const supervisorPassword = local ? "demo-supervisor-1" : (saved.supervisorPassword ?? randomPassword());
 const deviceId = "01a18000-0000-7000-8000-00000000d001";
 try {
   await call("/platform/tenants", {
@@ -92,8 +101,13 @@ if (!kinds.length) {
 const ref = await call("/reference", { token });
 const est1 = ref.estates.find((e) => e.code === "EST1");
 try {
-  await call("/admin/users", { token, body: { username: "sup1", displayName: "Demo Supervisor", password: "demo-supervisor-1", grants: [{ role: "FIELD_SUPERVISOR", estateId: est1.id }] } });
+  await call("/admin/users", { token, body: { username: "sup1", displayName: "Demo Supervisor", password: supervisorPassword, grants: [{ role: "FIELD_SUPERVISOR", estateId: est1.id }] } });
 } catch (e) {
   if (!String(e).includes("USERNAME_TAKEN")) throw e;
 }
-console.log(`Seeded tenant "${tenant}". Supervisor sign-in: demo / sup1 / demo-supervisor-1. Owner: demo / owner / ${ownerPassword} (authenticator secret ${secret ?? "already enrolled"}).`);
+if (local) {
+  console.log(`Seeded tenant "${tenant}". Supervisor sign-in: demo / sup1 / ${supervisorPassword}. Owner: demo / owner / ${ownerPassword} (authenticator secret ${secret ?? "already enrolled"}).`);
+} else {
+  writeFileSync(usersFile, JSON.stringify({ base, tenant, ownerPassword, ownerAuthenticatorSecret: secret ?? saved.ownerAuthenticatorSecret, supervisorPassword }, null, 2), { mode: 0o600 });
+  console.log(`Seeded tenant "${tenant}" on ${base}. Sign-ins and the owner's authenticator secret are in apps/api/.secrets.staging-users.json.`);
+}

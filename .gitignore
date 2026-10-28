@@ -23,3 +23,6 @@ coverage/
 .dev.vars
 .env
 .env.*
+
+# Locally kept environment secrets (move to a password manager)
+.secrets.*

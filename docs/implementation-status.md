@@ -1,6 +1,6 @@
 # Implementation Status
 
-Last updated: 28 October 2026.
+Last updated: 28 October 2026 (staging deployed).
 
 ## Starting point (Phase 0 inventory)
 
@@ -44,18 +44,22 @@ Not run: browser end-to-end suite (Playwright), load test, OWASP ZAP scan, stagi
 | Coffee and pepper weigh-in, server-side totals, idempotency, correction audit | Met in API; correction screen not built (API only) |
 | Configurable Daily log | Met; which readings is still open (OC-100) |
 | Daily summary separates synced and pending | Met |
-| Staging acceptance by owner, accessibility and small-screen review, restore/rollback drill, no critical/high findings, manual production gate | **Not met**: staging resources do not exist yet |
+| Staging acceptance by owner, accessibility and small-screen review, restore/rollback drill, no critical/high findings, manual production gate | **Not met**: staging is live at estate-staging.oneuptech.co with a synthetic tenant; owner acceptance, restore drill and scans still to do |
 
 ## Go-live (1 November 2026) readiness
 
 Not ready to promise. The code for the Phase 1A flows exists and is tested locally, but these must happen first:
 
-1. **Cloudflare resources** (needs your go-ahead): create `cemms-control-staging/production` D1, R2 buckets, queues, secrets and the two custom domains; confirm the Workers Paid plan (PBKDF2 at 600,000 iterations uses about 50 ms CPU per sign-in, over the Free plan limit).
+1. **Production resources** (needs your go-ahead): D1 `cemms-control-production`, R2, queues, secrets and `estate.oneuptech.co`. Staging is done. The Workers Paid plan is needed (each sign-in uses about 50 ms CPU).
 2. **Owner answers or explicit acceptance of interim behaviour** for the 25 open questions that block production (see `docs/owner-confirmations.md`, for example OC-7 approver, OC-8 attendance types, OC-17/18/19/87 weigh-in rules, OC-86 back-entry, OC-101 offline session, OC-103 duplicates).
 3. **Real master data** (OC-15): estates, fields with crops and varieties, job types, workers in the CSV templates.
 4. **Staging acceptance** on real phones (Android Chrome and iOS Safari), including airplane-mode capture, and a restore drill.
 
 If these cannot all finish by 31 October, the safe plan is: staging on 30–31 October, owner acceptance, production on the first day the gates are cleared; paper registers in the meantime, typed in later through the manager back-entry path.
+
+## Staging finding (28 October)
+
+Production Workers refuse PBKDF2 above 100,000 iterations per call (local workerd allowed it). Fixed with six chained rounds (ADR-0009, approved), and `crypto.ts` now enforces the limit locally so tests catch it.
 
 ## Known limitations
 
@@ -69,7 +73,7 @@ If these cannot all finish by 31 October, the safe plan is: staging on 30–31 O
 
 ## Next safe actions
 
-1. Review and commit this work (nothing has been committed yet).
-2. With your approval, create the staging resources and secrets, fill the D1 ids in `apps/api/wrangler.jsonc`, deploy to `estate-staging.oneuptech.co`.
+1. Add `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` as GitHub secrets (staging environment) so CI can deploy staging.
+2. Owner acceptance on staging with real phones; restore drill.
 3. Send the owner the blocking questions; collect the master lists.
 4. Add the manager correction screens, Playwright end-to-end tests and a PIN lock.

@@ -45,22 +45,47 @@ export function safeEqual(a: string, b: string): boolean {
   return diff === 0;
 }
 
-async function pbkdf2(password: string, salt: Uint8Array<ArrayBuffer>, iterations: number): Promise<Uint8Array> {
-  const key = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, ["deriveBits"]);
+/** Cloudflare's runtime refuses more than 100,000 PBKDF2 iterations in one call (local workerd does not). */
+export const PBKDF2_MAX_PER_CALL = 100_000;
+/** Six chained rounds give the 600,000-iteration cost of the baseline (ADR-0009). */
+export const PBKDF2_ROUNDS = PBKDF2_ITERATIONS / PBKDF2_MAX_PER_CALL;
+
+async function pbkdf2(secret: Uint8Array<ArrayBuffer>, salt: Uint8Array<ArrayBuffer>, iterations: number): Promise<Uint8Array<ArrayBuffer>> {
+  // Enforce the production limit here so local tests fail the same way production would.
+  if (iterations > PBKDF2_MAX_PER_CALL) throw new Error(`PBKDF2 iterations above ${PBKDF2_MAX_PER_CALL} per call are not supported`);
+  const key = await crypto.subtle.importKey("raw", secret, "PBKDF2", false, ["deriveBits"]);
   const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt, iterations }, key, 256);
   return new Uint8Array(bits);
 }
 
+/** Round i (from 1) uses the previous round's output as its key and salt || i as its salt. */
+async function chainedPbkdf2(password: string, salt: Uint8Array<ArrayBuffer>, rounds: number, perRound: number): Promise<Uint8Array> {
+  const pw = enc.encode(password);
+  let out = await pbkdf2(new Uint8Array(pw.buffer.slice(0, pw.byteLength) as ArrayBuffer), salt, perRound);
+  for (let i = 1; i < rounds; i++) {
+    const roundSalt = new Uint8Array(new ArrayBuffer(salt.byteLength + 1));
+    roundSalt.set(salt);
+    roundSalt[salt.byteLength] = i;
+    out = await pbkdf2(out, roundSalt, perRound);
+  }
+  return out;
+}
+
+/** Stored as `pbkdf2-sha256x<rounds>$<iterations per round>$<salt>$<hash>`. */
 export async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(16);
-  const hash = await pbkdf2(password, salt, PBKDF2_ITERATIONS);
-  return `pbkdf2-sha256$${PBKDF2_ITERATIONS}$${bytesToB64url(salt)}$${bytesToB64url(hash)}`;
+  const hash = await chainedPbkdf2(password, salt, PBKDF2_ROUNDS, PBKDF2_MAX_PER_CALL);
+  return `pbkdf2-sha256x${PBKDF2_ROUNDS}$${PBKDF2_MAX_PER_CALL}$${bytesToB64url(salt)}$${bytesToB64url(hash)}`;
 }
 
 export async function verifyPassword(password: string, stored: string): Promise<boolean> {
   const [scheme, iter, salt, hash] = stored.split("$");
-  if (scheme !== "pbkdf2-sha256" || !iter || !salt || !hash) return false;
-  const actual = await pbkdf2(password, b64urlToBytes(salt), Number(iter));
+  const m = /^pbkdf2-sha256x(\d{1,2})$/.exec(scheme ?? "");
+  const perRound = Number(iter);
+  if (!m || !salt || !hash || !Number.isSafeInteger(perRound) || perRound < 1 || perRound > PBKDF2_MAX_PER_CALL) return false;
+  const rounds = Number(m[1]);
+  if (rounds < 1 || rounds > 20) return false;
+  const actual = await chainedPbkdf2(password, b64urlToBytes(salt), rounds, perRound);
   return safeEqual(bytesToB64url(actual), hash);
 }
 

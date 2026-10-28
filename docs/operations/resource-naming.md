@@ -16,4 +16,10 @@ Only new `cemms-*` resources are used. The older `estate`, `estate-demo` Workers
 
 Secrets per environment: `JWT_SECRET` (48+ random bytes), `MFA_ENC_KEY` (base64 of 32 random bytes), `PLATFORM_BOOTSTRAP_TOKEN` (32+ chars; remove after the first tenant is created).
 
-Not yet created in the Cloudflare account (needs explicit go-ahead): the staging and production D1 databases, R2 buckets, queues, secrets, and the two custom domains. The `database_id` placeholders in `apps/api/wrangler.jsonc` must be filled after creating the D1 databases.
+## Created
+
+Staging, 28 October 2026 (Asia-Pacific): D1 `cemms-control-staging` (`575c5f48-1b31-4c4e-a4d8-b89f0975a665`), R2 `cemms-files-staging`, queues `cemms-jobs-staging` and `cemms-jobs-dlq-staging`, Workers `cemms-api-staging` and `cemms-web-staging`, custom domain `estate-staging.oneuptech.co`, secrets set at deploy. The generated secret values are kept only in `apps/api/.secrets.staging.json` (git-ignored, mode 600); move them to a password manager. A synthetic tenant `demo` exists on staging; its sign-ins are in `apps/api/.secrets.staging-users.json`.
+
+Production: not created. Needs its own go-ahead (D1 `cemms-control-production`, R2, queues, secrets, `estate.oneuptech.co`).
+
+Zone note: Cloudflare Web Analytics injects a beacon script that the app's CSP blocks (console error only). Turn off automatic injection for the zone, or leave it blocked.

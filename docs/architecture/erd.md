@@ -13,7 +13,7 @@ erDiagram
   devices ||--o{ sessions : "bound to"
   sessions ||--o{ refresh_tokens : "rotates (hash only)"
   tenants { text id PK; text code UK; text db_name UK "Durable Object name"; text status; text location_hint }
-  users { text id PK; text tenant_id FK; text username "unique per tenant"; text password_hash "PBKDF2-SHA256 600k"; int failed_attempts; text locked_until; text mfa_secret_enc "AES-GCM"; int mfa_last_step "TOTP replay guard" }
+  users { text id PK; text tenant_id FK; text username "unique per tenant"; text password_hash "PBKDF2-SHA256 6x100k"; int failed_attempts; text locked_until; text mfa_secret_enc "AES-GCM"; int mfa_last_step "TOTP replay guard" }
   user_grants { text user_id FK; text estate_key "'' = tenant-wide"; text role }
   sessions { text id PK; text device_id FK; int mfa_verified; text expires_at; text revoked_at }
   refresh_tokens { text token_hash PK; text session_id FK; text used_at "reuse = revoke session" }

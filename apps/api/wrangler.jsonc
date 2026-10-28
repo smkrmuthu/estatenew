@@ -40,7 +40,7 @@
         {
           "binding": "CONTROL_DB",
           "database_name": "cemms-control-staging",
-          "database_id": "REPLACE_AFTER_CREATING_cemms-control-staging",
+          "database_id": "575c5f48-1b31-4c4e-a4d8-b89f0975a665",
           "migrations_dir": "db/control"
         }
       ],

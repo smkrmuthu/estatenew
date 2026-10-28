@@ -22,7 +22,7 @@
 | New Workers should declare Durable Object classes in the `exports` field; `exports` and `migrations` are mutually exclusive and a Worker cannot go back to `migrations` once deployed with `exports` | Wrangler configuration docs | `cemms-api` uses `exports` from the start. |
 | Rate limiting binding: `ratelimits` with integer `namespace_id`, period 10 or 60 s, approximate and per location | Workers rate limiting docs | Used for abuse limits; strict login lockout is enforced in D1, not by this binding. |
 | `.sql` files are importable as strings by Wrangler | Changelog 2026-01-20 | Not relied on: tenant migrations are TypeScript string modules so Vitest and Wrangler load them the same way. |
-| WebCrypto PBKDF2-SHA256 with 600,000 iterations works in local workerd (about 50 ms CPU) | Local probe with Wrangler 4.154.0 | Needs the Workers Paid plan (Free plan CPU limit is too low). Must be re-checked on staging before go-live. |
+| Production Workers refuse PBKDF2 above 100,000 iterations per call; local workerd does not enforce it | Staging deploy, 28 October 2026 | Six chained rounds (ADR-0009). About 50 ms CPU per sign-in: Workers Paid plan. |
 
 ## Not claimed
 

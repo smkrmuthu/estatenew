@@ -12,3 +12,4 @@ Each decision records its source, approver and date. Business decisions come onl
 | [ADR-0006](0006-offline-sync.md) | Mutation outbox in IndexedDB, idempotent per-item sync results, conflicts never auto-resolved | Accepted | Architecture offline sync design | Project owner | 2026-10-27 |
 | [ADR-0007](0007-quantities.md) | Weights stored as integer grams; no float business arithmetic | Accepted | Implementation brief | Engineering | 2026-10-28 |
 | [ADR-0008](0008-configuration-gates.md) | Unconfirmed behaviour lives in tenant settings marked proposed; production refuses to activate them | Accepted | Implementation brief | Engineering | 2026-10-28 |
+| [ADR-0009](0009-chained-pbkdf2.md) | Six chained 100k PBKDF2 rounds (Workers caps one call at 100k) | Accepted | Staging deploy finding | Project owner | 2026-10-28 |
