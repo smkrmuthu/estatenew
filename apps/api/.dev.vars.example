@@ -1,0 +1,4 @@
+# Copy to .dev.vars for local development. Never commit real values.
+JWT_SECRET=dev-only-change-me-at-least-32-characters-long
+MFA_ENC_KEY=ZGV2LW9ubHktMzItYnl0ZS1hZXMta2V5LWZvci1tZmEh
+PLATFORM_BOOTSTRAP_TOKEN=dev-only-bootstrap-token-change-me

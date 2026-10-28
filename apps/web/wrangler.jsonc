@@ -1,0 +1,17 @@
+{
+  // cemms-web: serves the built PWA. /api/* on the same host is routed to cemms-api.
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "cemms-web-dev",
+  "compatibility_date": "2026-10-20",
+  "assets": { "directory": "./dist", "not_found_handling": "single-page-application" },
+  "env": {
+    "staging": {
+      "name": "cemms-web-staging",
+      "routes": [{ "pattern": "estate-staging.oneuptech.co", "custom_domain": true }]
+    },
+    "production": {
+      "name": "cemms-web",
+      "routes": [{ "pattern": "estate.oneuptech.co", "custom_domain": true }]
+    }
+  }
+}

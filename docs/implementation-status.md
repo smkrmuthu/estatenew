@@ -1,0 +1,75 @@
+# Implementation Status
+
+Last updated: 28 October 2026.
+
+## Starting point (Phase 0 inventory)
+
+- Repository: prototype (`prototype/index.html`), README, owner and architecture PDFs (now git-ignored like the .docx/.xlsx), `CLAUDE.md`. No application code before today.
+- Cloudflare account (read-only check on 27 October): existing `estate`, `estate-demo`, fleet Workers, D1 databases `estate-db`, `estate-demo-db` and others, two R2 buckets for another product, no Hyperdrive. None of these are used or changed. No `cemms-*` resources exist yet.
+- Toolchain: Node 24, npm 11, Wrangler 4.154. pnpm not installed, so npm workspaces are used.
+- Platform facts checked in current Cloudflare docs are recorded in `docs/decisions/0001-cloudflare-platform.md`.
+
+## Delivered (all in this repository, not deployed)
+
+| Area | What works | Tests |
+|---|---|---|
+| Domain package | Weights in integer grams (parse, tare modes, net), attendance statuses and sheet state machine, estate-scoped permissions for all 8 roles, MFA roles, settings with owner gates (production refuses unconfirmed values), Daily log readings, CSV parsing and master import specs, sync contract, UUIDv7, business dates | 45 unit tests |
+| Contracts | Zod schemas for every request and sync payload | 4 tests |
+| Control plane (D1) | Tenant registry, users, estate grants, devices, sessions, refresh tokens, platform audit; versioned SQL migration | Exercised by the API tests |
+| Tenant database | One SQLite Durable Object per tenant; runtime migrations with checksum and lock; tenant binding and mismatch refusal; operation dispatcher with input schemas; transactional audit, revisions and outbox; outbox delivery to Queues through alarms; nightly encrypted snapshot to R2 (cron) | `isolation.test.ts` |
+| Auth | Sign-in with lockout and rate limits, TOTP enrolment and verification for Owner/Manager/Platform Admin, 15-minute JWT in memory, rotating httpOnly refresh cookie with reuse detection, CSRF header, logout, password change, user creation and disabling | `auth.test.ts` (8 tests) |
+| Masters | Estates, fields (crops and varieties), varieties, job types, workers, Daily log kinds; CSV preview with row errors, all-or-nothing apply, idempotent re-import, formula-injection guard, no gender column | `admin.test.ts` |
+| Attendance | Per-worker records from phones (offline), Present/Absent with Full/Half day (other types inactive until OC-8), field and job required when present, prefill from previous day, submit, approve, send back with reason, corrections with reason and full history, duplicate and stale entries become conflicts that a manager resolves with a reason | `attendance.test.ts` (6 tests) |
+| Weigh-in | Coffee and pepper with the same capture; crop must be grown in the field; optional variety checked against crop and field; server recomputes net; cancel own entry with reason; manager correction with reason; several entries per worker kept and flagged | `muster-dailylog.test.ts` |
+| Daily log | Configurable kinds (no readings hard-coded), range and decimal checks, correction with reason | `muster-dailylog.test.ts` |
+| Sync | Per-item accepted/rejected/conflict results, stored acknowledgements for retries, payload hash check, mutation id reuse refused, device binding, clock-ahead and too-old refusal, batch limit 100, device waiting counts | `sync.test.ts` (4 tests) |
+| Daily summary | Server-accepted counts only, with devices' waiting counts and open conflicts shown separately | Covered in several suites |
+| Readiness | `GET /admin/readiness` lists open owner questions that block Phase 1A; first tenant can be seeded with the owner's recorded answers | `admin.test.ts` |
+| Web app (PWA) | Sign-in with MFA, estate and date picker, roll call (fill from previous day, submit, approve/send back), weigh-in with live net, Daily log, Sync screen (waiting/not accepted/conflict, retry, remove), Summary, Manage (CSV import, users, conflicts, Daily log kinds, readiness), installable with service worker app shell, IndexedDB outbox written atomically, auto-sync on open/focus/online/every minute, error screen | 3 outbox/sync tests; checked by hand in a phone-size browser, including an API outage and a reload while entries were waiting |
+| Tooling | Biome lint/format, module boundary check, register render check, OpenAPI 3.1 generated from the route registry and pinned in `docs/api/openapi.json`, CI workflow (checks on every PR; staging deploy on main; production only by manual approval) | `npm run check` |
+
+## Checks run on 28 October 2026
+
+`npm run check` passed: Biome (107 files), module boundaries, owner register render, TypeScript in all four packages, 83 tests (45 domain, 4 contracts, 31 API in workerd, 3 web), web build, Worker dry-run build. `npm audit --audit-level=high` passed; 4 low-severity advisories remain in the PWA build tooling (`deepmerge` via `workbox-build`), build time only.
+
+Not run: browser end-to-end suite (Playwright), load test, OWASP ZAP scan, staging restore drill. These need staging (see below).
+
+## Phase 1A exit criteria
+
+| Criterion | Status |
+|---|---|
+| Tenant/estate scope, Admin/Supervisor RBAC, MFA, isolation tests | Met in code and tests |
+| Masters with CSV import, preview, row errors, idempotent re-import, audit | Met. Single-record edit screens are API-only (no UI yet) |
+| Attendance submit/approval/correction and offline flow with clear states | Met in API; manager correction screen not built (API only) |
+| Coffee and pepper weigh-in, server-side totals, idempotency, correction audit | Met in API; correction screen not built (API only) |
+| Configurable Daily log | Met; which readings is still open (OC-100) |
+| Daily summary separates synced and pending | Met |
+| Staging acceptance by owner, accessibility and small-screen review, restore/rollback drill, no critical/high findings, manual production gate | **Not met**: staging resources do not exist yet |
+
+## Go-live (1 November 2026) readiness
+
+Not ready to promise. The code for the Phase 1A flows exists and is tested locally, but these must happen first:
+
+1. **Cloudflare resources** (needs your go-ahead): create `cemms-control-staging/production` D1, R2 buckets, queues, secrets and the two custom domains; confirm the Workers Paid plan (PBKDF2 at 600,000 iterations uses about 50 ms CPU per sign-in, over the Free plan limit).
+2. **Owner answers or explicit acceptance of interim behaviour** for the 25 open questions that block production (see `docs/owner-confirmations.md`, for example OC-7 approver, OC-8 attendance types, OC-17/18/19/87 weigh-in rules, OC-86 back-entry, OC-101 offline session, OC-103 duplicates).
+3. **Real master data** (OC-15): estates, fields with crops and varieties, job types, workers in the CSV templates.
+4. **Staging acceptance** on real phones (Android Chrome and iOS Safari), including airplane-mode capture, and a restore drill.
+
+If these cannot all finish by 31 October, the safe plan is: staging on 30–31 October, owner acceptance, production on the first day the gates are cleared; paper registers in the meantime, typed in later through the manager back-entry path.
+
+## Known limitations
+
+- No local PIN lock: after a reload without signal, the phone keeps accepting entries for the signed-in supervisor until the session ends (12 hours default).
+- Manager correction screens, monthly attendance view, exports and single-record master editing exist only as API endpoints or not at all.
+- English only (OC-64). No SMS/WhatsApp summaries (OC-94).
+- Nightly backups reuse the MFA encryption key; a separate key is planned.
+- Rate limiting binding is approximate per location; lockout in D1 is the strict control.
+- Queue consumer only logs events (no Phase 1A subscribers).
+- WAF rules are not yet configured on the zone.
+
+## Next safe actions
+
+1. Review and commit this work (nothing has been committed yet).
+2. With your approval, create the staging resources and secrets, fill the D1 ids in `apps/api/wrangler.jsonc`, deploy to `estate-staging.oneuptech.co`.
+3. Send the owner the blocking questions; collect the master lists.
+4. Add the manager correction screens, Playwright end-to-end tests and a PIN lock.

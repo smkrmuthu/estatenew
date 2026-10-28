@@ -1,0 +1,32 @@
+{
+  "name": "cemms",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "check": "npm run lint && npm run boundaries && npm run docs:check && npm run typecheck && npm run test && npm run build",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present",
+    "dev:api": "npm run dev -w @cemms/api",
+    "dev:web": "npm run dev -w @cemms/web",
+    "docs:register": "node scripts/render-register.mjs",
+    "docs:check": "node scripts/render-register.mjs --check",
+    "boundaries": "node scripts/check-boundaries.mjs",
+    "openapi": "node scripts/openapi.mjs",
+    "seed:dev": "node apps/api/scripts/seed-dev.mjs",
+    "migrate:local": "npm exec -w @cemms/api -- wrangler d1 migrations apply cemms-control-dev --local"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.6.3",
+    "typescript": "^6.0.3"
+  }
+}

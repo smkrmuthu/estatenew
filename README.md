@@ -11,7 +11,7 @@ The first tenant runs two estates, Glazebrooke and Byson Valley.
 | Architecture and technical design | Revised 27 October 2026 for Cloudflare and a phased go-live; some owner answers still open |
 | Owner process confirmation | Sent to the estate owner; answers coming in |
 | Clickable prototype | Ready for owner review (this repository) |
-| Application code | Starting 28 October 2026; Phase 1A (attendance, Daily log, weigh-in) goes live 1 November 2026 |
+| Application code | Phase 1A built and tested locally (not deployed). See `docs/implementation-status.md` |
 
 ## Prototype
 
@@ -36,3 +36,25 @@ TypeScript throughout, hosted only on Cloudflare: a Hono API on Workers; one SQL
 - **Phase 1A, live 1 November 2026:** sign-in and roles, estates, fields (Coffee, Pepper or both; pepper grows in the coffee fields), workers, CSV import, Attendance, Weigh-in (crop picked per entry), Daily log, offline sync.
 - **Phase 1B:** washing, processing (Routes A, B and C), packing, tracing and reports; Pepper light open drying for a set number of days.
 - **Phase 2:** coffee roasting and delivery, and pepper packing and delivery.
+
+## Development
+
+```bash
+npm install
+cp apps/api/.dev.vars.example apps/api/.dev.vars   # put random values in it
+npm run migrate:local
+npm run dev:api     # API on http://localhost:8787
+npm run dev:web     # app on http://localhost:5173
+npm run seed:dev    # synthetic demo tenant
+npm run check       # lint, boundaries, types, all tests, builds
+```
+
+| Path | What it is |
+|---|---|
+| `apps/api` | Hono API Worker, D1 control database, one SQLite Durable Object per tenant |
+| `apps/web` | React installable web app for the portal and the supervisor phone |
+| `packages/domain` | Business rules shared by both (weights, attendance, permissions, gates, sync) |
+| `packages/contracts` | Shared request schemas |
+| `docs/` | Status, decisions, owner question register, data model, security, operations, OpenAPI |
+
+Implementation brief: `CEMMS-IMPLEMENTATION-PROMPT.md`. Project rules: `CLAUDE.md`.

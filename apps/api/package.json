@@ -1,0 +1,25 @@
+{
+  "name": "@cemms/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "typecheck": "tsc -p tsconfig.json",
+    "types": "wrangler types --env-file .dev.vars.example",
+    "test": "vitest run",
+    "build": "wrangler deploy --dry-run --outdir dist"
+  },
+  "dependencies": {
+    "@cemms/contracts": "0.1.0",
+    "@cemms/domain": "0.1.0",
+    "drizzle-orm": "^0.45.4",
+    "hono": "^4.13.14",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "^1.4.9",
+    "vitest": "^5.0.5",
+    "wrangler": "^4.154.0"
+  }
+}

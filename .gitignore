@@ -8,3 +8,18 @@
 .DS_Store
 pages/
 proposal/
+
+# Source PDFs from the owner and architecture (keep out of the repo like the .docx/.xlsx)
+*.pdf
+
+# Build output, dependencies and local runtime state
+node_modules/
+dist/
+.wrangler/
+*.tsbuildinfo
+coverage/
+
+# Local secrets (examples live in .dev.vars.example)
+.dev.vars
+.env
+.env.*

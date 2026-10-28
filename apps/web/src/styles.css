@@ -1,0 +1,55 @@
+@import "tailwindcss";
+
+/* Warm coffee palette (from the prototype's visual language). Light and dark. */
+@theme {
+  --color-bg: #f6f1ea;
+  --color-surface: #fffaf3;
+  --color-line: #e4d8c8;
+  --color-ink: #2b1f17;
+  --color-muted: #6f5f52;
+  --color-roast: #3b2a1f;
+  --color-roast-ink: #fff8ef;
+  --color-caramel: #b8702f;
+  --color-ok: #2f6f4f;
+  --color-warn: #8a5a12;
+  --color-bad: #a33a2b;
+  --color-waiting: #7a5c12;
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #1c1612;
+    --color-surface: #261e18;
+    --color-line: #3d3128;
+    --color-ink: #f3ebe1;
+    --color-muted: #bba998;
+    --color-roast: #e6c9a8;
+    --color-roast-ink: #1c1612;
+    --color-caramel: #e0a066;
+    --color-ok: #7fc49f;
+    --color-warn: #e5b866;
+    --color-bad: #f08a7a;
+    --color-waiting: #e5c06a;
+  }
+}
+
+html,
+body {
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-tap-highlight-color: transparent;
+}
+
+:focus-visible {
+  outline: 3px solid var(--color-caramel);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}

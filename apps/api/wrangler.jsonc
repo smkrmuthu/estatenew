@@ -1,0 +1,84 @@
+{
+  // cemms-api: Hono API Worker. Top level = local development; env.staging and env.production
+  // have their own resources. Never bind the older estate / estate-demo resources here.
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "cemms-api-dev",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-20",
+  "upload_source_maps": true,
+  "observability": { "enabled": true },
+  "exports": {
+    "TenantDb": { "type": "durable-object", "storage": "sqlite" }
+  },
+  "durable_objects": { "bindings": [{ "name": "TENANT_DB", "class_name": "TenantDb" }] },
+  "d1_databases": [
+    {
+      "binding": "CONTROL_DB",
+      "database_name": "cemms-control-dev",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "db/control"
+    }
+  ],
+  "r2_buckets": [{ "binding": "FILES", "bucket_name": "cemms-files-dev" }],
+  "queues": {
+    "producers": [{ "binding": "JOBS", "queue": "cemms-jobs-dev" }],
+    "consumers": [{ "queue": "cemms-jobs-dev", "max_batch_size": 20, "max_retries": 5, "dead_letter_queue": "cemms-jobs-dlq-dev" }]
+  },
+  "ratelimits": [{ "name": "LOGIN_LIMIT", "namespace_id": "4101", "simple": { "limit": 20, "period": 60 } }, { "name": "API_LIMIT", "namespace_id": "4102", "simple": { "limit": 600, "period": 60 } }],
+  "triggers": { "crons": ["30 20 * * *"] },
+  "vars": {
+    "ENVIRONMENT": "development",
+    "APP_ORIGIN": "http://localhost:5173",
+    "LOCATION_HINT": "apac"
+  },
+  "env": {
+    "staging": {
+      "name": "cemms-api-staging",
+      "routes": [{ "pattern": "estate-staging.oneuptech.co/api/*", "zone_name": "oneuptech.co" }],
+      "durable_objects": { "bindings": [{ "name": "TENANT_DB", "class_name": "TenantDb" }] },
+      "d1_databases": [
+        {
+          "binding": "CONTROL_DB",
+          "database_name": "cemms-control-staging",
+          "database_id": "REPLACE_AFTER_CREATING_cemms-control-staging",
+          "migrations_dir": "db/control"
+        }
+      ],
+      "r2_buckets": [{ "binding": "FILES", "bucket_name": "cemms-files-staging" }],
+      "queues": {
+        "producers": [{ "binding": "JOBS", "queue": "cemms-jobs-staging" }],
+        "consumers": [{ "queue": "cemms-jobs-staging", "max_batch_size": 20, "max_retries": 5, "dead_letter_queue": "cemms-jobs-dlq-staging" }]
+      },
+      "ratelimits": [
+        { "name": "LOGIN_LIMIT", "namespace_id": "4201", "simple": { "limit": 20, "period": 60 } },
+        { "name": "API_LIMIT", "namespace_id": "4202", "simple": { "limit": 600, "period": 60 } }
+      ],
+      "triggers": { "crons": ["30 20 * * *"] },
+      "vars": { "ENVIRONMENT": "staging", "APP_ORIGIN": "https://estate-staging.oneuptech.co", "LOCATION_HINT": "apac" }
+    },
+    "production": {
+      "name": "cemms-api",
+      "routes": [{ "pattern": "estate.oneuptech.co/api/*", "zone_name": "oneuptech.co" }],
+      "durable_objects": { "bindings": [{ "name": "TENANT_DB", "class_name": "TenantDb" }] },
+      "d1_databases": [
+        {
+          "binding": "CONTROL_DB",
+          "database_name": "cemms-control-production",
+          "database_id": "REPLACE_AFTER_CREATING_cemms-control-production",
+          "migrations_dir": "db/control"
+        }
+      ],
+      "r2_buckets": [{ "binding": "FILES", "bucket_name": "cemms-files-production" }],
+      "queues": {
+        "producers": [{ "binding": "JOBS", "queue": "cemms-jobs-production" }],
+        "consumers": [{ "queue": "cemms-jobs-production", "max_batch_size": 20, "max_retries": 5, "dead_letter_queue": "cemms-jobs-dlq-production" }]
+      },
+      "ratelimits": [
+        { "name": "LOGIN_LIMIT", "namespace_id": "4301", "simple": { "limit": 20, "period": 60 } },
+        { "name": "API_LIMIT", "namespace_id": "4302", "simple": { "limit": 600, "period": 60 } }
+      ],
+      "triggers": { "crons": ["30 20 * * *"] },
+      "vars": { "ENVIRONMENT": "production", "APP_ORIGIN": "https://estate.oneuptech.co", "LOCATION_HINT": "apac" }
+    }
+  }
+}
