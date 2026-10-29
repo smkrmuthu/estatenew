@@ -200,7 +200,18 @@ export function getSheet(ctx: TenantContext, estateId: string, businessDate: str
     .where(and(eq(syncConflicts.estateId, estateId), eq(syncConflicts.state, "OPEN")))
     .all()
     .filter((c) => JSON.parse(c.serverJson).businessDate === businessDate && (JSON.parse(c.serverJson).shift ?? "DAY") === shift);
+  // Who is already present in the other shift of this date, so a double shift is visible without switching registers.
+  const otherShift: Shift = shift === "DAY" ? "NIGHT" : "DAY";
+  const otherSheet = sheetFor(ctx.db, ctx, estateId, businessDate, otherShift, false);
+  const other = otherSheet
+    ? ctx.db
+        .select({ workerId: attendanceRecords.workerId, fieldId: attendanceRecords.fieldId, jobTypeId: attendanceRecords.jobTypeId, dayFraction: attendanceRecords.dayFraction })
+        .from(attendanceRecords)
+        .where(and(eq(attendanceRecords.sheetId, otherSheet.id), eq(attendanceRecords.presence, "PRESENT")))
+        .all()
+    : [];
   return {
+    otherShift: { shift: otherShift, present: other },
     sheet: sheet ?? { id: null, estateId, businessDate, shift, state: "DRAFT" as SheetState, version: 0 },
     records,
     prefill: { fromDate: previous?.businessDate ?? null, assignments: prefill },

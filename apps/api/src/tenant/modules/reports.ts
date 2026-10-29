@@ -26,6 +26,7 @@ export function dailySummary(ctx: TenantContext, estateId: string, businessDate:
     .get();
   const nightRecords = nightSheet ? db.select().from(attendanceRecords).where(eq(attendanceRecords.sheetId, nightSheet.id)).all() : [];
   const records = sheet ? db.select().from(attendanceRecords).where(eq(attendanceRecords.sheetId, sheet.id)).all() : [];
+  const dayPresent = new Set(records.filter((r) => r.presence === "PRESENT").map((r) => r.workerId));
   const fieldName = new Map(
     db
       .select()
@@ -114,7 +115,12 @@ export function dailySummary(ctx: TenantContext, estateId: string, businessDate:
     basis: "server-accepted" as const,
     attendance: {
       sheetState: sheet?.state ?? "NOT_STARTED",
-      night: { sheetState: nightSheet?.state ?? "NOT_STARTED", present: nightRecords.filter((r) => r.presence === "PRESENT").length },
+      night: {
+        sheetState: nightSheet?.state ?? "NOT_STARTED",
+        present: nightRecords.filter((r) => r.presence === "PRESENT").length,
+        // People, not shifts: workers present in both registers today. Day and Night are never added into one headcount.
+        bothShifts: nightRecords.filter((r) => r.presence === "PRESENT" && dayPresent.has(r.workerId)).length,
+      },
       marked: records.length,
       activeWorkers,
       present: records.filter((r) => r.presence === "PRESENT").length,
@@ -405,11 +411,13 @@ export function workerHistory(ctx: TenantContext, estateId: string, workerId: st
     .from(attendanceRecords)
     .where(and(eq(attendanceRecords.estateId, estateId), eq(attendanceRecords.workerId, workerId)))
     .all()
-    .sort((a, b) => b.businessDate.localeCompare(a.businessDate))
-    .slice(0, Math.min(Math.max(days, 1), 120));
+    .sort((a, b) => b.businessDate.localeCompare(a.businessDate) || (a.shift === b.shift ? 0 : a.shift === "DAY" ? -1 : 1));
+  // The limit counts dates, so a worker on both shifts takes one of the days, not two.
+  const keepDates = new Set([...new Set(rows.map((r) => r.businessDate))].slice(0, Math.min(Math.max(days, 1), 120)));
+  const recent = rows.filter((r) => keepDates.has(r.businessDate));
   return {
     worker: { id: worker.id, name: worker.name, employeeCode: worker.employeeCode },
-    records: rows.map((r) => ({
+    records: recent.map((r) => ({
       businessDate: r.businessDate,
       shift: r.shift,
       statusCode: r.statusCode,
@@ -418,7 +426,9 @@ export function workerHistory(ctx: TenantContext, estateId: string, workerId: st
       job: r.jobTypeId ? (jobName.get(r.jobTypeId) ?? null) : null,
       remarks: r.remarks,
     })),
-    daysWorked: rows.reduce((s, r) => s + (r.presence === "PRESENT" ? (r.dayFraction === "HALF" ? 0.5 : 1) : 0), 0),
+    // A night shift is not an extra day: how it counts is not decided (OC-110), so it is reported on its own.
+    daysWorked: recent.reduce((s, r) => s + (r.shift === "DAY" && r.presence === "PRESENT" ? (r.dayFraction === "HALF" ? 0.5 : 1) : 0), 0),
+    nightShifts: recent.filter((r) => r.shift === "NIGHT" && r.presence === "PRESENT").length,
   };
 }
 

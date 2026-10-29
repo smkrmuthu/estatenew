@@ -10,6 +10,7 @@ interface Summary {
   estate: { id: string; name: string };
   attendance: {
     sheetState: string;
+    night: { sheetState: string; present: number; bothShifts: number };
     marked: number;
     activeWorkers: number;
     present: number;
@@ -37,6 +38,11 @@ const dayText = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString("en-
 const timeText = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
 /** The message for one day, ready to paste into WhatsApp. Counts only what the server has received. */
+/** Night is shown beside Day, never added to it; "both shifts" counts people who worked Day and Night. */
+function nightLine(n: Summary["attendance"]["night"]): string {
+  return `Night: ${n.present} present${n.bothShifts ? ` · ${n.bothShifts} also worked the day shift` : ""} (${(STATE_TEXT[n.sheetState] ?? n.sheetState).replace("_", " ")})`;
+}
+
 function whatsappMessage(date: string, list: Summary[]): string {
   const lines: string[] = [`*Estate summary · ${dayText(date)}*`];
   for (const s of list) {
@@ -47,6 +53,7 @@ function whatsappMessage(date: string, list: Summary[]): string {
         ? "Attendance: not started"
         : `Attendance: ${a.present} present${a.halfDayCount ? ` (${a.halfDayCount} half day)` : ""}, ${a.absent} absent, ${a.marked} of ${a.activeWorkers} marked · ${a.manDays} man-days (${STATE_TEXT[a.sheetState] ?? a.sheetState})`,
     );
+    if (a.night.sheetState !== "NOT_STARTED") lines.push(nightLine(a.night));
     if (s.weighIn.byCrop.length === 0) lines.push("Plucking: no weigh-ins yet");
     for (const c of s.weighIn.byCrop)
       lines.push(`${cropText(c.crop)}: ${c.netKg} kg from ${c.workers} ${c.workers === 1 ? "worker" : "workers"} (${c.entries} ${c.entries === 1 ? "weigh-in" : "weigh-ins"})`);
@@ -77,6 +84,7 @@ function DaySummary({ s }: { s: Summary }) {
           {s.attendance.present} present ({s.attendance.halfDayCount} half day), {s.attendance.absent} absent, {s.attendance.marked} of {s.attendance.activeWorkers} marked · {s.attendance.manDays}{" "}
           man-days · {(STATE_TEXT[s.attendance.sheetState] ?? s.attendance.sheetState).replace("_", " ")}
         </p>
+        {s.attendance.night.sheetState !== "NOT_STARTED" && <p className="mt-1 text-sm text-muted">{nightLine(s.attendance.night)}</p>}
         <div className="mt-2 overflow-x-auto">
           <table className="w-full min-w-[22rem] text-left text-sm">
             <thead className="border-b border-line">

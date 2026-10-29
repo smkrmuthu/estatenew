@@ -7,7 +7,8 @@ import { ApiError, api } from "../lib/api";
 interface History {
   worker: { id: string; name: string; employeeCode: string };
   daysWorked: number;
-  records: { businessDate: string; statusCode: string; dayFraction: "FULL" | "HALF" | null; field: string | null; job: string | null; remarks: string | null }[];
+  nightShifts: number;
+  records: { businessDate: string; shift: "DAY" | "NIGHT"; statusCode: string; dayFraction: "FULL" | "HALF" | null; field: string | null; job: string | null; remarks: string | null }[];
 }
 
 const STATUS_TEXT: Record<string, string> = { PRESENT: "Present", ABSENT: "Absent", LEAVE: "Leave", OFF_DAY: "Off day", HOLIDAY: "Holiday" };
@@ -30,12 +31,12 @@ export function WorkerHistory({ estateId, workerId, onClose }: { estateId: strin
       {h && (
         <>
           <p className="text-sm text-muted">
-            The last {h.records.length} days with a mark. {h.daysWorked} days worked in these days (a half day counts as 0.5).
+            {h.daysWorked} days worked in the day shift (a half day counts as 0.5), and {h.nightShifts} night {h.nightShifts === 1 ? "shift" : "shifts"}. A night shift is not counted as a day.
           </p>
           <table className="w-full text-sm">
             <thead className="border-b border-line">
               <tr>
-                {["Day", "Status", "Field", "Job"].map((t) => (
+                {["Day", "Shift", "Status", "Field", "Job"].map((t) => (
                   <th key={t} className="px-2 py-2 text-left text-[0.8rem] font-medium text-muted">
                     {t}
                   </th>
@@ -44,8 +45,9 @@ export function WorkerHistory({ estateId, workerId, onClose }: { estateId: strin
             </thead>
             <tbody className="divide-y divide-line">
               {h.records.map((r) => (
-                <tr key={r.businessDate}>
+                <tr key={`${r.businessDate}:${r.shift}`}>
                   <td className="px-2 py-2 tabular-nums">{dayText(r.businessDate)}</td>
+                  <td className="px-2 py-2">{r.shift === "NIGHT" ? "Night" : "Day"}</td>
                   <td className="px-2 py-2">
                     {STATUS_TEXT[r.statusCode] ?? r.statusCode}
                     {r.dayFraction === "HALF" && <Chip tone="warn">Half day</Chip>}
@@ -56,7 +58,7 @@ export function WorkerHistory({ estateId, workerId, onClose }: { estateId: strin
               ))}
               {h.records.length === 0 && (
                 <tr>
-                  <td className="px-2 py-2 text-muted" colSpan={4}>
+                  <td className="px-2 py-2 text-muted" colSpan={5}>
                     No attendance marked yet.
                   </td>
                 </tr>

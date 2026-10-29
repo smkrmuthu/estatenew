@@ -1,6 +1,6 @@
 {
   "generatedFrom": "Owner confirmation PDF and architecture document; edit this file, then run npm run docs:register",
-  "updated": "2026-10-28",
+  "updated": "2026-10-29",
   "items": [
     {
       "id": "OC-1",
@@ -2038,6 +2038,43 @@
       "source": "CEMMS MVP Architecture and Technical Design, revision 27 Oct 2026, Open Questions",
       "approver": null,
       "decidedOn": null
+    },
+    {
+      "id": "OC-110",
+      "number": 110,
+      "section": "New checks and reports",
+      "question": "When a worker does a night shift, how is it counted and paid: an extra day, a half day, or its own rate?",
+      "ownerAnswer": null,
+      "status": "open",
+      "phase": "1A",
+      "blocksProductionActivation": false,
+      "affects": [
+        "attendance.shift",
+        "reports.manDays"
+      ],
+      "interimBehavior": "Night shifts are recorded and reported on their own. No total adds Day and Night together and nothing about pay is calculated. Payroll stays deferred.",
+      "configKeys": [],
+      "source": "Open question from ADR-0014",
+      "approver": null,
+      "decidedOn": null
+    },
+    {
+      "id": "OC-111",
+      "number": 111,
+      "section": "New checks and reports",
+      "question": "Can the same worker do both the day shift and the night shift on one date?",
+      "ownerAnswer": "Yes",
+      "status": "confirmed",
+      "phase": "1A",
+      "blocksProductionActivation": false,
+      "affects": [
+        "attendance.shift"
+      ],
+      "interimBehavior": "Allowed: one row per worker per shift (ADR-0014). Recorded from the project lead's instruction; the estate owner has not yet answered on the form.",
+      "configKeys": [],
+      "source": "Project lead instruction in the build session, 29 Oct 2026",
+      "approver": "Muthu Kumar (project lead)",
+      "decidedOn": "2026-10-29"
     }
   ]
 }

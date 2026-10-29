@@ -1,12 +1,12 @@
 # Owner Confirmation Register
 
-Generated from `docs/owner-confirmations.json` (updated 2026-10-28). Do not edit by hand; edit the JSON and run `npm run docs:register`.
+Generated from `docs/owner-confirmations.json` (updated 2026-10-29). Do not edit by hand; edit the JSON and run `npm run docs:register`.
 
 Rules: a ticked box or written comment from the owner is confirmed; a blank is open. Proposed defaults from the architecture document or the prototype are never treated as answers. Items marked **Blocks production** must be confirmed before the affected behaviour is switched on for a live tenant.
 
-- Confirmed: 12
+- Confirmed: 13
 - Answered, meaning unclear: 2
-- Open: 105
+- Open: 106
 - Open and blocking production activation: 24
 
 ## Daily process overview
@@ -172,6 +172,8 @@ Rules: a ticked box or written comment from the owner is confirmed; a blank is o
 | OC-101 | A supervisor's phone may be without internet for up to 7 days before it needs a full sign-in again. |  | Open | 1A | Yes | Offline capture works while the device session is valid (default 12 hours, configurable). Longer windows up to 7 days are blocked until confirmed. |
 | OC-102 | Attendance, Daily log and weigh-in entries made without internet may appear in the office reports only after the phone syncs. Until then the phone shows each entry as waiting. |  | Open | 1A | Yes | Reports count only server-accepted records and show separately how many entries devices reported as waiting. |
 | OC-103 | If two supervisors mark the same worker on the same day, the manager decides which entry is kept. |  | Open | 1A | Yes | Two records for the same worker and day become a conflict for a manager to resolve with a reason; both versions are kept. |
+| OC-110 | When a worker does a night shift, how is it counted and paid: an extra day, a half day, or its own rate? |  | Open | 1A |  | Night shifts are recorded and reported on their own. No total adds Day and Night together and nothing about pay is calculated. Payroll stays deferred. |
+| OC-111 | Can the same worker do both the day shift and the night shift on one date? | Yes | Confirmed | 1A |  | Allowed: one row per worker per shift (ADR-0014). Recorded from the project lead's instruction; the estate owner has not yet answered on the form. |
 
 ## Pepper and Phase 2
 

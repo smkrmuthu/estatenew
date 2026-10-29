@@ -43,6 +43,40 @@ describe("attendance shifts", () => {
   });
 });
 
+describe("one worker on both shifts in one day", () => {
+  it("counts people and shifts separately and shows the double shift on both registers", async () => {
+    const s = await setupTenant();
+    const d = today();
+    const night = { businessDate: d, shift: "NIGHT", workerId: s.w1.id, statusCode: "PRESENT", dayFraction: "FULL", fieldId: s.f1.id, jobTypeId: s.plk.id };
+    const day = await mutation(s.supervisor.deviceId, s.estate.id, "attendance_record", "upsert", present(s, s.w1.id));
+    const nt = await mutation(s.supervisor.deviceId, s.estate.id, "attendance_record", "upsert", night);
+    // A second worker is on Day only.
+    const other = await mutation(s.supervisor.deviceId, s.estate.id, "attendance_record", "upsert", present(s, s.w2.id));
+    expect((await push(s.supervisor, [day, nt, other])).body.results.map((r: { status: string }) => r.status)).toEqual(["accepted", "accepted", "accepted"]);
+
+    // Each register tells who is already present in the other shift.
+    const dayRegister = (await api(`/estates/${s.estate.id}/attendance/${d}`, { token: s.supervisor.token })).body;
+    const nightRegister = (await api(`/estates/${s.estate.id}/attendance/${d}?shift=NIGHT`, { token: s.supervisor.token })).body;
+    expect(dayRegister.otherShift.shift).toBe("NIGHT");
+    expect(dayRegister.otherShift.present.map((r: { workerId: string }) => r.workerId)).toEqual([s.w1.id]);
+    expect(nightRegister.otherShift.shift).toBe("DAY");
+    expect(nightRegister.otherShift.present.map((r: { workerId: string }) => r.workerId).sort()).toEqual([s.w1.id, s.w2.id].sort());
+
+    // The summary keeps Day and Night apart: Day headcount is Day only, and "both shifts" counts people.
+    const summary = (await api(`/estates/${s.estate.id}/reports/daily/${d}`, { token: s.owner.token })).body;
+    expect(summary.attendance.present).toBe(2);
+    expect(summary.attendance.night.present).toBe(1);
+    expect(summary.attendance.night.bothShifts).toBe(1);
+    expect(summary.attendance.manDays).toBe("2.0");
+
+    // History: the night is not an extra day, and one date takes one place in the day limit.
+    const history = (await api(`/estates/${s.estate.id}/workers/${s.w1.id}/attendance?days=1`, { token: s.owner.token })).body;
+    expect(history.daysWorked).toBe(1);
+    expect(history.nightShifts).toBe(1);
+    expect(history.records.map((r: { shift: string }) => r.shift)).toEqual(["DAY", "NIGHT"]);
+  });
+});
+
 describe("attendance", () => {
   it("captures offline records, submits, approves and corrects with a reason and full history", async () => {
     const s = await setupTenant();

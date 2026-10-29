@@ -26,6 +26,7 @@ interface StatusDef {
   requiresAssignment: boolean;
 }
 interface SheetResponse {
+  otherShift?: { shift: "DAY" | "NIGHT"; present: { workerId: string; fieldId: string | null; jobTypeId: string | null; dayFraction: "FULL" | "HALF" | null }[] };
   sheet: { id: string | null; state: "DRAFT" | "SUBMITTED" | "APPROVED"; version: number; returnedReason?: string | null };
   records: ServerRecord[];
   prefill: { fromDate: string | null; assignments: { workerId: string; fieldId: string; jobTypeId: string; dayFraction: "FULL" | "HALF" | null }[] };
@@ -118,6 +119,8 @@ export function Attendance() {
     [] as LocalRecord[],
   );
   const local = useMemo(() => localAll.filter((r) => ((r.data.shift as string | undefined) ?? "DAY") === shift), [localAll, shift]);
+  const otherShift = shift === "DAY" ? "NIGHT" : "DAY";
+  const otherLocal = useMemo(() => localAll.filter((r) => ((r.data.shift as string | undefined) ?? "DAY") === otherShift), [localAll, otherShift]);
   const prefill = useLive(() => getMeta<Prefill>(`prefill:${estateId}:${date}:${shift}`), [estateId, date, shift], undefined);
   const cachedState = useLive(() => getMeta<SheetResponse["sheet"]["state"]>(`sheet:${estateId}:${date}:${shift}`), [estateId, date, shift], undefined);
   const cachedStatuses = useLive(() => getMeta<StatusDef[]>(`statuses:${estateId}`), [estateId], undefined);
@@ -128,6 +131,17 @@ export function Attendance() {
   const workers = useMemo(() => (ref?.workers ?? []).filter((w) => (w.estateIds ?? [w.estateId]).includes(estateId)), [ref, estateId]);
   const fields = useMemo(() => (ref?.fields ?? []).filter((f) => f.estateId === estateId), [ref, estateId]);
   const jobs = ref?.jobTypes ?? [];
+  /** Workers already present in the other shift today: what they do there, from this phone's marks first, then the server's. */
+  const alsoOn = useMemo(() => {
+    const m = new Map<string, { fieldId: string | null; jobTypeId: string | null }>();
+    for (const r of sheet.data?.otherShift?.present ?? []) m.set(r.workerId, { fieldId: r.fieldId, jobTypeId: r.jobTypeId });
+    for (const r of otherLocal) {
+      const workerId = r.data.workerId as string;
+      if (r.data.statusCode === "PRESENT") m.set(workerId, { fieldId: (r.data.fieldId as string | null) ?? null, jobTypeId: (r.data.jobTypeId as string | null) ?? null });
+      else m.delete(workerId);
+    }
+    return m;
+  }, [sheet.data, otherLocal]);
   const byWorker = useMemo(() => {
     const m = new Map<string, LocalRecord>();
     for (const r of local) m.set(r.data.workerId as string, r);
@@ -567,6 +581,12 @@ export function Attendance() {
                     )}
                   </p>
                   {w.area && <p className="text-xs text-muted">{w.area}</p>}
+                  {alsoOn.has(w.id) && (
+                    <p className="text-xs font-medium text-info">
+                      Also on {otherShift === "DAY" ? "Day" : "Night"}:{" "}
+                      {[jobs.find((j) => j.id === alsoOn.get(w.id)?.jobTypeId)?.name, fields.find((f) => f.id === alsoOn.get(w.id)?.fieldId)?.name].filter(Boolean).join(", ") || "present"}
+                    </p>
+                  )}
                   <div className="text-sm">
                     <span className="mr-2 inline-flex gap-1">
                       <button type="button" className="min-h-8 px-1 text-xs font-medium text-roast hover:underline" aria-label={`History of ${w.name}`} onClick={() => setHistoryFor(w.id)}>
