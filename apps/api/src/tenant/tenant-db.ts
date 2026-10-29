@@ -1,6 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import {
   attendanceCorrection,
+  attendanceRemoval,
   conflictResolution,
   dailyLogCorrection,
   deleteMaster,
@@ -91,6 +92,7 @@ const OPS = {
     run: (c: TenantContext, i: z.infer<typeof day> & { body: z.infer<typeof sheetActionSchema> }) => attendance.sheetAction(c, i.estateId, i.businessDate, i.body.action, i.body.reason, i.body.shift),
   },
   "attendance.correct": { input: withId(attendanceCorrection), run: (c: TenantContext, i: { id: string; body: z.infer<typeof attendanceCorrection> }) => attendance.correctRecord(c, i.id, i.body) },
+  "attendance.remove": { input: withId(attendanceRemoval), run: (c: TenantContext, i: { id: string; body: z.infer<typeof attendanceRemoval> }) => attendance.removeRecord(c, i.id, i.body) },
   "conflicts.list": { input: z.object({ estateId: z.string() }), run: (c: TenantContext, i: { estateId: string }) => attendance.listConflicts(c, i.estateId) },
   "conflicts.resolve": {
     input: withId(conflictResolution),

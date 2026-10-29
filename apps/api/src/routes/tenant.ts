@@ -1,5 +1,6 @@
 import {
   attendanceCorrection,
+  attendanceRemoval,
   conflictResolution,
   dailyLogCorrection,
   deleteMaster,
@@ -207,6 +208,19 @@ export function tenantRoutes(app: Hono<AppEnv>) {
       body: attendanceCorrection,
     },
     call("attendance.correct", async (c) => ({ id: p(c, "id"), body: await readJson(c) })),
+  );
+  route(
+    app,
+    {
+      method: "post",
+      path: "/attendance-records/:id/removal",
+      summary: "Remove a worker's mark for the day (reason required; the old entry is kept in the history)",
+      tag: "attendance",
+      auth: "bearer",
+      permission: "attendance.correct",
+      body: attendanceRemoval,
+    },
+    call("attendance.remove", async (c) => ({ id: p(c, "id"), body: await readJson(c) })),
   );
   route(
     app,

@@ -8,7 +8,7 @@ import { db, getMeta, type LocalRecord, setMeta } from "../lib/db";
 import { useLive } from "../lib/hooks";
 import { queueChange } from "../lib/outbox";
 import { useUnsaved } from "../lib/unsaved";
-import { CorrectRecord, WorkerHistory } from "./AttendanceExtras";
+import { CorrectRecord, RemoveRecord, WorkerHistory } from "./AttendanceExtras";
 
 interface ServerRecord {
   id: string;
@@ -62,6 +62,7 @@ export function Attendance() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [historyFor, setHistoryFor] = useState<string | null>(null);
   const [correcting, setCorrecting] = useState<string | null>(null);
+  const [removing, setRemoving] = useState<string | null>(null);
   const [bulkField, setBulkField] = useState("");
   const [bulkJob, setBulkJob] = useState("");
   const [bulkStatus, setBulkStatus] = useState("P");
@@ -106,6 +107,16 @@ export function Attendance() {
           updatedAt: new Date().toISOString(),
         });
       }
+      // A manager may have deleted an entry since this phone last looked: drop accepted copies the server no longer has.
+      // Records this phone changed after the fetch finished are left alone.
+      const onServer = new Set(data.records.map((r) => r.id));
+      const fetchedAt = new Date(sheet.dataUpdatedAt).toISOString();
+      const stale = await db.records
+        .where("[tenantId+entityType+estateId+businessDate]")
+        .equals([tenantId, "attendance_record", estateId, date])
+        .filter((x) => x.status === "accepted" && ((x.data.shift as string | undefined) ?? "DAY") === shift && !onServer.has(x.entityId) && x.updatedAt < fetchedAt)
+        .primaryKeys();
+      if (stale.length) await db.records.bulkDelete(stale);
       await setMeta(`prefill:${estateId}:${date}:${shift}`, data.prefill);
       await setMeta(`sheet:${estateId}:${date}:${shift}`, data.sheet.state);
       await setMeta(`statuses:${estateId}`, data.statuses);
@@ -332,7 +343,11 @@ export function Attendance() {
       fieldCounts.set(d.fieldId, cur);
     }
   }
-  const gridCols = "md:grid-cols-[2rem_minmax(13rem,1.4fr)_9.5rem_minmax(8rem,1fr)_minmax(7rem,0.8fr)_minmax(7rem,1fr)]";
+  /** Managers can edit or delete a saved entry (needs signal: these are server corrections with a reason). */
+  const canManage = app.can("attendance.correct", estateId) && app.online;
+  const gridCols = canManage
+    ? "md:grid-cols-[2rem_minmax(11rem,1.4fr)_9.5rem_minmax(7rem,1fr)_minmax(6rem,0.8fr)_minmax(6rem,1fr)_7.5rem]"
+    : "md:grid-cols-[2rem_minmax(13rem,1.4fr)_9.5rem_minmax(8rem,1fr)_minmax(7rem,0.8fr)_minmax(7rem,1fr)]";
 
   return (
     <div className="flex flex-col gap-4">
@@ -544,6 +559,7 @@ export function Attendance() {
           <span>Field</span>
           <span>Job</span>
           <span>Remark</span>
+          {canManage && <span>Entry</span>}
         </div>
         <ul aria-label="Workers" className="divide-y divide-line">
           {shown.map((w) => {
@@ -659,7 +675,23 @@ export function Attendance() {
                     if (r && value !== ((d.remarks as string | null) ?? "")) void mark(w.id, { statusCode: d.statusCode ?? "PRESENT", dayFraction: d.dayFraction ?? null, remarks: value || null });
                   }}
                 />
-                {r?.message && r.status !== "accepted" && <p className="text-sm text-bad md:col-span-6">{r.message}</p>}
+                {canManage && (
+                  <div className="flex items-center gap-1">
+                    {r?.status === "accepted" ? (
+                      <>
+                        <Button size="sm" variant="ghost" aria-label={`Edit ${w.name}'s entry`} onClick={() => setCorrecting(w.id)}>
+                          Edit
+                        </Button>
+                        <Button size="sm" variant="ghost" aria-label={`Delete ${w.name}'s entry`} onClick={() => setRemoving(w.id)}>
+                          Delete
+                        </Button>
+                      </>
+                    ) : (
+                      <span className="hidden text-muted md:block">–</span>
+                    )}
+                  </div>
+                )}
+                {r?.message && r.status !== "accepted" && <p className="text-sm text-bad md:col-span-7">{r.message}</p>}
               </li>
             );
           })}
@@ -726,9 +758,17 @@ export function Attendance() {
               chips={chips}
               fields={fields}
               jobs={ref?.jobTypes ?? []}
+              submitted={locked}
               onClose={() => setCorrecting(null)}
             />
           );
+        })()}
+      {removing &&
+        (() => {
+          const w = workers.find((x) => x.id === removing);
+          const rec = byWorker.get(removing);
+          if (!w || !rec) return null;
+          return <RemoveRecord estateId={estateId} date={date} recordId={rec.entityId} baseVersion={rec.nextBase} workerName={`${w.employeeCode} ${w.name}`} onClose={() => setRemoving(null)} />;
         })()}
     </div>
   );

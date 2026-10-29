@@ -38,6 +38,7 @@ describe("tenant and estate isolation", () => {
       ["GET", `/estates/${a.estate.id}/conflicts`],
       ["POST", `/estates/${a.estate.id}/attendance/${d}/actions`, { action: "approve" }],
       ["POST", `/attendance-records/${m.entityId}/corrections`, { statusCode: "ABSENT", reason: "test reason", baseVersion: 1 }],
+      ["POST", `/attendance-records/${m.entityId}/removal`, { reason: "test reason", baseVersion: 1 }],
       ["PUT", `/fields/${a.f1.id}`, { estateId: a.estate.id, code: "F1", name: "x", crops: ["COFFEE"], varietyIds: [] }],
       ["PUT", `/workers/${a.w1.id}`, { estateId: a.estate.id, employeeCode: "W001", name: "x" }],
       ["POST", `/workers/${a.w1.id}/delete`, { reason: "test reason" }],

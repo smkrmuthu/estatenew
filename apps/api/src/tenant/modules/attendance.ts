@@ -99,6 +99,8 @@ export function applyAttendanceRecord(ctx: TenantContext, db: Db, meta: ApplyMet
     return { kind: "accepted", entityId: byId.id, version: after.version };
   }
 
+  // A phone that already knew this record (baseVersion > 0) is updating something a manager has since removed: never bring it back silently.
+  if (meta.baseVersion > 0) throw new AppError(409, "RECORD_REMOVED", "A manager removed this attendance entry. Refresh and mark it again if it is still needed.");
   const sameWorker = db
     .select()
     .from(attendanceRecords)
@@ -294,6 +296,23 @@ export function correctRecord(
     ctx.audit(db, { action: "attendance.record.correct", entityType: "attendance_record", entityId: recordId, estateId: before.estateId, reason: input.reason, before, after });
     ctx.emit(db, "attendance.record.corrected", "attendance_record", recordId, { estateId: before.estateId, businessDate: before.businessDate });
     return after;
+  });
+}
+
+/**
+ * Remove a worker's mark for a day (marked by mistake). The register then shows the worker as not marked and every count follows.
+ * The removed entry stays in record_revisions and the audit trail with the reason.
+ */
+export function removeRecord(ctx: TenantContext, recordId: string, input: { reason: string; baseVersion: number }) {
+  return ctx.tx((db) => {
+    const before = assertFound(db.select().from(attendanceRecords).where(eq(attendanceRecords.id, recordId)).get(), "Attendance record");
+    ctx.require("attendance.correct", before.estateId);
+    if (before.version !== input.baseVersion) throw staleVersion();
+    db.delete(attendanceRecords).where(eq(attendanceRecords.id, recordId)).run();
+    ctx.revision(db, "attendance_record", recordId, before.version + 1, before, "remove", input.reason, null);
+    ctx.audit(db, { action: "attendance.record.remove", entityType: "attendance_record", entityId: recordId, estateId: before.estateId, reason: input.reason, before, after: null });
+    ctx.emit(db, "attendance.record.removed", "attendance_record", recordId, { estateId: before.estateId, businessDate: before.businessDate });
+    return { id: recordId, removed: true as const };
   });
 }
 

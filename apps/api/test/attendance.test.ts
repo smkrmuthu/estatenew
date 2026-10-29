@@ -166,6 +166,22 @@ describe("attendance", () => {
 
     const summary = (await api(`/estates/${s.estate.id}/reports/daily/${d}`, { token: s.owner.token })).body;
     expect(summary.attendance).toMatchObject({ sheetState: "APPROVED", present: 3, absent: 0, halfDayCount: 1, manDays: "2.5" });
+
+    // A manager can also remove a mark with a reason; the entry stays in the history and every count follows.
+    const noWhy = await api(`/attendance-records/${r2.entityId}/removal`, { token: s.owner.token, body: { baseVersion: 1 } });
+    expect(noWhy.status).toBe(422);
+    expect((await api(`/attendance-records/${r2.entityId}/removal`, { token: s.supervisor.token, body: { reason: "Not mine to remove", baseVersion: 1 } })).status).toBe(403);
+    expect((await api(`/attendance-records/${r2.entityId}/removal`, { token: s.owner.token, body: { reason: "Marked twice", baseVersion: 9 } })).body.code).toBe("STALE_VERSION");
+    const removed = await api(`/attendance-records/${r2.entityId}/removal`, { token: s.owner.token, body: { reason: "Marked on the wrong worker", baseVersion: 1 } });
+    expect(removed.status).toBe(200);
+    const afterSheet = (await api(`/estates/${s.estate.id}/attendance/${d}`, { token: s.owner.token })).body;
+    expect(afterSheet.records.map((x: { id: string }) => x.id)).not.toContain(r2.entityId);
+    const afterSummary = (await api(`/estates/${s.estate.id}/reports/daily/${d}`, { token: s.owner.token })).body;
+    expect(afterSummary.attendance).toMatchObject({ present: 2, halfDayCount: 0, manDays: "2.0" });
+    const removedHistory = (await api(`/audit/history?entityType=attendance_record&entityId=${r2.entityId}&estateId=${s.estate.id}`, { token: s.owner.token })).body;
+    expect(removedHistory.map((h: { change: string }) => h.change)).toEqual(["create", "remove"]);
+    expect(removedHistory[1].reason).toBe("Marked on the wrong worker");
+    expect((await api(`/attendance-records/${r2.entityId}/removal`, { token: s.owner.token, body: { reason: "Again please", baseVersion: 1 } })).status).toBe(404);
   });
 
   it("rejects proposed statuses, missing assignments and inactive references", async () => {

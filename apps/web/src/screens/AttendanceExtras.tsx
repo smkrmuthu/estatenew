@@ -97,10 +97,12 @@ export function CorrectRecord({
   chips,
   fields,
   jobs,
+  submitted = true,
   onClose,
 }: {
   estateId: string;
   date: string;
+  submitted?: boolean;
   recordId: string;
   baseVersion: number;
   workerName: string;
@@ -153,7 +155,7 @@ export function CorrectRecord({
 
   return (
     <Drawer title={workerName} subtitle="Correct attendance" onClose={onClose}>
-      <p className="text-sm text-muted">This day is already submitted. The old entry stays in the history with your reason and the time of the correction.</p>
+      <p className="text-sm text-muted">{submitted ? "This day is already submitted. " : ""}The old entry stays in the history with your reason and the time of the correction.</p>
       <form
         className="flex flex-col gap-4"
         onSubmit={(e) => {
@@ -204,6 +206,76 @@ export function CorrectRecord({
         <div className="flex gap-2">
           <Button type="submit" disabled={busy}>
             Save correction
+          </Button>
+          <Button variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+        </div>
+      </form>
+    </Drawer>
+  );
+}
+
+/**
+ * A manager's removal of one worker's mark for the day (for example marked on the wrong worker).
+ * The worker then shows as not marked; the removed entry stays in the history with the reason.
+ */
+export function RemoveRecord({
+  estateId,
+  date,
+  recordId,
+  baseVersion,
+  workerName,
+  onClose,
+}: {
+  estateId: string;
+  date: string;
+  recordId: string;
+  baseVersion: number;
+  workerName: string;
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function remove() {
+    if (reason.trim().length < 3) return setError("Give a reason for removing this entry.");
+    setBusy(true);
+    setError("");
+    try {
+      await api(`/attendance-records/${recordId}/removal`, { body: { reason: reason.trim(), baseVersion } });
+      await qc.invalidateQueries({ queryKey: ["sheet", estateId, date] });
+      await qc.invalidateQueries({ queryKey: ["dashboard"] });
+      await qc.invalidateQueries({ queryKey: ["summary"] });
+      onClose();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Could not reach the server.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Drawer title={workerName} subtitle="Delete attendance entry" onClose={onClose}>
+      <p className="text-sm text-muted">
+        This takes the worker's mark off the day. They show as not marked again, and the counts and reports follow. The removed entry stays in the history with your reason and the time.
+      </p>
+      <form
+        className="flex flex-col gap-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void remove();
+        }}
+      >
+        <Field label="Reason for deleting" htmlFor="r-reason" hint="For example: marked on the wrong worker">
+          <Input id="r-reason" maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)} />
+        </Field>
+        {error && <Notice tone="bad">{error}</Notice>}
+        <div className="flex gap-2">
+          <Button type="submit" variant="danger" disabled={busy}>
+            Delete entry
           </Button>
           <Button variant="secondary" onClick={onClose}>
             Cancel

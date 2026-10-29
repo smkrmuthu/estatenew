@@ -79,6 +79,7 @@ export type MutationKind = keyof typeof MUTATION_PAYLOADS;
 
 export const sheetAction = z.object({ action: z.enum(["approve", "return"]), reason: reason.optional(), shift });
 export const attendanceCorrection = attendanceRecordPayload.omit({ businessDate: true, workerId: true, shift: true }).extend({ reason, baseVersion: z.number().int().min(1) });
+export const attendanceRemoval = z.object({ reason, baseVersion: z.number().int().min(1) });
 export const musterCorrection = musterEntryPayload.omit({ businessDate: true, workerId: true }).extend({ reason, baseVersion: z.number().int().min(1) });
 export const dailyLogCorrection = z.object({ value: z.string().trim().min(1).max(200), remarks, reason, baseVersion: z.number().int().min(1) });
 export const conflictResolution = z.object({ keep: z.enum(["server", "incoming"]), reason });
