@@ -42,7 +42,8 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   // Platform staff have no tenant data access; support access needs a time-limited audited grant (not built).
   PLATFORM_ADMIN: [],
   OWNER: PERMISSIONS,
-  ESTATE_MANAGER: PERMISSIONS.filter((p) => !TENANT_WIDE.has(p)),
+  // Managing users stays with the owner (project lead, 29 October 2026; reverses the 28 October grant to managers).
+  ESTATE_MANAGER: PERMISSIONS.filter((p) => !TENANT_WIDE.has(p) && p !== "users.manage"),
   FIELD_SUPERVISOR: [...READ, "attendance.capture", "attendance.submit", "muster.capture", "dailylog.capture", "sync.push"],
   PROCESSING_OPERATOR: ["estate.read", "masters.read", "dailylog.read", "dailylog.capture", "sync.push"],
   QUALITY_OFFICER: ["estate.read", "masters.read", "dailylog.read"],

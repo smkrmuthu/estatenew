@@ -33,10 +33,10 @@ describe("permissions", () => {
     expect(can(sup, "users.manage", null)).toBe(false);
     expect(estatesWith(sup, "muster.capture")).toEqual(["E1"]);
   });
-  it("owners are tenant-wide; estate managers manage users and settings but not go-live answers", () => {
+  it("owners are tenant-wide; estate managers change settings but not users or go-live answers", () => {
     expect(can([{ role: "OWNER", estateId: null }], "users.manage", null)).toBe(true);
-    expect(can([{ role: "ESTATE_MANAGER", estateId: null }], "users.manage", null)).toBe(true);
-    expect(can([{ role: "ESTATE_MANAGER", estateId: "E1" }], "users.manage", "E1")).toBe(true);
+    expect(can([{ role: "ESTATE_MANAGER", estateId: null }], "users.manage", null)).toBe(false);
+    expect(can([{ role: "ESTATE_MANAGER", estateId: "E1" }], "users.manage", "E1")).toBe(false);
     expect(can([{ role: "ESTATE_MANAGER", estateId: null }], "settings.configure", null)).toBe(true);
     expect(can([{ role: "ESTATE_MANAGER", estateId: null }], "settings.manage", null)).toBe(false);
     expect(can([{ role: "ESTATE_MANAGER", estateId: "E1" }], "attendance.approve", "E1")).toBe(true);

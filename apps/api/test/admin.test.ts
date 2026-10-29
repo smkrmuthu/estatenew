@@ -440,7 +440,7 @@ describe("masters forms", () => {
     expect((await del("workers", s.w2.id)).status).toBe(404);
   });
 
-  it("lets an estate manager of both estates manage shared lists, settings and users, without owner powers", async () => {
+  it("lets an estate manager of both estates manage shared lists and settings, but not users or owner powers", async () => {
     const s = await setupTenant();
     const mk = async (username: string, grants: { role: string; estateId: string | null }[]) => {
       const res = await api("/admin/users", { token: s.owner.token, body: { username, displayName: username, password: "manager-pass-1234", grants } });
@@ -469,37 +469,23 @@ describe("masters forms", () => {
     expect((await api("/admin/gates/OC-7", { method: "PUT", token: both.token, body: { status: "confirmed", answer: "x", approver: "x", decidedOn: "2026-10-28", source: "x" } })).status).toBe(403);
     expect((await api("/admin/readiness", { token: both.token })).status).toBe(403);
 
-    // Users: create and edit staff for their estates, never owners or other estates.
+    // Users: only the owner manages them; a manager is refused on every user route.
     const staff = await api("/admin/users", {
-      token: both.token,
+      token: s.owner.token,
       body: { username: "newsup", displayName: "New Supervisor", password: "supervisor-pass-9", grants: [{ role: "FIELD_SUPERVISOR", estateId: s.estate2.id }] },
     });
     expect(staff.status, JSON.stringify(staff.body)).toBe(201);
-    expect(
-      (await api("/admin/users", { token: both.token, body: { username: "newowner", displayName: "X", password: "owner-pass-12345", grants: [{ role: "OWNER", estateId: null }] } })).body.code,
-    ).toBe("OWNER_ONLY");
-    expect(
-      (
-        await api("/admin/users", {
-          token: one.token,
-          body: { username: "wrongestate", displayName: "X", password: "supervisor-pass-9", grants: [{ role: "FIELD_SUPERVISOR", estateId: s.estate2.id }] },
-        })
-      ).body.code,
-    ).toBe("ESTATE_NOT_YOURS");
-    expect(
-      (await api("/admin/users", { token: both.token, body: { username: "everywhere", displayName: "X", password: "supervisor-pass-9", grants: [{ role: "FIELD_SUPERVISOR", estateId: null }] } })).body
-        .code,
-    ).toBe("ESTATE_NOT_YOURS");
-    const users = (await api("/admin/users", { token: s.owner.token })).body as { id: string; username: string }[];
-    const ownerId = users.find((u) => u.username === "owner")?.id ?? "";
-    expect((await api(`/admin/users/${ownerId}/disable`, { token: both.token, body: { reason: "Not allowed" } })).body.code).toBe("OWNER_ONLY");
-    expect((await api(`/admin/users/${ownerId}/password`, { token: both.token, body: { password: "a-new-password-123" } })).body.code).toBe("OWNER_ONLY");
-    expect((await api(`/admin/users/${staff.body.id}`, { method: "PUT", token: both.token, body: { displayName: "Renamed", grants: [{ role: "OWNER", estateId: null }] } })).body.code).toBe(
-      "OWNER_ONLY",
-    );
-    expect(
-      (await api(`/admin/users/${staff.body.id}`, { method: "PUT", token: both.token, body: { displayName: "Renamed", grants: [{ role: "FIELD_SUPERVISOR", estateId: s.estate.id }] } })).status,
-    ).toBe(200);
+    for (const m of [both, one]) {
+      expect((await api("/admin/users", { token: m.token })).status).toBe(403);
+      expect(
+        (await api("/admin/users", { token: m.token, body: { username: "viaMgr", displayName: "X", password: "supervisor-pass-9", grants: [{ role: "FIELD_SUPERVISOR", estateId: s.estate.id }] } }))
+          .status,
+      ).toBe(403);
+      expect(
+        (await api(`/admin/users/${staff.body.id}`, { method: "PUT", token: m.token, body: { displayName: "Renamed", grants: [{ role: "FIELD_SUPERVISOR", estateId: s.estate.id }] } })).status,
+      ).toBe(403);
+      expect((await api(`/admin/users/${staff.body.id}/disable`, { token: m.token, body: { reason: "Not allowed" } })).status).toBe(403);
+    }
     // A supervisor still cannot manage users.
     expect((await api("/admin/users", { token: s.supervisor.token })).status).toBe(403);
   });
