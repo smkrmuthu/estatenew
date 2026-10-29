@@ -26,6 +26,7 @@ describe("tenant and estate isolation", () => {
     const attempts: [string, string, unknown?][] = [
       ["GET", `/estates/${a.estate.id}/attendance/${d}`],
       ["GET", `/estates/${a.estate.id}/muster/${d}`],
+      ["GET", `/estates/${a.estate.id}/muster-days/${d}`],
       ["GET", `/estates/${a.estate.id}/daily-log/${d}`],
       ["GET", `/estates/${a.estate.id}/reports/daily/${d}`],
       ["GET", `/estates/${a.estate.id}/reports/dashboard/${d}`],

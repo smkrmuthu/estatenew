@@ -230,6 +230,11 @@ export function tenantRoutes(app: Hono<AppEnv>) {
   route(app, { method: "get", path: "/estates/:estateId/muster/:date", summary: "Weigh-ins for a day", tag: "muster", auth: "bearer", permission: "muster.read" }, call("muster.list", day));
   route(
     app,
+    { method: "get", path: "/estates/:estateId/muster-days/:date", summary: "Recent days of weigh-in totals up to a date", tag: "muster", auth: "bearer", permission: "muster.read" },
+    call("muster.days", day),
+  );
+  route(
+    app,
     { method: "post", path: "/muster-entries/:id/corrections", summary: "Correct a weigh-in (reason required)", tag: "muster", auth: "bearer", permission: "muster.correct", body: musterCorrection },
     call("muster.correct", async (c) => ({ id: p(c, "id"), body: await readJson(c) })),
   );

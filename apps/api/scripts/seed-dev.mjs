@@ -112,7 +112,11 @@ const imp = async (kind, rows) => {
 await imp("estates", ["code,name", ...estates.map(([code, name]) => `${code},${name}`)]);
 const [e1, e2] = estates.map(([code]) => code);
 await imp("varieties", ["code,name,crop", "VAR1,Arabica Sample,COFFEE", "VAR2,Robusta Sample,COFFEE", "PEP1,Pepper Sample,PEPPER"]);
-await imp("job_types", ["code,name", "PLK,Plucking", "PRN,Pruning", "WED,Weeding"]);
+// The plucking job is flagged (the CSV import does not carry the flag), so the Plucking page knows who is expected at the evening muster.
+await call("/job-types", { token, body: { code: "PLK", name: "Plucking", countsAsPlucking: true, active: true } }).catch((e) => {
+  if (!String(e).includes("409")) throw e;
+});
+await imp("job_types", ["code,name", "PRN,Pruning", "WED,Weeding"]);
 await imp("fields", [
   "estate_code,code,name,area_acres,crops,varieties",
   `${e1},N1,Block 1,10,COFFEE;PEPPER,VAR1;PEP1`,

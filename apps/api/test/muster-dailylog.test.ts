@@ -42,6 +42,25 @@ describe("weigh-in (muster)", () => {
     expect(summary.weighIn.workersWithSeveralEntries).toBe(1);
   });
 
+  it("lists the recent days with accepted weigh-ins: counts and totals only, cancelled entries left out", async () => {
+    const s = await setupTenant();
+    const a = await mutation(s.supervisor.deviceId, s.estate.id, "muster_entry", "create", weigh(s, { varietyId: s.cg.id }));
+    const b = await mutation(s.supervisor.deviceId, s.estate.id, "muster_entry", "create", weigh(s, { fieldId: s.f2.id, crop: "PEPPER", grossKg: "3.25", bags: 1, tareKg: null, varietyId: s.pnl.id }));
+    const cancelled = await mutation(s.supervisor.deviceId, s.estate.id, "muster_entry", "create", weigh(s, { grossKg: "9", tareKg: "0" }));
+    expect((await push(s.supervisor, [a, b, cancelled])).body.results.map((x: { status: string }) => x.status)).toEqual(["accepted", "accepted", "accepted"]);
+    const gone = await mutation(s.supervisor.deviceId, s.estate.id, "muster_entry", "void", { reason: "Entered twice" }, { entityId: cancelled.entityId, baseVersion: 1 });
+    expect((await push(s.supervisor, [gone])).body.results[0].status).toBe("accepted");
+
+    const res = await api(`/estates/${s.estate.id}/muster-days/${today()}`, { token: s.supervisor.token });
+    expect(res.status).toBe(200);
+    expect(res.body.basis).toBe("server-accepted");
+    expect(res.body.days).toEqual([{ date: today(), entries: 2, workers: 1, coffeeNetKg: "19.500", pepperNetKg: "3.250" }]);
+    expect(JSON.stringify(res.body)).not.toContain(s.w1.name);
+    // Nothing after the chosen date is included.
+    const before = await api(`/estates/${s.estate.id}/muster-days/2000-01-01`, { token: s.supervisor.token });
+    expect(before.body.days).toEqual([]);
+  });
+
   it("refuses bad weights, crops not grown in the field and varieties of another crop", async () => {
     const s = await setupTenant();
     const cases = [weigh(s, { grossKg: "1", tareKg: "2" }), weigh(s, { grossKg: "12.3456" }), weigh(s, { crop: "PEPPER" }), weigh(s, { varietyId: s.pnl.id }), weigh(s, { grossKg: "600" })];

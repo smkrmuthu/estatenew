@@ -1,5 +1,5 @@
 import { addDays, type ExportData, formatKg, formatScaled, halfDays, uuidv7 } from "@cemms/domain";
-import { and, eq, gte, inArray, lte } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { AppError } from "../../core/errors";
 import type { TenantContext } from "../context";
 import { attendanceRecords, attendanceSheets, dailylogEntries, deviceStatus, fields, jobTypes, logKinds, musterEntries, syncConflicts, varieties, workers } from "../schema";
@@ -356,6 +356,33 @@ export function pluckingReport(ctx: TenantContext, estateId: string, from: strin
     },
     byField: byField.sort((a, b) => b.coffeeNetG - a.coffeeNetG),
     byWorker,
+  };
+}
+
+/**
+ * The most recent working days with accepted weigh-ins on or before a date, newest first, for the Plucking page.
+ * Counts only: no worker names. Washing is not recorded yet, so nothing here says how much was washed.
+ */
+export function musterDays(ctx: TenantContext, estateId: string, upTo: string, limit = 10) {
+  ctx.require("muster.read", estateId);
+  getEstate(ctx.db, estateId);
+  const rows = ctx.db
+    .select({
+      businessDate: musterEntries.businessDate,
+      entries: sql<number>`count(*)`,
+      workers: sql<number>`count(distinct ${musterEntries.workerId})`,
+      coffeeG: sql<number>`coalesce(sum(case when ${musterEntries.crop} = 'COFFEE' then ${musterEntries.netG} else 0 end), 0)`,
+      pepperG: sql<number>`coalesce(sum(case when ${musterEntries.crop} = 'PEPPER' then ${musterEntries.netG} else 0 end), 0)`,
+    })
+    .from(musterEntries)
+    .where(and(eq(musterEntries.estateId, estateId), eq(musterEntries.status, "ACTIVE"), lte(musterEntries.businessDate, upTo)))
+    .groupBy(musterEntries.businessDate)
+    .orderBy(desc(musterEntries.businessDate))
+    .limit(Math.min(Math.max(1, limit), 31))
+    .all();
+  return {
+    basis: "server-accepted" as const,
+    days: rows.map((r) => ({ date: r.businessDate, entries: r.entries, workers: r.workers, coffeeNetKg: formatKg(r.coffeeG), pepperNetKg: formatKg(r.pepperG) })),
   };
 }
 

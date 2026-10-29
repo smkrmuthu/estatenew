@@ -1,6 +1,6 @@
 import { computeWeighIn, formatKg, parseKg, WeightError } from "@cemms/domain";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useApp } from "../app-context";
 import { Button, Card, Field, FilterBar, FilterSearch, FilterSelect, Input, KpiStrip, Notice, Select, StatusBadge } from "../components/ui";
 import { api } from "../lib/api";
@@ -23,6 +23,14 @@ interface ServerEntry {
   version: number;
 }
 
+interface MusterDay {
+  date: string;
+  entries: number;
+  workers: number;
+  coffeeNetKg: string;
+  pepperNetKg: string;
+}
+
 const KG_TEXT = /^\d{0,7}(\.\d{0,3})?$/;
 
 export function WeighIn() {
@@ -30,7 +38,6 @@ export function WeighIn() {
   const { ref, estateId, date, session } = app;
   const tenantId = session.user.tenantId;
   const [workerId, setWorkerId] = useState("");
-  const [workerSearch, setWorkerSearch] = useState("");
   const [fieldId, setFieldId] = useState("");
   const [crop, setCrop] = useState("COFFEE");
   const [varietyId, setVarietyId] = useState("");
@@ -65,7 +72,6 @@ export function WeighIn() {
     if (choices.length === 1) setVarietyId(choices[0]?.id ?? "");
     else if (choices.length > 1) setVarietyId((cur) => (choices.some((c) => c.id === cur) ? cur : ""));
   }, [choices]);
-  const matches = workers.filter((w) => workerSearch && `${w.name} ${w.employeeCode}`.toLowerCase().includes(workerSearch.toLowerCase())).slice(0, 8);
   const worker = workers.find((w) => w.id === workerId);
 
   const preview = (() => {
@@ -85,7 +91,7 @@ export function WeighIn() {
   });
   const attendance = useQuery({
     queryKey: ["sheet", estateId, date],
-    queryFn: () => api<{ records: { workerId: string; fieldId: string | null; statusCode?: string; shift?: string }[] }>(`/estates/${estateId}/attendance/${date}`),
+    queryFn: () => api<{ records: { workerId: string; fieldId: string | null; jobTypeId?: string | null; statusCode?: string; shift?: string }[] }>(`/estates/${estateId}/attendance/${date}`),
     enabled: app.online && !!estateId && app.can("attendance.read"),
   });
   const localAttendance = useLive(
@@ -93,14 +99,30 @@ export function WeighIn() {
     [tenantId, estateId, date],
     [] as LocalRecord[],
   );
-  /** The field a worker was marked present on this morning: this phone's mark first, then the server's. */
-  const attendanceField = (id: string): string | null => {
-    const l = localAttendance.find((r) => (r.data as { workerId?: string; shift?: string }).workerId === id && ((r.data as { shift?: string }).shift ?? "DAY") === "DAY")?.data as
-      | { statusCode?: string; fieldId?: string | null }
-      | undefined;
-    if (l?.statusCode === "PRESENT" && l.fieldId) return l.fieldId;
-    return attendance.data?.records.find((r) => r.workerId === id && (r.shift ?? "DAY") === "DAY" && r.statusCode === "PRESENT")?.fieldId ?? null;
-  };
+  /** Who was marked present in the day register this morning, with the field and job: this phone's marks first, then the server's. */
+  const dayMarks = useMemo(() => {
+    const m = new Map<string, { fieldId: string | null; jobTypeId: string | null }>();
+    for (const r of attendance.data?.records ?? []) if ((r.shift ?? "DAY") === "DAY" && r.statusCode === "PRESENT") m.set(r.workerId, { fieldId: r.fieldId, jobTypeId: r.jobTypeId ?? null });
+    for (const r of localAttendance) {
+      const d = r.data as { workerId?: string; shift?: string; statusCode?: string; fieldId?: string | null; jobTypeId?: string | null };
+      if (!d.workerId || (d.shift ?? "DAY") !== "DAY") continue;
+      if (d.statusCode === "PRESENT") m.set(d.workerId, { fieldId: d.fieldId ?? null, jobTypeId: d.jobTypeId ?? null });
+      else m.delete(d.workerId);
+    }
+    return m;
+  }, [attendance.data, localAttendance]);
+  const attendanceField = (id: string): string | null => dayMarks.get(id)?.fieldId ?? null;
+  const pluckingJobs = useMemo(() => new Set((ref?.jobTypes ?? []).filter((j) => j.countsAsPlucking).map((j) => j.id)), [ref]);
+  /** Workers marked present for a plucking job today: the people expected at the evening weigh-in. */
+  const pluckers = useMemo(
+    () =>
+      workers.filter((w) => {
+        const j = dayMarks.get(w.id)?.jobTypeId;
+        return !!j && pluckingJobs.has(j);
+      }),
+    [workers, dayMarks, pluckingJobs],
+  );
+  const otherWorkers = useMemo(() => workers.filter((w) => !pluckers.some((p) => p.id === w.id)), [workers, pluckers]);
   const local = useLive(
     () => db.records.where("[tenantId+entityType+estateId+businessDate]").equals([tenantId, "muster_entry", estateId, date]).toArray(),
     [tenantId, estateId, date],
@@ -151,6 +173,45 @@ export function WeighIn() {
     return [...out.values()].reverse();
   }, [server.data, local]);
 
+  const weighedIds = useMemo(() => new Set(rows.filter((r) => !r.voided).map((r) => r.workerId)), [rows]);
+  const weighedPluckers = pluckers.filter((w) => weighedIds.has(w.id)).length;
+  const days = useQuery({
+    queryKey: ["muster-days", estateId, date],
+    queryFn: () => api<{ days: MusterDay[] }>(`/estates/${estateId}/muster-days/${date}`),
+    enabled: app.online && !!estateId && app.can("muster.read"),
+  });
+
+  /** Choose a worker and bring in the field and variety they were marked on this morning. */
+  function pickWorker(id: string) {
+    setWorkerId(id);
+    const f = attendanceField(id);
+    if (f) {
+      setFieldId(f);
+      setFieldFromAttendance(true);
+      const ff = fields.find((x) => x.id === f);
+      if (ff && !ff.crops.includes(crop)) setCrop(ff.crops[0] ?? "COFFEE");
+      setVarietyId("");
+    } else {
+      setFieldFromAttendance(false);
+    }
+  }
+  // A new estate or day starts with nobody chosen; the first plucker not yet weighed is filled in once the day's attendance is known.
+  const pickedFor = useRef("");
+  useEffect(() => {
+    pickedFor.current = "";
+    setWorkerId("");
+    setFieldId("");
+    setFieldFromAttendance(false);
+  }, [estateId, date]);
+  useEffect(() => {
+    const key = `${estateId}|${date}`;
+    if (pickedFor.current === key || pluckers.length === 0) return;
+    pickedFor.current = key;
+    const first = pluckers.find((w) => !weighedIds.has(w.id)) ?? pluckers[0];
+    if (first) pickWorker(first.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [estateId, date, pluckers, weighedIds]);
+
   const listed = rows.filter((r) => {
     const w = workers.find((x) => x.id === r.workerId);
     if (lq && !`${w?.name ?? ""} ${w?.employeeCode ?? ""}`.toLowerCase().includes(lq.toLowerCase())) return false;
@@ -194,8 +255,12 @@ export function WeighIn() {
       label: `Weigh-in: ${worker.name} ${preview.net} kg ${crop === "PEPPER" ? "pepper" : "coffee"}`,
     });
     setSaved(`${worker.name}: ${preview.net} kg saved on this phone.`);
-    setWorkerId("");
-    setWorkerSearch("");
+    // Move on to the next plucker (after this one in the list) who has no weigh-in yet.
+    const at = pluckers.findIndex((w) => w.id === worker.id);
+    const order = at < 0 ? pluckers : [...pluckers.slice(at + 1), ...pluckers.slice(0, at)];
+    const next = order.find((w) => w.id !== worker.id && !weighedIds.has(w.id));
+    if (next) pickWorker(next.id);
+    else setWorkerId("");
     setGross("");
     setTare("");
     setRemarks("");
@@ -246,65 +311,64 @@ export function WeighIn() {
     <div className="flex flex-col gap-4">
       <div>
         <h1>Plucking</h1>
-        <p className="mt-1 max-w-3xl text-sm text-muted">Each worker's cherry (coffee) or pepper is weighed at the evening muster. Weights count here once the server has accepted them.</p>
+        <p className="mt-1 max-w-3xl text-sm text-muted">The evening muster: every weigh-in by worker, field, subdivision and variety. Weights count here once the server has accepted them.</p>
       </div>
 
       <KpiStrip
         items={[
-          { label: "Net weight", value: `${totals.kg} kg`, note: "Accepted by the server" },
+          { label: "Net cherry", value: `${totals.kg} kg`, note: "Accepted by the server" },
           { label: "Weigh-ins", value: totals.entries },
           {
-            label: "Workers weighed",
+            label: "Pluckers weighed",
             value: (
               <>
-                {totals.workers} <span className="text-sm font-normal text-muted">of {workers.length}</span>
+                {totals.workers} <span className="text-sm font-normal text-muted">of {Math.max(pluckers.length, totals.workers)}</span>
               </>
             ),
+            note: pluckers.length ? "Marked present for plucking" : "No one marked for plucking yet",
           },
-          { label: "Per worker", value: `${totals.perWorker} kg`, note: "Average of workers weighed" },
+          { label: "Per plucker", value: `${totals.perWorker} kg`, note: "Average of pluckers weighed" },
         ]}
       />
 
-      <Card title="Record weigh-ins" actions={<span className="text-sm text-muted">{date}</span>}>
+      <Card title="Record weigh-ins" actions={<span className="text-sm text-muted">{pluckers.length ? `${weighedPluckers} of ${pluckers.length} pluckers weighed` : date}</span>}>
         {!canCapture && <Notice tone="warn">You can view weigh-ins but not record them.</Notice>}
         {saved && <Notice tone="ok">{saved}</Notice>}
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Worker" htmlFor="worker" hint={worker ? `${worker.name} (${worker.employeeCode})` : "Type a name or code"}>
-            <Input
-              id="worker"
-              type="search"
-              value={worker ? worker.name : workerSearch}
-              onChange={(e) => {
-                setWorkerId("");
-                setWorkerSearch(e.target.value);
-              }}
-              autoComplete="off"
-            />
-            {!worker && matches.length > 0 && (
-              <ul className="mt-1 rounded-xl border border-line bg-surface" aria-label="Matching workers">
-                {matches.map((w) => (
-                  <li key={w.id}>
-                    <button
-                      type="button"
-                      className="min-h-11 w-full px-3 text-left hover:bg-bg"
-                      onClick={() => {
-                        setWorkerId(w.id);
-                        const f = attendanceField(w.id);
-                        if (f) {
-                          setFieldId(f);
-                          setFieldFromAttendance(true);
-                          const ff = fields.find((x) => x.id === f);
-                          if (ff && !ff.crops.includes(crop)) setCrop(ff.crops[0] ?? "COFFEE");
-                          setVarietyId("");
-                        }
-                      }}
-                    >
-                      {w.name} <span className="text-muted">· {w.employeeCode}</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
+          <Field
+            label="Worker"
+            htmlFor="worker"
+            hint={
+              pluckers.length
+                ? "A tick means already weighed today"
+                : pluckingJobs.size
+                  ? "No one is marked present for plucking yet, so every worker is listed"
+                  : "No job is marked as plucking in Masters, so every worker is listed"
+            }
+          >
+            <Select id="worker" value={workerId} onChange={(e) => (e.target.value ? pickWorker(e.target.value) : setWorkerId(""))}>
+              <option value="">Choose…</option>
+              {pluckers.length > 0 && (
+                <optgroup label="Marked present for plucking">
+                  {pluckers.map((w) => (
+                    <option key={w.id} value={w.id}>
+                      {w.employeeCode} · {w.name}
+                      {weighedIds.has(w.id) ? " ✓" : ""}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+              {otherWorkers.length > 0 && (
+                <optgroup label={pluckers.length ? "Other workers" : "Workers"}>
+                  {otherWorkers.map((w) => (
+                    <option key={w.id} value={w.id}>
+                      {w.employeeCode} · {w.name}
+                      {weighedIds.has(w.id) ? " ✓" : ""}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+            </Select>
           </Field>
           <Field label="Field" htmlFor="field" hint={fieldFromAttendance && fieldId && fieldId === (worker ? attendanceField(worker.id) : null) ? "Field from this morning's attendance" : undefined}>
             <Select
@@ -409,46 +473,91 @@ export function WeighIn() {
             Net: <strong className="text-2xl">{preview.net ?? "–"}</strong> kg
           </p>
           <Button size="lg" disabled={!canCapture || !worker || !field || !preview.net || (needsVariety && !varietyId)} onClick={save}>
-            Save weigh-in
+            Save and next worker
           </Button>
         </div>
       </Card>
 
-      <Card title="By subdivision" actions={<span className="text-sm text-muted">{date}</span>}>
-        {bySubdivision.length === 0 ? (
-          <p className="text-muted">No weigh-ins yet.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[26rem] text-sm">
-              <thead className="border-b border-line">
-                <tr>
-                  {["Field", "Subdivision", "Variety"].map((t) => (
-                    <th key={t} className="px-3 py-2 text-left text-[0.8rem] font-medium text-muted">
-                      {t}
-                    </th>
-                  ))}
-                  <th className="px-3 py-2 text-right text-[0.8rem] font-medium text-muted">Workers</th>
-                  <th className="px-3 py-2 text-right text-[0.8rem] font-medium text-muted">Net kg</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-line">
-                {bySubdivision.map((r) => (
-                  <tr key={`${r.field}|${r.subdivision}|${r.variety}`}>
-                    <td className="px-3 py-2">{r.field}</td>
-                    <td className="px-3 py-2">{r.subdivision || <span className="text-muted">Not recorded</span>}</td>
-                    <td className="px-3 py-2">{r.variety || <span className="text-muted">Not recorded</span>}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{r.workers.size}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{formatKg(r.netG)}</td>
+      <div className="grid gap-4 xl:grid-cols-2">
+        <Card title="By subdivision" actions={<span className="text-sm text-muted">{date}</span>}>
+          {bySubdivision.length === 0 ? (
+            <p className="text-muted">No weigh-ins yet.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[26rem] text-sm">
+                <thead className="border-b border-line">
+                  <tr>
+                    {["Field", "Subdivision", "Variety"].map((t) => (
+                      <th key={t} className="px-3 py-2 text-left text-[0.8rem] font-medium text-muted">
+                        {t}
+                      </th>
+                    ))}
+                    <th className="px-3 py-2 text-right text-[0.8rem] font-medium text-muted">Workers</th>
+                    <th className="px-3 py-2 text-right text-[0.8rem] font-medium text-muted">Net kg</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-        <p className="mt-2 text-sm text-muted">
-          The subdivision is filled in only when the field has one bearing subdivision with the chosen variety. Which part of a field a weighing came from is still to be confirmed with the owner.
-        </p>
-      </Card>
+                </thead>
+                <tbody className="divide-y divide-line">
+                  {bySubdivision.map((r) => (
+                    <tr key={`${r.field}|${r.subdivision}|${r.variety}`}>
+                      <td className="px-3 py-2">{r.field}</td>
+                      <td className="px-3 py-2">{r.subdivision || <span className="text-muted">Not recorded</span>}</td>
+                      <td className="px-3 py-2">{r.variety || <span className="text-muted">Not recorded</span>}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{r.workers.size}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{formatKg(r.netG)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <p className="mt-2 text-sm text-muted">
+            The subdivision is filled in only when the field has one bearing subdivision with the chosen variety. Which part of a field a weighing came from is still to be confirmed with the owner.
+          </p>
+        </Card>
+
+        <Card title="Muster and washing" actions={<span className="text-sm text-muted">Last 10 days</span>}>
+          {days.isError ? (
+            <p className="text-muted">The recent days could not be loaded. They will appear when the connection is back.</p>
+          ) : !days.data ? (
+            <p className="text-muted">{app.online ? "Loading…" : "Connect to the internet to see the recent days."}</p>
+          ) : days.data.days.length === 0 ? (
+            <p className="text-muted">No weigh-ins yet.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[22rem] text-sm">
+                <thead className="border-b border-line">
+                  <tr>
+                    <th className="px-3 py-2 text-left text-[0.8rem] font-medium text-muted">Day</th>
+                    <th className="px-3 py-2 text-right text-[0.8rem] font-medium text-muted">Muster</th>
+                    <th className="px-3 py-2 text-right text-[0.8rem] font-medium text-muted">Washed</th>
+                    <th className="px-3 py-2 text-left text-[0.8rem] font-medium text-muted">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-line">
+                  {days.data.days.map((d) => (
+                    <tr key={d.date} className={d.date === date ? "bg-bg" : undefined}>
+                      <td className="px-3 py-2">
+                        <button type="button" className="min-h-11 text-left font-medium underline-offset-2 hover:underline" onClick={() => app.setDate(d.date)}>
+                          {new Date(`${d.date}T12:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                        </button>
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">
+                        {d.coffeeNetKg} kg
+                        {d.pepperNetKg !== "0.000" && <span className="block text-xs text-muted">+ {d.pepperNetKg} kg pepper</span>}
+                      </td>
+                      <td className="px-3 py-2 text-right text-muted">–</td>
+                      <td className="px-3 py-2 text-muted">
+                        {d.entries} weigh-in{d.entries === 1 ? "" : "s"} · {d.workers} worker{d.workers === 1 ? "" : "s"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <p className="mt-2 text-sm text-muted">Washing is not recorded in the app yet, so the Washed column stays empty. Only weigh-ins the server has accepted are counted.</p>
+        </Card>
+      </div>
 
       <Card title="Today's weigh-ins">
         <div className="mb-3">
