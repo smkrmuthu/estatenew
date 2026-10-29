@@ -7,7 +7,7 @@ import { ApiError, api } from "../lib/api";
 import type { EmploymentType, Gender, LandUse, ReferenceData } from "../lib/db";
 import { useDashboards } from "./Dashboard";
 
-type Tab = "fields" | "workers" | "jobs" | "logkinds";
+type Tab = "fields" | "workers" | "varieties" | "jobs" | "logkinds";
 type Target = { tab: Tab; id?: string } | null;
 
 const LAND_LABEL: Record<LandUse, string> = { BEARING: "Bearing", YOUNG: "Young plants", ROCK: "Rock", WATER: "Water", EMPTY: "Empty", OTHER_CROP: "Other crop" };
@@ -664,6 +664,145 @@ function Fields({
   );
 }
 
+/* ---------- Varieties ---------- */
+
+const CROP_LABEL: Record<string, string> = { COFFEE: "Coffee", PEPPER: "Pepper" };
+
+/** Fields that grow a variety: the ones listed on the field itself, plus those whose subdivisions carry it. */
+const fieldsGrowing = (data: ReferenceData, varietyId: string) => data.fields.filter((f) => f.varietyIds.includes(varietyId) || (f.subdivisions ?? []).some((s) => s.varietyId === varietyId));
+
+function VarietyForm({ data, id, done }: { data: ReferenceData; id?: string; done: () => void }) {
+  const app = useApp();
+  const v = id ? data.varieties.find((x) => x.id === id) : undefined;
+  const [code, setCode] = useState(v?.code ?? "");
+  const [name, setName] = useState(v?.name ?? "");
+  const [crop, setCrop] = useState(v?.crop ?? "COFFEE");
+  const [active, setActive] = useState(v?.active !== false);
+  const hasSubs = (f: ReferenceData["fields"][number]) => (f.subdivisions ?? []).length > 0;
+  const [ticked, setTicked] = useState<Set<string>>(new Set(v ? fieldsGrowing(data, v.id).map((f) => f.id) : []));
+  const { busy, error, setError, save } = useSaver(done);
+  const candidates = data.fields.filter((f) => f.crops.includes(crop));
+  const toggle = (fid: string) => setTicked((cur) => new Set(cur.has(fid) ? [...cur].filter((x) => x !== fid) : [...cur, fid]));
+  return (
+    <form
+      className="flex flex-col gap-4"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!code.trim() || !name.trim()) return setError("Enter a code and a variety name.");
+        // Only fields the variety can be set on from here: those without subdivisions.
+        const fieldIds = [...ticked].filter((fid) => {
+          const f = data.fields.find((x) => x.id === fid);
+          return !!f && !hasSubs(f) && f.crops.includes(crop);
+        });
+        void save(() =>
+          api(v ? `/varieties/${v.id}` : "/varieties", {
+            method: v ? "PUT" : "POST",
+            ...(v ? { headers: { "if-match": String(v.version ?? 1) } } : {}),
+            body: { code: code.trim().toUpperCase(), name: name.trim(), crop, active, fieldIds },
+          }),
+        );
+      }}
+    >
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Code" htmlFor="v-code" hint="Short, for example CG">
+          <Input id="v-code" value={code} onChange={(e) => setCode(e.target.value)} />
+        </Field>
+        <Field label="Variety" htmlFor="v-name">
+          <Input id="v-name" value={name} onChange={(e) => setName(e.target.value)} />
+        </Field>
+        <Field label="Crop" htmlFor="v-crop" hint={v ? "The crop cannot be changed once the variety is added" : undefined}>
+          <Select id="v-crop" value={crop} disabled={!!v} onChange={(e) => setCrop(e.target.value)}>
+            <option value="COFFEE">Coffee</option>
+            <option value="PEPPER">Pepper</option>
+          </Select>
+        </Field>
+        <Field label="Status" htmlFor="v-active">
+          <Select id="v-active" value={active ? "1" : "0"} onChange={(e) => setActive(e.target.value === "1")}>
+            <option value="1">Active</option>
+            <option value="0">Inactive</option>
+          </Select>
+        </Field>
+      </div>
+      <fieldset className="flex flex-col gap-2">
+        <legend className="text-sm font-semibold">Grown in these fields</legend>
+        <p className="text-sm text-muted">
+          Weigh-in offers this variety for the fields ticked here. A field that is divided into subdivisions gets its varieties from them; change those on the field.
+        </p>
+        {candidates.length === 0 && <p className="text-sm text-muted">No field grows {CROP_LABEL[crop]?.toLowerCase() ?? "this crop"} yet.</p>}
+        {data.estates.map((e) => {
+          const list = candidates.filter((f) => f.estateId === e.id);
+          if (list.length === 0) return null;
+          return (
+            <div key={e.id} className="rounded-xl border border-line p-3">
+              <p className="mb-1 text-sm font-semibold">{e.name}</p>
+              <ul className="flex flex-col">
+                {list.map((f) => {
+                  const bySubs = hasSubs(f);
+                  const carried = bySubs && (f.subdivisions ?? []).some((s) => s.varietyId === v?.id);
+                  const locked = bySubs || !app.can("masters.write", f.estateId);
+                  return (
+                    <li key={f.id}>
+                      <label className={`flex min-h-11 items-center gap-3 ${locked ? "text-muted" : ""}`}>
+                        <input type="checkbox" className="size-5" checked={bySubs ? carried : ticked.has(f.id)} disabled={locked} onChange={() => toggle(f.id)} />
+                        <span>
+                          {f.name} <span className="text-muted">· {f.code}</span>
+                          {bySubs && <span className="block text-xs">{carried ? "Set in the field's subdivisions" : "Divided into subdivisions: choose the variety there"}</span>}
+                        </span>
+                      </label>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          );
+        })}
+      </fieldset>
+      <FormActions busy={busy} error={error} submit={v ? "Save changes" : "Add variety"} onCancel={done} />
+    </form>
+  );
+}
+
+function Varieties({ data, canWrite, open }: { data: ReferenceData; canWrite: boolean; open: (id: string) => void }) {
+  return (
+    <Card>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[34rem] text-sm">
+          <thead className="border-b border-line">
+            <tr>
+              <Th>Code</Th>
+              <Th>Variety</Th>
+              <Th>Crop</Th>
+              <Th>Grown in</Th>
+              <Th>Status</Th>
+              <Th />
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-line">
+            {data.varieties.map((v) => {
+              const growing = fieldsGrowing(data, v.id);
+              return (
+                <tr key={v.id}>
+                  <Td className="font-mono">{v.code}</Td>
+                  <Td>{v.name}</Td>
+                  <Td>{CROP_LABEL[v.crop] ?? v.crop}</Td>
+                  <Td className="tabular-nums">{growing.length ? growing.map((f) => f.name).join(", ") : <span className="text-muted">No field yet</span>}</Td>
+                  <Td>{statusChip(v.active)}</Td>
+                  <Td right>{canWrite && <EditLink label={`Edit ${v.name}`} onClick={() => open(v.id)} />}</Td>
+                </tr>
+              );
+            })}
+            {data.varieties.length === 0 && (
+              <tr>
+                <Td className="text-muted">No varieties yet.</Td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+}
+
 /* ---------- Jobs ---------- */
 
 function JobForm({ data, id, done }: { data: ReferenceData; id?: string; done: () => void }) {
@@ -906,11 +1045,12 @@ export function Masters() {
   const tabs: { id: Tab; label: string }[] = [
     { id: "fields", label: "Fields" },
     { id: "workers", label: "Workers" },
+    { id: "varieties", label: "Varieties" },
     { id: "jobs", label: "Jobs" },
     { id: "logkinds", label: "Log kinds" },
   ];
-  const addLabel = { fields: "Add field", workers: "Add worker", jobs: "Add job", logkinds: "Add kind" }[tab];
-  const canAdd = tab === "jobs" ? jobsWrite : tab === "logkinds" ? kindsWrite : anyWrite;
+  const addLabel = { fields: "Add field", workers: "Add worker", varieties: "Add variety", jobs: "Add job", logkinds: "Add kind" }[tab];
+  const canAdd = tab === "jobs" || tab === "varieties" ? jobsWrite : tab === "logkinds" ? kindsWrite : anyWrite;
   const pick: Pick = {
     sel,
     toggle: (id) => setSel((cur) => (cur.has(id) ? new Set([...cur].filter((x) => x !== id)) : new Set([...cur, id]))),
@@ -959,13 +1099,17 @@ export function Masters() {
         ? editing
           ? "Edit worker"
           : "New worker"
-        : target?.tab === "jobs"
+        : target?.tab === "varieties"
           ? editing
-            ? "Edit job"
-            : "New job"
-          : editing
-            ? "Edit kind"
-            : "New kind";
+            ? "Edit variety"
+            : "New variety"
+          : target?.tab === "jobs"
+            ? editing
+              ? "Edit job"
+              : "New job"
+            : editing
+              ? "Edit kind"
+              : "New kind";
   const drawerTitle = !target
     ? ""
     : target.tab === "workers"
@@ -976,9 +1120,11 @@ export function Masters() {
         ? editing
           ? `${data?.fields.find((f) => f.id === editing)?.code ?? ""} ${data?.fields.find((f) => f.id === editing)?.name ?? ""}`
           : estateName(defaultEstate)
-        : target.tab === "jobs"
-          ? (data?.jobTypes.find((j) => j.id === editing)?.name ?? "Job")
-          : (data?.logKinds.find((k) => k.id === editing)?.label ?? "Daily log kind");
+        : target.tab === "varieties"
+          ? (data?.varieties.find((x) => x.id === editing)?.name ?? "Variety")
+          : target.tab === "jobs"
+            ? (data?.jobTypes.find((j) => j.id === editing)?.name ?? "Job")
+            : (data?.logKinds.find((k) => k.id === editing)?.label ?? "Daily log kind");
 
   return (
     <div className="flex flex-col gap-4">
@@ -1020,8 +1166,8 @@ export function Masters() {
         <Notice tone="info">
           {tab === "logkinds"
             ? "You can view the log kinds. They are shared by every estate, so only an owner or an estate manager can add or change them."
-            : tab === "jobs"
-              ? "You can view the jobs. They are shared by every estate, so only an owner or an estate manager can add or change them."
+            : tab === "jobs" || tab === "varieties"
+              ? `You can view the ${tab === "jobs" ? "jobs" : "varieties"}. They are shared by every estate, so only an owner or an estate manager can add or change them.`
               : `You can view the ${tab}. Only an owner or an estate manager of this estate can add or change them.`}
         </Notice>
       )}
@@ -1029,6 +1175,7 @@ export function Masters() {
       {q.error && <Notice tone="bad">Could not load the lists.</Notice>}
       {data && tab === "fields" && <Fields data={data} canWrite={writeEstate} open={(id) => setTarget({ tab, id })} pick={pick} season={{ start: seasonStart, to: app.date }} />}
       {data && tab === "workers" && <Workers data={data} canWrite={writeEstate} open={(id) => setTarget({ tab, id })} pick={pick} />}
+      {data && tab === "varieties" && <Varieties data={data} canWrite={jobsWrite} open={(id) => setTarget({ tab, id })} />}
       {data && tab === "jobs" && <Jobs data={data} canWrite={jobsWrite} open={(id) => setTarget({ tab, id })} />}
       {data && tab === "logkinds" && <Kinds data={data} canWrite={kindsWrite} open={(id) => setTarget({ tab, id })} />}
 
@@ -1036,6 +1183,7 @@ export function Masters() {
         <Drawer title={drawerTitle} subtitle={subtitle} onClose={() => setTarget(null)}>
           {target.tab === "workers" && <WorkerForm data={data} id={target.id} estateId={defaultEstate} done={done} />}
           {target.tab === "fields" && <FieldForm data={data} id={target.id} estateId={defaultEstate} done={done} />}
+          {target.tab === "varieties" && <VarietyForm data={data} id={target.id} done={done} />}
           {target.tab === "jobs" && <JobForm data={data} id={target.id} done={done} />}
           {target.tab === "logkinds" && <KindForm data={data} id={target.id} done={done} />}
         </Drawer>

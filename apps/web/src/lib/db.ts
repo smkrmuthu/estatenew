@@ -68,7 +68,7 @@ export interface ReferenceData {
     version?: number;
     subdivisions?: { id: string; label: string; landUse: LandUse; varietyId: string | null; areaCentiAcres: number | null }[];
   }[];
-  varieties: { id: string; code: string; name: string; crop: string }[];
+  varieties: { id: string; code: string; name: string; crop: string; active?: boolean; version?: number }[];
   jobTypes: { id: string; code: string; name: string; countsAsPlucking?: boolean; active?: boolean; version?: number }[];
   workers: {
     id: string;

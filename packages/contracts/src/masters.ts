@@ -20,7 +20,14 @@ export const fieldInput = z.object({
     .optional(),
   active: z.boolean().default(true),
 });
-export const varietyInput = z.object({ code, name, crop, active: z.boolean().default(true) });
+export const varietyInput = z.object({
+  code,
+  name,
+  crop,
+  active: z.boolean().default(true),
+  /** Fields without subdivisions that grow this variety. Left out: the associations are not touched. A field with subdivisions takes its varieties from them. */
+  fieldIds: z.array(id).max(500).optional(),
+});
 export const jobTypeInput = z.object({ code, name, countsAsPlucking: z.boolean().default(false), active: z.boolean().default(true) });
 /** Deleting a worker or field needs a reason for the audit trail. */
 export const deleteMaster = z.object({ reason });

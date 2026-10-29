@@ -210,7 +210,15 @@ export function upsertField(ctx: TenantContext, input: z.infer<typeof fieldInput
 
 type SimpleTable = typeof varieties | typeof jobTypes;
 
-function upsertSimple<T extends SimpleTable>(ctx: TenantContext, table: T, entityType: string, values: Record<string, unknown>, id?: string, baseVersion?: number) {
+function upsertSimple<T extends SimpleTable>(
+  ctx: TenantContext,
+  table: T,
+  entityType: string,
+  values: Record<string, unknown>,
+  id?: string,
+  baseVersion?: number,
+  alsoIn?: (db: Db, row: { id: string }) => void,
+) {
   ctx.requireAny("masters.write");
   const { now, by } = audited(ctx);
   try {
@@ -224,6 +232,7 @@ function upsertSimple<T extends SimpleTable>(ctx: TenantContext, table: T, entit
           .where(eq(table.id, id))
           .run();
         ctx.audit(db, { action: `${entityType}.update`, entityType, entityId: id, estateId: null, before, after });
+        alsoIn?.(db, after);
         return after;
       }
       const row = { id: uuidv7(), tenantId: ctx.scope.tenantId, ...values, version: 1, createdAt: now, createdBy: by, updatedAt: now, updatedBy: by };
@@ -231,6 +240,7 @@ function upsertSimple<T extends SimpleTable>(ctx: TenantContext, table: T, entit
         .values(row as never)
         .run();
       ctx.audit(db, { action: `${entityType}.create`, entityType, entityId: row.id, estateId: null, after: row });
+      alsoIn?.(db, row);
       return row;
     });
   } catch (e) {
@@ -239,7 +249,44 @@ function upsertSimple<T extends SimpleTable>(ctx: TenantContext, table: T, entit
   }
 }
 
-export const upsertVariety = (ctx: TenantContext, input: z.infer<typeof varietyInput>, id?: string, v?: number) => upsertSimple(ctx, varieties, "variety", input, id, v);
+export function upsertVariety(ctx: TenantContext, input: z.infer<typeof varietyInput>, id?: string, v?: number) {
+  const { fieldIds, ...values } = input;
+  return upsertSimple(ctx, varieties, "variety", values, id, v, fieldIds ? (db, row) => setVarietyFields(ctx, db, row.id, values.crop, fieldIds) : undefined);
+}
+
+/**
+ * Make the fields without subdivisions that grow a variety exactly the ticked ones. A field that has subdivisions takes its varieties from
+ * them, so it can only be changed on the field itself. Fields the user may not change are left as they are.
+ */
+function setVarietyFields(ctx: TenantContext, db: Db, varietyId: string, crop: string, wanted: string[]) {
+  const { now, by } = audited(ctx);
+  const want = new Set(wanted);
+  const all = db.select().from(fields).all();
+  for (const id of want) if (!all.some((f) => f.id === id)) throw new AppError(422, "FIELD_UNKNOWN", "A field was not found", { fieldIds: "Unknown field" });
+  const links = db.select().from(fieldVarieties).all();
+  for (const f of all) {
+    const has = links.some((l) => l.fieldId === f.id && l.varietyId === varietyId);
+    const ticked = want.has(f.id);
+    if (has === ticked) continue;
+    const bySubdivisions = db.select().from(fieldSubdivisions).where(eq(fieldSubdivisions.fieldId, f.id)).all().length > 0;
+    if (bySubdivisions) {
+      // Only an attempt to add one is an error; a field whose subdivisions carry it is shown ticked and is left alone.
+      if (ticked) throw new AppError(422, "FIELD_HAS_SUBDIVISIONS", `${f.name} takes its varieties from its subdivisions. Choose this variety there.`, { fieldIds: "Set on the field" });
+      continue;
+    }
+    ctx.require("masters.write", f.estateId);
+    if (ticked && !(JSON.parse(f.cropsJson) as string[]).includes(crop)) throw new AppError(422, "CROP_NOT_ON_FIELD", `${f.name} does not grow this crop`, { fieldIds: "Crop not grown there" });
+    if (ticked) db.insert(fieldVarieties).values({ fieldId: f.id, varietyId }).run();
+    else
+      db.delete(fieldVarieties)
+        .where(and(eq(fieldVarieties.fieldId, f.id), eq(fieldVarieties.varietyId, varietyId)))
+        .run();
+    const after = { ...f, version: f.version + 1, updatedAt: now, updatedBy: by };
+    db.update(fields).set(after).where(eq(fields.id, f.id)).run();
+    ctx.audit(db, { action: ticked ? "field.variety.add" : "field.variety.remove", entityType: "field", entityId: f.id, estateId: f.estateId, before: f, after: { ...after, varietyId } });
+  }
+}
+
 export const upsertJobType = (ctx: TenantContext, input: z.infer<typeof jobTypeInput>, id?: string, v?: number) => upsertSimple(ctx, jobTypes, "job_type", input, id, v);
 
 /** The next free code for an estate, like GLZ-007, allocated inside the same transaction as the insert. */

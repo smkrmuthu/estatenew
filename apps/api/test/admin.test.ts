@@ -258,6 +258,56 @@ describe("masters forms", () => {
     expect(sup.status).toBe(403);
   });
 
+  it("adds a variety and chooses the fields that grow it; fields with subdivisions keep their own", async () => {
+    const s = await setupTenant();
+    const plain = ((await api("/reference", { token: s.owner.token })).body.fields as any[]).find((f) => f.id === s.f1.id);
+    const sub = await api("/fields", {
+      token: s.owner.token,
+      body: { estateId: s.estate.id, code: "F9", name: "Split Field", areaCentiAcres: 1000, crops: ["COFFEE"], subdivisions: [{ landUse: "BEARING", varietyId: s.cg.id, areaCentiAcres: 1000 }] },
+    });
+    expect(sub.status, JSON.stringify(sub.body)).toBe(201);
+
+    const made = await api("/varieties", { token: s.owner.token, body: { code: "SEL5", name: "Selection 5", crop: "COFFEE", fieldIds: [plain.id] } });
+    expect(made.status, JSON.stringify(made.body)).toBe(201);
+    let ref = (await api("/reference", { token: s.owner.token })).body;
+    expect(ref.fields.find((f: { id: string }) => f.id === plain.id).varietyIds).toContain(made.body.id);
+    expect(ref.fields.find((f: { id: string }) => f.id === plain.id).version).toBe(plain.version + 1);
+
+    // A field with subdivisions cannot be given the variety from here, and the Pepper field refuses a coffee variety.
+    const refused = await api("/varieties", { token: s.owner.token, body: { code: "SEL6", name: "Selection 6", crop: "COFFEE", fieldIds: [sub.body.id] } });
+    expect(refused.body.code).toBe("FIELD_HAS_SUBDIVISIONS");
+    const wrongCrop = await api("/varieties", { token: s.owner.token, body: { code: "PEP9", name: "Pepper Nine", crop: "PEPPER", fieldIds: [s.f1.id] } });
+    expect(wrongCrop.body.code).toBe("CROP_NOT_ON_FIELD");
+    // Nothing was half-saved by the refusals.
+    ref = (await api("/reference", { token: s.owner.token })).body;
+    expect(ref.varieties.some((v: { code: string }) => v.code === "SEL6" || v.code === "PEP9")).toBe(false);
+
+    // Editing: unticking removes it; a field whose subdivisions carry a variety stays ticked and untouched.
+    const keep = await api(`/varieties/${s.cg.id}`, {
+      method: "PUT",
+      token: s.owner.token,
+      headers: { "if-match": String(s.cg.version ?? 1) },
+      body: { code: s.cg.code, name: s.cg.name, crop: "COFFEE", fieldIds: [] },
+    });
+    expect(keep.status, JSON.stringify(keep.body)).toBe(200);
+    ref = (await api("/reference", { token: s.owner.token })).body;
+    expect(ref.fields.find((f: { id: string }) => f.id === sub.body.id).varietyIds).toContain(s.cg.id);
+    const drop = await api(`/varieties/${made.body.id}`, {
+      method: "PUT",
+      token: s.owner.token,
+      headers: { "if-match": "1" },
+      body: { code: "SEL5", name: "Selection 5", crop: "COFFEE", fieldIds: [] },
+    });
+    expect(drop.status, JSON.stringify(drop.body)).toBe(200);
+    ref = (await api("/reference", { token: s.owner.token })).body;
+    expect(ref.fields.find((f: { id: string }) => f.id === plain.id).varietyIds).not.toContain(made.body.id);
+
+    // A supervisor cannot add varieties, and the changes are in the audit trail.
+    expect((await api("/varieties", { token: s.supervisor.token, body: { code: "X1", name: "Nope", crop: "COFFEE" } })).status).toBe(403);
+    const audit = (await api(`/audit?estateId=${s.estate.id}`, { token: s.owner.token })).body as { action: string }[];
+    expect(audit.map((x) => x.action)).toEqual(expect.arrayContaining(["field.variety.add", "field.variety.remove"]));
+  });
+
   it("saves a field with subdivisions A, B, C, derives its varieties, and checks the acres", async () => {
     const s = await setupTenant();
     const base = { estateId: s.estate.id, code: "F9", name: "Middle Field", areaCentiAcres: 1000, elevationM: 1050, expectedCherryKg: 2500, crops: ["COFFEE"] };

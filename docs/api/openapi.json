@@ -1183,6 +1183,14 @@
                   "active": {
                     "default": true,
                     "type": "boolean"
+                  },
+                  "fieldIds": {
+                    "maxItems": 500,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+                    }
                   }
                 },
                 "required": ["code", "name", "crop"]
@@ -1247,6 +1255,14 @@
                   "active": {
                     "default": true,
                     "type": "boolean"
+                  },
+                  "fieldIds": {
+                    "maxItems": 500,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+                    }
                   }
                 },
                 "required": ["code", "name", "crop"]
