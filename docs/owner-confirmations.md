@@ -4,10 +4,10 @@ Generated from `docs/owner-confirmations.json` (updated 2026-10-29). Do not edit
 
 Rules: a ticked box or written comment from the owner is confirmed; a blank is open. Proposed defaults from the architecture document or the prototype are never treated as answers. Items marked **Blocks production** must be confirmed before the affected behaviour is switched on for a live tenant.
 
-- Confirmed: 13
-- Answered, meaning unclear: 2
-- Open: 106
-- Open and blocking production activation: 24
+- Confirmed: 16
+- Answered, meaning unclear: 5
+- Open: 100
+- Open and blocking production activation: 22
 
 ## Daily process overview
 
@@ -24,8 +24,8 @@ Rules: a ticked box or written comment from the owner is confirmed; a blank is o
 | OC-4 | The supervisor will mark attendance on a mobile phone in the field, even where there is no internet. | Yes or Computer (WebApp) | Confirmed | 1A |  | Confirmed. Attendance is captured on the phone web app (works offline) or on the office web portal. |
 | OC-5 | A worker stays in one field and does one job | NA | Answered, meaning unclear | 1A |  | Treat 'NA' as unclear. One field and one job per worker per day is recorded; a later change is a correction with a reason. Confirm the meaning of 'NA'. |
 | OC-6 | Workers are organised in fixed groups (gangs), each with its own supervisor. If yes, how many groups and supervisors are there? | NA | Answered, meaning unclear | 1A |  | Treat 'NA' as unclear. No work groups are required; group assignment is only a bulk-entry shortcut. |
-| OC-7 | The estate manager checks and approves each day's attendance after the supervisor submits it. If no, who approves? |  | Open | 1A | Yes | Approval workflow exists; approver is anyone holding attendance.approve on the estate (Owner or Estate Manager). A manager's or owner's own submit is approved straight away (ADR-0017, project lead instruction 29 Oct 2026); a supervisor's submit waits for a manager. Who approves is not confirmed by the estate owner. |
-| OC-8 | These attendance types are enough: Present, Absent, Leave, Off day, Holiday. Please add any others. |  | Open | 1A | Yes | Only Present and Absent with Full day or Half day (from the process text accepted in Q1) are active. Leave, Off day and Holiday are seeded inactive as proposed. |
+| OC-7 | The estate manager checks and approves each day's attendance after the supervisor submits it. If no, who approves? | Manager or Owner approves. Answered in chat by the project lead (Muthu Kumar), 29 October 2026. | Confirmed | 1A |  | Anyone holding attendance.approve (Estate Manager or Owner) approves. A manager's or owner's own submit is approved straight away (ADR-0017); a supervisor's submit waits for a manager or owner. |
+| OC-8 | These attendance types are enough: Present, Absent, Leave, Off day, Holiday. Please add any others. | These five are enough; none to add for now. Answered in chat by the project lead (Muthu Kumar), 29 October 2026. | Confirmed | 1A |  | Present (full or half day) and Absent are on. Leave, Off day and Holiday are confirmed and are switched on in Manage > Setup > Attendance types when the estate wants them. |
 | OC-9 | Do you need to record the time each worker arrives and leaves? |  | Open | 1A |  | Arrival and departure times are not captured. |
 | OC-10 | Do you want the application to calculate wages or pay per kilogram plucked now? (If not, this can be added in a later phase.) |  | Open | 2 |  | No wage or pay calculation. Deferred. |
 | OC-11 | Approximately how many workers work on the estate on a normal day, and in the peak plucking season? Normal: ______ Peak: ______ |  | Open | 1A |  | Load tests use 300 workers per estate as an assumption, not an owner figure. |
@@ -35,8 +35,8 @@ Rules: a ticked box or written comment from the owner is confirmed; a blank is o
 | ID | Question | Owner answer | Status | Phase | Blocks production | Interim behaviour |
 |---|---|---|---|---|---|---|
 | OC-12 | The division names in the estate details sheet are the names everyone uses (for example Super Kadu, No 6, Field 9-1). |  | Open | 1A | Yes | Field names come from the import file as given; the label 'Division' is a tenant terminology setting. |
-| OC-13 | Some divisions have more than one variety (for example Super Kadu: 4 acres Chandana Giri and 6 acres Selection 9). |  | Open | 1A |  | A field can list several varieties; a weigh-in must name its variety (ADR-0018, project lead instruction 29 Oct 2026; setting muster.variety.required, on by default). The variety is not inferred when a field has more than one. |
-| OC-14 | The varieties are Chandana Giri, Selection 9 and YMG. Please add any others and explain what YMG is. |  | Open | 1A | Yes | Varieties are imported as master data; YMG and spellings stay as given until the owner explains them. |
+| OC-13 | Some divisions have more than one variety (for example Super Kadu: 4 acres Chandana Giri and 6 acres Selection 9). | Variety is kept in Masters; some fields have more than one variety and they are added from Masters. Answered in chat by the project lead (Muthu Kumar), 29 October 2026. | Confirmed | 1A |  | A field can list several varieties, added in Masters; a weigh-in must name its variety (ADR-0018). The variety is never inferred when a field has more than one. |
+| OC-14 | The varieties are Chandana Giri, Selection 9 and YMG. Please add any others and explain what YMG is. | More varieties can be added from Masters. What YMG is has not been explained. Answered in chat by the project lead (Muthu Kumar), 29 October 2026. | Answered, meaning unclear | 1A | Yes | Varieties are master data and can be added in Masters; YMG and spellings stay as given until it is explained. |
 | OC-15 | The division list has been received. Is there also a list of workers (Excel or paper) that can be loaded into the application? |  | Open | 1A | Yes | Worker list not yet received; CSV import is ready. Go-live needs the real list. |
 
 ## Evening muster (weigh-in)
@@ -46,7 +46,7 @@ Rules: a ticked box or written comment from the owner is confirmed; a blank is o
 | OC-16 | Each worker's cherries are weighed and recorded separately. |  | Open | 1A | Yes | Each weigh-in is a separate per-worker record. |
 | OC-17 | A worker may bring cherries more than once in a day (more than one weighing). |  | Open | 1A | Yes | Several weigh-ins per worker per day are stored as separate records and flagged in the summary; none are merged or rejected. |
 | OC-18 | Cherries are measured in kilograms. If not, what is used (baskets, bags, other) and how much does one unit weigh? |  | Open | 1A | Yes | Kilograms only. Unit not confirmed; production activation blocked. |
-| OC-19 | The weight of the bag or basket is deducted from the total. |  | Open | 1A | Yes | Gross, bag count and tare are stored as entered. Tare is entered by hand (default 0); per-bag tare is proposed and inactive. |
+| OC-19 | The weight of the bag or basket is deducted from the total. | Tare is kept in Masters and pre-filled on the Plucking form, with a default value for all estates. Answered in chat by the project lead (Muthu Kumar), 29 October 2026. | Answered, meaning unclear | 1A | Yes | Tare is one figure per weigh-in, the same for all estates, set by a manager or owner in Masters > Tare and pre-filled read-only for supervisors (ADR-0021). It starts at 0; the default weight has not been given. |
 | OC-20 | A digital weighing scale is used. If yes, please write the make or model. |  | Open | 1A |  | Manual weight entry; no scale integration. |
 | OC-21 | Is the quality of the cherries noted at weighing (for example ripe, green or damaged)? |  | Open | 1A |  | Cherry quality is not captured at weighing. |
 | OC-22 | The same supervisor who marks attendance also records the evening muster. If no, who does? |  | Open | 1A |  | Any user with muster.capture on the estate can record weigh-ins. |
@@ -155,7 +155,7 @@ Rules: a ticked box or written comment from the owner is confirmed; a blank is o
 
 | ID | Question | Owner answer | Status | Phase | Blocks production | Interim behaviour |
 |---|---|---|---|---|---|---|
-| OC-87 | Empty plucking bags all weigh about the same, so one bag weight per estate is enough. The prototype uses 0.5 kg. What does one empty bag weigh? |  | Open | 1A | Yes | 0.5 kg per bag is a prototype sample and is not used. |
+| OC-87 | Empty plucking bags all weigh about the same, so one bag weight per estate is enough. The prototype uses 0.5 kg. What does one empty bag weigh? | Put it in Masters and pre-fill it on the Plucking form, with a default value for all estates. The weight itself was not given. Answered in chat by the project lead (Muthu Kumar), 29 October 2026. | Answered, meaning unclear | 1A | Yes | No bag weight is assumed. The tare for all estates starts at 0 until a manager or owner sets it in Masters; the prototype's 0.5 kg is not used. |
 | OC-88 | A small difference between the muster total and the weight at washing is normal. Above 1%, the operator gives a reason. Is 1% the right limit? |  | Open | 1B |  | Not used in Phase 1A. Keep configurable; do not activate proposed defaults. |
 | OC-89 | One drying tray holds about 80 kg of cherries. If not, how much does one tray hold? |  | Open | 1B |  | Not used in Phase 1A. Keep configurable; do not activate proposed defaults. |
 | OC-90 | A batch is sometimes put on hold (for example, waiting for a repair) or split (for example, moved onto more trays). |  | Open | 1B |  | Not used in Phase 1A. Keep configurable; do not activate proposed defaults. |

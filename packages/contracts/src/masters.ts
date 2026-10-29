@@ -1,10 +1,8 @@
 import { EMPLOYMENT_TYPES, GENDERS, IMPORT_KINDS, LAND_USES } from "@cemms/domain";
 import { z } from "zod";
-import { code, crop, id, kgString, name, reason } from "./common";
+import { code, crop, id, name, reason } from "./common";
 
 export const estateInput = z.object({ code, name, timeZone: z.string().max(60).optional() });
-/** The tare taken off each weigh-in at this estate, in kilograms. */
-export const estateTareInput = z.object({ tareKg: kgString, reason: reason.optional() });
 export const fieldInput = z.object({
   estateId: id,
   /** Without a code the server allocates the next one for the estate, like GLZ-07. */

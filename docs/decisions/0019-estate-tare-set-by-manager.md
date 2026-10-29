@@ -1,6 +1,6 @@
 # ADR-0019: The estate's tare is set by a manager or owner
 
-- Status: Interim
+- Status: Superseded in part by ADR-0021 (the tare is now one value for all estates, set in Masters)
 - Source: project lead instruction in chat, 29 October 2026 ("Let the manager/owner can decrease/increase" the tare); the project lead chose "one per estate" and "set by manager". Tare is the total weight taken off one weigh-in: net = gross − tare, not multiplied by the number of bags.
 - Approver: Muthu Kumar
 

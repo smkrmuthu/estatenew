@@ -38,8 +38,6 @@ export const estates = sqliteTable("estates", {
   code: text("code").notNull(),
   name: text("name").notNull(),
   timeZone: text("time_zone").notNull(),
-  /** Tare taken off every weigh-in a supervisor records; managers and owners may change it. */
-  defaultTareG: integer("default_tare_g").notNull().default(0),
   active: integer("active", { mode: "boolean" }).notNull().default(true),
   ...audit,
 });

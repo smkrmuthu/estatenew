@@ -53,7 +53,7 @@ export type EmploymentType = "PERMANENT" | "CASUAL" | "CONTRACT" | "NORTH_INDIAN
 export type LandUse = "BEARING" | "YOUNG" | "ROCK" | "WATER" | "EMPTY" | "OTHER_CROP";
 
 export interface ReferenceData {
-  estates: { id: string; code: string; name: string; timeZone: string; defaultTareG?: number }[];
+  estates: { id: string; code: string; name: string; timeZone: string }[];
   fields: {
     id: string;
     estateId: string;
@@ -84,7 +84,7 @@ export interface ReferenceData {
     version?: number;
   }[];
   /** Rules the capture screens follow. Older cached lists may lack it; a weigh-in then needs a variety, the default. */
-  rules?: { varietyRequired?: boolean };
+  rules?: { varietyRequired?: boolean; tareG?: number };
   logKinds: {
     id: string;
     code: string;

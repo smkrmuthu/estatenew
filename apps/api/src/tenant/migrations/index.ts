@@ -5,6 +5,7 @@ import m0004 from "./0004_worker_all_estates";
 import m0005 from "./0005_attendance_shift";
 import m0006 from "./0006_worker_estates";
 import m0007 from "./0007_estate_default_tare";
+import m0008 from "./0008_tare_one_for_all_estates";
 
 /** Ordered tenant migrations. Append only. */
 export const TENANT_MIGRATIONS: readonly { version: number; name: string; sql: string }[] = [
@@ -15,4 +16,5 @@ export const TENANT_MIGRATIONS: readonly { version: number; name: string; sql: s
   { version: 5, name: "attendance_shift", sql: m0005 },
   { version: 6, name: "worker_estates", sql: m0006 },
   { version: 7, name: "estate_default_tare", sql: m0007 },
+  { version: 8, name: "tare_one_for_all_estates", sql: m0008 },
 ];

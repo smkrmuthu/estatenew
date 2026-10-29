@@ -5,7 +5,6 @@ import {
   dailyLogCorrection,
   deleteMaster,
   estateInput,
-  estateTareInput,
   fieldInput,
   importCommit,
   importRequest,
@@ -51,19 +50,6 @@ export function tenantRoutes(app: Hono<AppEnv>) {
     app,
     { method: "post", path: "/estates", summary: "Create an estate", tag: "masters", auth: "bearer", permission: "masters.write", body: estateInput },
     call("org.createEstate", readJson, 201),
-  );
-  route(
-    app,
-    {
-      method: "put",
-      path: "/estates/:estateId/tare",
-      summary: "Set the tare taken off every weigh-in at an estate (managers and owners)",
-      tag: "masters",
-      auth: "bearer",
-      permission: "masters.write",
-      body: estateTareInput,
-    },
-    call("org.setEstateTare", async (c) => ({ id: p(c, "estateId"), body: await readJson(c) })),
   );
   route(
     app,

@@ -1,4 +1,4 @@
-import { formatScaled, parseScaled } from "@cemms/domain";
+import { formatKg, formatScaled, parseKg, parseScaled, WeightError } from "@cemms/domain";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useState } from "react";
 import { useApp } from "../app-context";
@@ -6,9 +6,10 @@ import { Button, Card, Chip, Drawer, Field, FilterBar, FilterSearch, FilterSelec
 import { ApiError, api } from "../lib/api";
 import { useCrops } from "../lib/crops";
 import type { EmploymentType, Gender, LandUse, ReferenceData } from "../lib/db";
+import { normalizeKg } from "../lib/kg";
 import { useDashboards } from "./Dashboard";
 
-type Tab = "fields" | "workers" | "varieties" | "jobs" | "logkinds";
+type Tab = "fields" | "workers" | "varieties" | "jobs" | "logkinds" | "tare";
 type Target = { tab: Tab; id?: string } | null;
 
 const LAND_LABEL: Record<LandUse, string> = { BEARING: "Bearing", YOUNG: "Young plants", ROCK: "Rock", WATER: "Water", EMPTY: "Empty", OTHER_CROP: "Other crop" };
@@ -1050,6 +1051,59 @@ function Kinds({ data, canWrite, open }: { data: ReferenceData; canWrite: boolea
 
 /* ---------- Page ---------- */
 
+/** One tare for every estate: pre-filled on the Plucking form, read-only for supervisors. */
+function Tare({ data, canWrite }: { data: ReferenceData; canWrite: boolean }) {
+  const app = useApp();
+  const qc = useQueryClient();
+  const current = data.rules?.tareG ?? 0;
+  const currentText = current ? formatKg(current) : "0";
+  const [text, setText] = useState<string | null>(null);
+  const [note, setNote] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
+  const shown = text ?? currentText;
+  const parsed = (() => {
+    try {
+      return parseKg(normalizeKg(shown || "0"));
+    } catch (e) {
+      return e instanceof WeightError ? e.message : "Enter the weight in kilograms, for example 0.5";
+    }
+  })();
+  const bad = typeof parsed === "string";
+  return (
+    <Card title="Tare (bag weight)">
+      <p className="mb-3 max-w-2xl text-sm text-muted">
+        The weight taken off every weigh-in, the same for all estates. It is filled in on the Plucking form; supervisors cannot change it, managers and owners can. A change applies to weigh-ins saved
+        from now on. Earlier weigh-ins keep the tare they were saved with. It starts at 0.
+      </p>
+      <div className="flex flex-wrap items-end gap-3">
+        <Field label="Tare (kg)" htmlFor="tare-default" error={bad ? parsed : undefined}>
+          <Input id="tare-default" inputMode="decimal" value={shown} disabled={!canWrite} onChange={(e) => /^\d{0,3}(\.\d{0,3})?$/.test(e.target.value) && setText(e.target.value)} />
+        </Field>
+        <Button
+          disabled={!canWrite || bad || parsed === current}
+          onClick={async () => {
+            try {
+              await api("/admin/settings/muster.tare.defaultGrams", { method: "PUT", body: { value: parsed } });
+              setNote({ tone: "ok", text: `Saved. ${formatKg(parsed as number)} kg is taken off each weigh-in saved from now on.` });
+              setText(null);
+              await qc.invalidateQueries({ queryKey: ["reference-all"] });
+              await app.reloadReference();
+            } catch (e) {
+              setNote({ tone: "bad", text: e instanceof ApiError ? e.message : "Could not reach the server." });
+            }
+          }}
+        >
+          Save
+        </Button>
+      </div>
+      {note && (
+        <div className="mt-3">
+          <Notice tone={note.tone}>{note.text}</Notice>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 export function Masters() {
   const app = useApp();
   const qc = useQueryClient();
@@ -1071,9 +1125,10 @@ export function Masters() {
     { id: "varieties", label: "Varieties" },
     { id: "jobs", label: "Jobs" },
     { id: "logkinds", label: "Log kinds" },
+    { id: "tare", label: "Tare" },
   ];
-  const addLabel = { fields: "Add field", workers: "Add worker", varieties: "Add variety", jobs: "Add job", logkinds: "Add kind" }[tab];
-  const canAdd = tab === "jobs" || tab === "varieties" ? jobsWrite : tab === "logkinds" ? kindsWrite : anyWrite;
+  const addLabel = { fields: "Add field", workers: "Add worker", varieties: "Add variety", jobs: "Add job", logkinds: "Add kind", tare: "" }[tab];
+  const canAdd = tab === "tare" ? false : tab === "jobs" || tab === "varieties" ? jobsWrite : tab === "logkinds" ? kindsWrite : anyWrite;
   const pick: Pick = {
     sel,
     toggle: (id) => setSel((cur) => (cur.has(id) ? new Set([...cur].filter((x) => x !== id)) : new Set([...cur, id]))),
@@ -1187,7 +1242,7 @@ export function Masters() {
       </div>
 
       {note && <Notice tone={note.tone}>{note.text}</Notice>}
-      {!canAdd && (
+      {!canAdd && tab !== "tare" && (
         <Notice tone="info">
           {tab === "logkinds"
             ? "You can view the log kinds. They are shared by every estate, so only an owner or an estate manager can add or change them."
@@ -1202,6 +1257,7 @@ export function Masters() {
       {data && tab === "workers" && <Workers data={data} canWrite={writeEstate} open={(id) => setTarget({ tab, id })} pick={pick} />}
       {data && tab === "varieties" && <Varieties data={data} canWrite={jobsWrite} open={(id) => setTarget({ tab, id })} />}
       {data && tab === "jobs" && <Jobs data={data} canWrite={jobsWrite} open={(id) => setTarget({ tab, id })} />}
+      {data && tab === "tare" && <Tare data={data} canWrite={app.canAny("settings.configure")} />}
       {data && tab === "logkinds" && <Kinds data={data} canWrite={kindsWrite} open={(id) => setTarget({ tab, id })} />}
 
       {data && target && (

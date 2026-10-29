@@ -13,9 +13,9 @@ const weigh = (s: Awaited<ReturnType<typeof setupTenant>>, extra: Record<string,
   ...extra,
 });
 
-/** The owner sets the estate's tare; a supervisor's weigh-ins then take it off, whatever the phone sends. */
+/** The owner sets the tare for all estates; a supervisor's weigh-ins then take it off, whatever the phone sends. */
 const setTare = async (s: Awaited<ReturnType<typeof setupTenant>>, tareKg: string) =>
-  expect((await api(`/estates/${s.estate.id}/tare`, { method: "PUT", token: s.owner.token, body: { tareKg } })).status).toBe(200);
+  expect((await api("/admin/settings/muster.tare.defaultGrams", { method: "PUT", token: s.owner.token, body: { value: Math.round(Number(tareKg) * 1000) } })).status).toBe(200);
 
 describe("weigh-in (muster)", () => {
   it("records coffee and pepper with the same capture and recomputes net on the server", async () => {
@@ -48,7 +48,7 @@ describe("weigh-in (muster)", () => {
     expect(summary.weighIn.workersWithSeveralEntries).toBe(1);
   });
 
-  it("takes the estate's tare off every supervisor weigh-in, and only a manager or owner sets or overrides it", async () => {
+  it("takes the tare for all estates off every supervisor weigh-in, and only a manager or owner sets or overrides it", async () => {
     const s = await setupTenant();
     const tareOf = async (id: string) =>
       ((await api(`/estates/${s.estate.id}/muster/${today()}`, { token: s.owner.token })).body as { id: string; tareG: number; netG: number }[]).find((e) => e.id === id);
@@ -59,12 +59,14 @@ describe("weigh-in (muster)", () => {
     expect(await tareOf(first.entityId)).toMatchObject({ tareG: 0, netG: 10000 });
 
     // A supervisor cannot set it; bad figures are refused; the owner can, and it is audited with the old value.
-    expect((await api(`/estates/${s.estate.id}/tare`, { method: "PUT", token: s.supervisor.token, body: { tareKg: "0.5" } })).status).toBe(403);
-    expect((await api(`/estates/${s.estate.id}/tare`, { method: "PUT", token: s.owner.token, body: { tareKg: "-1" } })).status).toBe(422);
-    expect((await api(`/estates/${s.estate.id}/tare`, { method: "PUT", token: s.owner.token, body: { tareKg: "600" } })).status).toBe(422);
+    const put = (token: string, value: unknown) => api("/admin/settings/muster.tare.defaultGrams", { method: "PUT", token, body: { value } });
+    expect((await put(s.supervisor.token, 500)).status).toBe(403);
+    expect((await put(s.owner.token, -1)).status).toBe(422);
+    expect((await put(s.owner.token, 600_000)).status).toBe(422);
+    expect((await put(s.owner.token, 0.5)).status).toBe(422);
     await setTare(s, "0.5");
-    const audit = (await api(`/audit?estateId=${s.estate.id}`, { token: s.owner.token })).body as { action: string; beforeJson: string; afterJson: string }[];
-    expect(audit.find((a) => a.action === "estate.tare.change")).toMatchObject({ beforeJson: '{"defaultTareG":0}', afterJson: '{"defaultTareG":500}' });
+    const audit = (await api("/audit", { token: s.owner.token })).body as { action: string; entityId: string; beforeJson: string | null; afterJson: string | null }[];
+    expect(audit.find((a) => a.action === "setting.change" && a.entityId === "muster.tare.defaultGrams")).toMatchObject({ afterJson: "500" });
 
     // New supervisor weigh-ins take 0.5 kg off whatever the phone sent; the earlier weigh-in keeps its tare.
     const second = await mutation(s.supervisor.deviceId, s.estate.id, "muster_entry", "create", weigh(s, { workerId: s.w2.id, grossKg: "10", tareKg: null }));
@@ -74,9 +76,9 @@ describe("weigh-in (muster)", () => {
     expect(await tareOf(third.entityId)).toMatchObject({ tareG: 500, netG: 9500 });
     expect(await tareOf(first.entityId)).toMatchObject({ tareG: 0 });
 
-    // The estate's tare reaches the phones with the master lists.
-    const ref = (await api("/reference", { token: s.supervisor.token })).body as { estates: { id: string; defaultTareG: number }[] };
-    expect(ref.estates.find((e) => e.id === s.estate.id)?.defaultTareG).toBe(500);
+    // The tare reaches the phones with the master lists.
+    const ref = (await api("/reference", { token: s.supervisor.token })).body as { rules: { tareG: number } };
+    expect(ref.rules.tareG).toBe(500);
   });
 
   it("keeps Pepper off until it is switched on, and refuses pepper weigh-ins while it is off", async () => {

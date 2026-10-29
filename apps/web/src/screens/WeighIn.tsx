@@ -49,8 +49,8 @@ export function WeighIn() {
   const [varietyId, setVarietyId] = useState("");
   const [gross, setGross] = useState("");
   const [bags, setBags] = useState(1);
-  // Supervisors always use the estate's tare; managers and owners may change it for a weigh-in.
-  const defaultTareG = ref?.estates.find((e) => e.id === estateId)?.defaultTareG ?? 0;
+  // Supervisors always use the tare set in Masters for all estates; managers and owners may change it for a weigh-in.
+  const defaultTareG = ref?.rules?.tareG ?? 0;
   const estateTare = defaultTareG ? formatKg(defaultTareG) : "0";
   const canSetTare = app.can("muster.correct", estateId);
   const [tareEntered, setTare] = useState<string | null>(null);
@@ -525,7 +525,7 @@ export function WeighIn() {
               label="Tare (kg)"
               htmlFor="tare"
               error={preview.tareError ?? undefined}
-              hint={canSetTare ? "Taken off this weigh-in. Change it only if this one differs." : "Set by your manager for this estate"}
+              hint={canSetTare ? "Taken off this weigh-in. Change it only if this one differs." : "Set by your manager in Masters"}
             >
               <Input id="tare" inputMode="decimal" placeholder="0" value={tare} readOnly={!canSetTare} onChange={(e) => KG_TEXT.test(e.target.value) && setTare(e.target.value)} />
             </Field>

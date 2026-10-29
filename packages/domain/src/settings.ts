@@ -107,6 +107,14 @@ export const SETTING_DEFS = {
     gates: ["OC-87"],
     validate: nullableIntIn(0, 5000),
   },
+  "muster.tare.defaultGrams": {
+    key: "muster.tare.defaultGrams",
+    description: "Tare in grams taken off every weigh-in at every estate. Set in Masters; pre-filled on the Plucking form. Starts at 0.",
+    defaultValue: 0,
+    basis: "tenant-choice",
+    gates: [],
+    validate: intIn(0, 500_000),
+  },
   "muster.multiplePerDay": {
     key: "muster.multiplePerDay",
     description: "Several weigh-ins for one worker and day are kept and flagged.",

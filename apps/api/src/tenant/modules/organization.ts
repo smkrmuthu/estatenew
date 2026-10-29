@@ -1,5 +1,5 @@
-import type { estateInput, estateTareInput, fieldInput, jobTypeInput, logKindInput, varietyInput, workerInput } from "@cemms/contracts";
-import { MAX_WEIGH_IN_GRAMS, parseKg, uuidv7, WeightError } from "@cemms/domain";
+import type { estateInput, fieldInput, jobTypeInput, logKindInput, varietyInput, workerInput } from "@cemms/contracts";
+import { uuidv7 } from "@cemms/domain";
 import { and, eq, inArray } from "drizzle-orm";
 import type { z } from "zod";
 import { AppError } from "../../core/errors";
@@ -17,34 +17,6 @@ export function listEstates(ctx: TenantContext) {
   const allowed = ctx.estates("estate.read");
   const rows = ctx.db.select().from(estates).all();
   return allowed === "ALL" ? rows : rows.filter((r) => allowed.includes(r.id));
-}
-
-/** A manager or owner sets the tare taken off every weigh-in at an estate. The change is audited with the old value. */
-export function setEstateTare(ctx: TenantContext, estateId: string, input: z.infer<typeof estateTareInput>) {
-  ctx.require("masters.write", estateId);
-  let grams: number;
-  try {
-    grams = parseKg(input.tareKg);
-  } catch (e) {
-    if (e instanceof WeightError) throw new AppError(422, e.code, e.message, { tareKg: e.message });
-    throw e;
-  }
-  if (grams > MAX_WEIGH_IN_GRAMS) throw new AppError(422, "WEIGHT_TOO_LARGE", "The tare cannot be more than 500 kg", { tareKg: "Too large" });
-  return ctx.tx((db) => {
-    const before = getEstate(db, estateId);
-    const after = { ...before, defaultTareG: grams, version: before.version + 1, updatedAt: ctx.nowIso(), updatedBy: ctx.scope.userId };
-    db.update(estates).set({ defaultTareG: grams, version: after.version, updatedAt: after.updatedAt, updatedBy: after.updatedBy }).where(eq(estates.id, estateId)).run();
-    ctx.audit(db, {
-      action: "estate.tare.change",
-      entityType: "estate",
-      entityId: estateId,
-      estateId,
-      reason: input.reason ?? null,
-      before: { defaultTareG: before.defaultTareG },
-      after: { defaultTareG: grams },
-    });
-    return after;
-  });
 }
 
 export function getEstate(db: Db, estateId: string) {
@@ -92,7 +64,7 @@ export interface ReferenceData {
   workers: (typeof workers.$inferSelect & { estateIds: string[] })[];
   logKinds: (typeof logKinds.$inferSelect)[];
   /** Rules the capture screens follow without asking the server again. */
-  rules: { varietyRequired: boolean };
+  rules: { varietyRequired: boolean; tareG: number };
 }
 
 /** Master data for the estates the user can read; also the device bootstrap payload. */
@@ -100,7 +72,16 @@ export function referenceData(ctx: TenantContext, includeInactive = false): Refe
   const allowed = ctx.estates("masters.read");
   const estateRows = listEstates(ctx).filter((e) => allowed === "ALL" || allowed.includes(e.id));
   const ids = estateRows.map((e) => e.id);
-  if (ids.length === 0) return { estates: [], fields: [], varieties: [], jobTypes: [], workers: [], logKinds: [], rules: { varietyRequired: setting(ctx.db, "muster.variety.required") } };
+  if (ids.length === 0)
+    return {
+      estates: [],
+      fields: [],
+      varieties: [],
+      jobTypes: [],
+      workers: [],
+      logKinds: [],
+      rules: { varietyRequired: setting(ctx.db, "muster.variety.required"), tareG: setting(ctx.db, "muster.tare.defaultGrams") },
+    };
   const fv = ctx.db.select().from(fieldVarieties).all();
   const subs = ctx.db.select().from(fieldSubdivisions).all();
   const keep = <T extends { active: boolean }>(r: T) => includeInactive || r.active;
@@ -135,7 +116,7 @@ export function referenceData(ctx: TenantContext, includeInactive = false): Refe
         return estateIds.length ? [{ ...w, estateIds }] : [];
       }),
     logKinds: ctx.db.select().from(logKinds).all().filter(keep),
-    rules: { varietyRequired: setting(ctx.db, "muster.variety.required") },
+    rules: { varietyRequired: setting(ctx.db, "muster.variety.required"), tareG: setting(ctx.db, "muster.tare.defaultGrams") },
   };
 }
 

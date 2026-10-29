@@ -39,7 +39,6 @@ describe("tenant and estate isolation", () => {
       ["POST", `/estates/${a.estate.id}/attendance/${d}/actions`, { action: "approve" }],
       ["POST", `/attendance-records/${m.entityId}/corrections`, { statusCode: "ABSENT", reason: "test reason", baseVersion: 1 }],
       ["POST", `/attendance-records/${m.entityId}/removal`, { reason: "test reason", baseVersion: 1 }],
-      ["PUT", `/estates/${a.estate.id}/tare`, { tareKg: "1" }],
       ["PUT", `/fields/${a.f1.id}`, { estateId: a.estate.id, code: "F1", name: "x", crops: ["COFFEE"], varietyIds: [] }],
       ["PUT", `/workers/${a.w1.id}`, { estateId: a.estate.id, employeeCode: "W001", name: "x" }],
       ["POST", `/workers/${a.w1.id}/delete`, { reason: "test reason" }],
@@ -89,7 +88,7 @@ describe("tenant and estate isolation", () => {
     const again = await stub.provision({ tenantId: b.tenantId, actor: "x", seedGatesFromRegister: false });
     expect(again).toMatchObject({ ok: false, error: { code: "TENANT_MISMATCH" } });
     const health = await stub.health();
-    expect(health.migration).toMatchObject({ version: 7, error: null });
+    expect(health.migration).toMatchObject({ version: 8, error: null });
     expect(health.provisioned).toBe(true);
   });
 });

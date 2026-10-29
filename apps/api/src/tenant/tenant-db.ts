@@ -6,7 +6,6 @@ import {
   dailyLogCorrection,
   deleteMaster,
   estateInput,
-  estateTareInput,
   fieldInput,
   importCommit,
   importRequest,
@@ -47,7 +46,6 @@ const withIdVersion = <T extends z.ZodTypeAny>(body: T) => z.object({ id: z.stri
 const OPS = {
   "org.reference": { input: z.object({ includeInactive: z.boolean().default(false) }), run: (c: TenantContext, i: { includeInactive: boolean }) => org.referenceData(c, i.includeInactive) },
   "org.createEstate": { input: estateInput, run: org.createEstate },
-  "org.setEstateTare": { input: withId(estateTareInput), run: (c: TenantContext, i: { id: string; body: z.infer<typeof estateTareInput> }) => org.setEstateTare(c, i.id, i.body) },
   "org.upsertField": {
     input: withIdVersion(fieldInput),
     run: (c: TenantContext, i: { id?: string; baseVersion?: number; body: z.infer<typeof fieldInput> }) => org.upsertField(c, i.body, i.id, i.baseVersion),

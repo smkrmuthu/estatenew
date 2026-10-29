@@ -215,15 +215,16 @@ describe("settings and readiness", () => {
     const gates = (await api("/admin/gates", { token: owner.token })).body as { id: string; status: string; answer: string }[];
     expect(gates.find((g) => g.id === "OC-105")).toMatchObject({ status: "confirmed" });
     expect(gates.find((g) => g.id === "OC-5")).toMatchObject({ status: "answered-unclear", answer: "NA" });
-    expect(gates.find((g) => g.id === "OC-7")).toMatchObject({ status: "open" });
+    expect(gates.find((g) => g.id === "OC-7")).toMatchObject({ status: "confirmed" });
+    expect(gates.find((g) => g.id === "OC-12")).toMatchObject({ status: "open" });
 
-    const rec = await api("/admin/gates/OC-7", {
+    const rec = await api("/admin/gates/OC-12", {
       method: "PUT",
       token: owner.token,
-      body: { status: "confirmed", answer: "Estate manager approves", approver: "Estate owner", decidedOn: "2026-10-30", source: "Phone call" },
+      body: { status: "confirmed", answer: "Call it a block", approver: "Estate owner", decidedOn: "2026-10-30", source: "Phone call" },
     });
     expect(rec.status).toBe(200);
-    expect(((await api("/admin/readiness", { token: owner.token })).body.blocking as { id: string }[]).map((g) => g.id)).not.toContain("OC-7");
+    expect(((await api("/admin/readiness", { token: owner.token })).body.blocking as { id: string }[]).map((g) => g.id)).not.toContain("OC-12");
   });
 });
 

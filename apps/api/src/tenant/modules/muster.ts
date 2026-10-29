@@ -50,12 +50,12 @@ function validated(db: Db, estateId: string, p: Core, tareKg: string | null | un
 }
 
 /**
- * A supervisor cannot choose the tare: every weigh-in gets the estate's default, whatever the phone sent.
+ * A supervisor cannot choose the tare: every weigh-in gets the tenant's default tare, whatever the phone sent.
  * A manager or owner may enter another value; leaving it blank uses the default.
  */
-function tareFor(ctx: TenantContext, estate: { id: string; defaultTareG: number }, entered: string | null | undefined): string | null {
-  if (ctx.can("muster.correct", estate.id) && entered) return entered;
-  return formatKg(estate.defaultTareG);
+function tareFor(ctx: TenantContext, db: Db, estateId: string, entered: string | null | undefined): string | null {
+  if (ctx.can("muster.correct", estateId) && entered) return entered;
+  return formatKg(setting(db, "muster.tare.defaultGrams"));
 }
 
 export function applyMusterCreate(ctx: TenantContext, db: Db, meta: ApplyMeta, payload: MusterEntryPayload): ApplyOutcome {
@@ -70,7 +70,7 @@ export function applyMusterCreate(ctx: TenantContext, db: Db, meta: ApplyMeta, p
     estateId: estate.id,
     businessDate: payload.businessDate,
     workerId: payload.workerId,
-    ...validated(db, estate.id, payload, tareFor(ctx, estate, payload.tareKg)),
+    ...validated(db, estate.id, payload, tareFor(ctx, db, estate.id, payload.tareKg)),
     status: "ACTIVE" as const,
     voidReason: null,
     capturedBy: ctx.scope.userId,

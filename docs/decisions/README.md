@@ -23,3 +23,5 @@ Each decision records its source, approver and date. Business decisions come onl
 | [ADR-0017](0017-manager-submit-is-approval.md) | A manager's own attendance submit is approved straight away | Interim | Project lead instruction | Muthu Kumar | 2026-10-29 |
 | [ADR-0018](0018-weigh-in-variety-required.md) | A weigh-in must name its variety | Interim | Project lead instruction | Muthu Kumar | 2026-10-29 |
 | [ADR-0019](0019-estate-tare-set-by-manager.md) | The estate's tare is set by a manager or owner; supervisors cannot change it | Interim | Project lead instruction | Muthu Kumar | 2026-10-29 |
+| [ADR-0020](0020-answers-oc7-oc8-oc13-oc19.md) | Answers recorded for OC-7, OC-8, OC-13, OC-14, OC-19 and OC-87 | Interim | Project lead, in chat | Muthu Kumar | 2026-10-29 |
+| [ADR-0021](0021-one-tare-for-all-estates-in-masters.md) | One tare for all estates, set in Masters and pre-filled on Plucking | Interim | Project lead, in chat | Muthu Kumar | 2026-10-29 |

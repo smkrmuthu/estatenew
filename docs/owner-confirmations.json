@@ -111,40 +111,40 @@
       "number": 7,
       "section": "Attendance",
       "question": "The estate manager checks and approves each day's attendance after the supervisor submits it. If no, who approves?",
-      "ownerAnswer": null,
-      "status": "open",
+      "ownerAnswer": "Manager or Owner approves. Answered in chat by the project lead (Muthu Kumar), 29 October 2026.",
+      "status": "confirmed",
       "phase": "1A",
-      "blocksProductionActivation": true,
+      "blocksProductionActivation": false,
       "affects": [
         "attendance.approval"
       ],
-      "interimBehavior": "Approval workflow exists; approver is anyone holding attendance.approve on the estate (Owner or Estate Manager). A manager's or owner's own submit is approved straight away (ADR-0017, project lead instruction 29 Oct 2026); a supervisor's submit waits for a manager. Who approves is not confirmed by the estate owner.",
+      "interimBehavior": "Anyone holding attendance.approve (Estate Manager or Owner) approves. A manager's or owner's own submit is approved straight away (ADR-0017); a supervisor's submit waits for a manager or owner.",
       "configKeys": [
         "attendance.approval.required"
       ],
       "source": "Coffee Estate Application - Process Confirmation for Estate Owner (23 Oct 2026), answers as exported 27 Oct 2026",
-      "approver": null,
-      "decidedOn": null
+      "approver": "Muthu Kumar (project lead), in chat",
+      "decidedOn": "2026-10-29"
     },
     {
       "id": "OC-8",
       "number": 8,
       "section": "Attendance",
       "question": "These attendance types are enough: Present, Absent, Leave, Off day, Holiday. Please add any others.",
-      "ownerAnswer": null,
-      "status": "open",
+      "ownerAnswer": "These five are enough; none to add for now. Answered in chat by the project lead (Muthu Kumar), 29 October 2026.",
+      "status": "confirmed",
       "phase": "1A",
-      "blocksProductionActivation": true,
+      "blocksProductionActivation": false,
       "affects": [
         "attendance.statuses"
       ],
-      "interimBehavior": "Only Present and Absent with Full day or Half day (from the process text accepted in Q1) are active. Leave, Off day and Holiday are seeded inactive as proposed.",
+      "interimBehavior": "Present (full or half day) and Absent are on. Leave, Off day and Holiday are confirmed and are switched on in Manage > Setup > Attendance types when the estate wants them.",
       "configKeys": [
         "attendance.statuses"
       ],
       "source": "Coffee Estate Application - Process Confirmation for Estate Owner (23 Oct 2026), answers as exported 27 Oct 2026",
-      "approver": null,
-      "decidedOn": null
+      "approver": "Muthu Kumar (project lead), in chat",
+      "decidedOn": "2026-10-29"
     },
     {
       "id": "OC-9",
@@ -227,35 +227,35 @@
       "number": 13,
       "section": "Fields and plucking",
       "question": "Some divisions have more than one variety (for example Super Kadu: 4 acres Chandana Giri and 6 acres Selection 9).",
-      "ownerAnswer": null,
-      "status": "open",
+      "ownerAnswer": "Variety is kept in Masters; some fields have more than one variety and they are added from Masters. Answered in chat by the project lead (Muthu Kumar), 29 October 2026.",
+      "status": "confirmed",
       "phase": "1A",
       "blocksProductionActivation": false,
       "affects": [
         "organization.fieldVarieties",
         "muster.variety"
       ],
-      "interimBehavior": "A field can list several varieties; a weigh-in must name its variety (ADR-0018, project lead instruction 29 Oct 2026; setting muster.variety.required, on by default). The variety is not inferred when a field has more than one.",
+      "interimBehavior": "A field can list several varieties, added in Masters; a weigh-in must name its variety (ADR-0018). The variety is never inferred when a field has more than one.",
       "configKeys": [
         "muster.variety.required"
       ],
       "source": "Coffee Estate Application - Process Confirmation for Estate Owner (23 Oct 2026), answers as exported 27 Oct 2026",
-      "approver": null,
-      "decidedOn": null
+      "approver": "Muthu Kumar (project lead), in chat",
+      "decidedOn": "2026-10-29"
     },
     {
       "id": "OC-14",
       "number": 14,
       "section": "Fields and plucking",
       "question": "The varieties are Chandana Giri, Selection 9 and YMG. Please add any others and explain what YMG is.",
-      "ownerAnswer": null,
-      "status": "open",
+      "ownerAnswer": "More varieties can be added from Masters. What YMG is has not been explained. Answered in chat by the project lead (Muthu Kumar), 29 October 2026.",
+      "status": "answered-unclear",
       "phase": "1A",
       "blocksProductionActivation": true,
       "affects": [
         "organization.varieties"
       ],
-      "interimBehavior": "Varieties are imported as master data; YMG and spellings stay as given until the owner explains them.",
+      "interimBehavior": "Varieties are master data and can be added in Masters; YMG and spellings stay as given until it is explained.",
       "configKeys": [],
       "source": "Coffee Estate Application - Process Confirmation for Estate Owner (23 Oct 2026), answers as exported 27 Oct 2026",
       "approver": null,
@@ -342,14 +342,14 @@
       "number": 19,
       "section": "Evening muster (weigh-in)",
       "question": "The weight of the bag or basket is deducted from the total.",
-      "ownerAnswer": null,
-      "status": "open",
+      "ownerAnswer": "Tare is kept in Masters and pre-filled on the Plucking form, with a default value for all estates. Answered in chat by the project lead (Muthu Kumar), 29 October 2026.",
+      "status": "answered-unclear",
       "phase": "1A",
       "blocksProductionActivation": true,
       "affects": [
         "muster.tare"
       ],
-      "interimBehavior": "Gross, bag count and tare are stored as entered. Tare is entered by hand (default 0); per-bag tare is proposed and inactive.",
+      "interimBehavior": "Tare is one figure per weigh-in, the same for all estates, set by a manager or owner in Masters > Tare and pre-filled read-only for supervisors (ADR-0021). It starts at 0; the default weight has not been given.",
       "configKeys": [
         "muster.tare.mode"
       ],
@@ -1488,14 +1488,14 @@
       "number": 87,
       "section": "New checks and reports",
       "question": "Empty plucking bags all weigh about the same, so one bag weight per estate is enough. The prototype uses 0.5 kg. What does one empty bag weigh?",
-      "ownerAnswer": null,
-      "status": "open",
+      "ownerAnswer": "Put it in Masters and pre-fill it on the Plucking form, with a default value for all estates. The weight itself was not given. Answered in chat by the project lead (Muthu Kumar), 29 October 2026.",
+      "status": "answered-unclear",
       "phase": "1A",
       "blocksProductionActivation": true,
       "affects": [
         "muster.tare"
       ],
-      "interimBehavior": "0.5 kg per bag is a prototype sample and is not used.",
+      "interimBehavior": "No bag weight is assumed. The tare for all estates starts at 0 until a manager or owner sets it in Masters; the prototype's 0.5 kg is not used.",
       "configKeys": [
         "muster.tare.perBagGrams"
       ],
