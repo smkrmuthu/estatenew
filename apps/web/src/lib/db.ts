@@ -53,7 +53,7 @@ export type EmploymentType = "PERMANENT" | "CASUAL" | "CONTRACT" | "NORTH_INDIAN
 export type LandUse = "BEARING" | "YOUNG" | "ROCK" | "WATER" | "EMPTY" | "OTHER_CROP";
 
 export interface ReferenceData {
-  estates: { id: string; code: string; name: string; timeZone: string }[];
+  estates: { id: string; code: string; name: string; timeZone: string; defaultTareG?: number }[];
   fields: {
     id: string;
     estateId: string;

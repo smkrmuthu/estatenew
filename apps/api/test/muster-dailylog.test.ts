@@ -13,9 +13,14 @@ const weigh = (s: Awaited<ReturnType<typeof setupTenant>>, extra: Record<string,
   ...extra,
 });
 
+/** The owner sets the estate's tare; a supervisor's weigh-ins then take it off, whatever the phone sends. */
+const setTare = async (s: Awaited<ReturnType<typeof setupTenant>>, tareKg: string) =>
+  expect((await api(`/estates/${s.estate.id}/tare`, { method: "PUT", token: s.owner.token, body: { tareKg } })).status).toBe(200);
+
 describe("weigh-in (muster)", () => {
   it("records coffee and pepper with the same capture and recomputes net on the server", async () => {
     const s = await setupTenant();
+    await setTare(s, "1");
     const coffee = await mutation(s.supervisor.deviceId, s.estate.id, "muster_entry", "create", weigh(s, { varietyId: s.cg.id }));
     const pepper = await mutation(
       s.supervisor.deviceId,
@@ -30,17 +35,48 @@ describe("weigh-in (muster)", () => {
     const list = (await api(`/estates/${s.estate.id}/muster/${today()}`, { token: s.owner.token })).body as { id: string; netG: number; grossG: number; tareG: number; crop: string }[];
     const byId = new Map(list.map((e) => [e.id, e]));
     expect(byId.get(coffee.entityId)).toMatchObject({ grossG: 20500, tareG: 1000, netG: 19500, crop: "COFFEE" });
-    expect(byId.get(pepper.entityId)).toMatchObject({ grossG: 3250, tareG: 0, netG: 3250, crop: "PEPPER" });
+    expect(byId.get(pepper.entityId)).toMatchObject({ grossG: 3250, tareG: 1000, netG: 2250, crop: "PEPPER" });
 
     const summary = (await api(`/estates/${s.estate.id}/reports/daily/${today()}`, { token: s.supervisor.token })).body;
     expect(summary.basis).toBe("server-accepted");
     expect(summary.weighIn.byCrop).toEqual(
       expect.arrayContaining([
-        { crop: "COFFEE", entries: 2, workers: 1, netKg: "24.500" },
-        { crop: "PEPPER", entries: 1, workers: 1, netKg: "3.250" },
+        { crop: "COFFEE", entries: 2, workers: 1, netKg: "23.500" },
+        { crop: "PEPPER", entries: 1, workers: 1, netKg: "2.250" },
       ]),
     );
     expect(summary.weighIn.workersWithSeveralEntries).toBe(1);
+  });
+
+  it("takes the estate's tare off every supervisor weigh-in, and only a manager or owner sets or overrides it", async () => {
+    const s = await setupTenant();
+    const tareOf = async (id: string) =>
+      ((await api(`/estates/${s.estate.id}/muster/${today()}`, { token: s.owner.token })).body as { id: string; tareG: number; netG: number }[]).find((e) => e.id === id);
+
+    // Until someone sets it the tare is 0, and a supervisor's own figure is ignored.
+    const first = await mutation(s.supervisor.deviceId, s.estate.id, "muster_entry", "create", weigh(s, { grossKg: "10", tareKg: "3" }));
+    expect((await push(s.supervisor, [first])).body.results[0].status).toBe("accepted");
+    expect(await tareOf(first.entityId)).toMatchObject({ tareG: 0, netG: 10000 });
+
+    // A supervisor cannot set it; bad figures are refused; the owner can, and it is audited with the old value.
+    expect((await api(`/estates/${s.estate.id}/tare`, { method: "PUT", token: s.supervisor.token, body: { tareKg: "0.5" } })).status).toBe(403);
+    expect((await api(`/estates/${s.estate.id}/tare`, { method: "PUT", token: s.owner.token, body: { tareKg: "-1" } })).status).toBe(422);
+    expect((await api(`/estates/${s.estate.id}/tare`, { method: "PUT", token: s.owner.token, body: { tareKg: "600" } })).status).toBe(422);
+    await setTare(s, "0.5");
+    const audit = (await api(`/audit?estateId=${s.estate.id}`, { token: s.owner.token })).body as { action: string; beforeJson: string; afterJson: string }[];
+    expect(audit.find((a) => a.action === "estate.tare.change")).toMatchObject({ beforeJson: '{"defaultTareG":0}', afterJson: '{"defaultTareG":500}' });
+
+    // New supervisor weigh-ins take 0.5 kg off whatever the phone sent; the earlier weigh-in keeps its tare.
+    const second = await mutation(s.supervisor.deviceId, s.estate.id, "muster_entry", "create", weigh(s, { workerId: s.w2.id, grossKg: "10", tareKg: null }));
+    const third = await mutation(s.supervisor.deviceId, s.estate.id, "muster_entry", "create", weigh(s, { workerId: s.w2.id, grossKg: "10", tareKg: "0" }));
+    expect((await push(s.supervisor, [second, third])).body.results.map((x: { status: string }) => x.status)).toEqual(["accepted", "accepted"]);
+    expect(await tareOf(second.entityId)).toMatchObject({ tareG: 500, netG: 9500 });
+    expect(await tareOf(third.entityId)).toMatchObject({ tareG: 500, netG: 9500 });
+    expect(await tareOf(first.entityId)).toMatchObject({ tareG: 0 });
+
+    // The estate's tare reaches the phones with the master lists.
+    const ref = (await api("/reference", { token: s.supervisor.token })).body as { estates: { id: string; defaultTareG: number }[] };
+    expect(ref.estates.find((e) => e.id === s.estate.id)?.defaultTareG).toBe(500);
   });
 
   it("keeps Pepper off until it is switched on, and refuses pepper weigh-ins while it is off", async () => {
@@ -73,6 +109,7 @@ describe("weigh-in (muster)", () => {
 
   it("lists the recent days with accepted weigh-ins: counts and totals only, cancelled entries left out", async () => {
     const s = await setupTenant();
+    await setTare(s, "1");
     const a = await mutation(s.supervisor.deviceId, s.estate.id, "muster_entry", "create", weigh(s, { varietyId: s.cg.id }));
     const b = await mutation(s.supervisor.deviceId, s.estate.id, "muster_entry", "create", weigh(s, { fieldId: s.f2.id, crop: "PEPPER", grossKg: "3.25", bags: 1, tareKg: null, varietyId: s.pnl.id }));
     const cancelled = await mutation(s.supervisor.deviceId, s.estate.id, "muster_entry", "create", weigh(s, { grossKg: "9", tareKg: "0" }));
@@ -83,7 +120,7 @@ describe("weigh-in (muster)", () => {
     const res = await api(`/estates/${s.estate.id}/muster-days/${today()}`, { token: s.supervisor.token });
     expect(res.status).toBe(200);
     expect(res.body.basis).toBe("server-accepted");
-    expect(res.body.days).toEqual([{ date: today(), entries: 2, workers: 1, coffeeNetKg: "19.500", pepperNetKg: "3.250" }]);
+    expect(res.body.days).toEqual([{ date: today(), entries: 2, workers: 1, coffeeNetKg: "19.500", pepperNetKg: "2.250" }]);
     expect(JSON.stringify(res.body)).not.toContain(s.w1.name);
     // Nothing after the chosen date is included.
     const before = await api(`/estates/${s.estate.id}/muster-days/2000-01-01`, { token: s.supervisor.token });
@@ -92,6 +129,7 @@ describe("weigh-in (muster)", () => {
 
   it("refuses bad weights, a missing variety, crops not grown in the field and varieties of another crop", async () => {
     const s = await setupTenant();
+    await setTare(s, "2");
     const cases = [
       weigh(s, { grossKg: "1", tareKg: "2" }),
       weigh(s, { grossKg: "12.3456" }),
@@ -156,6 +194,7 @@ describe("daily log", () => {
 
   it("dashboard counts only accepted weigh-ins, per day, and lists what needs attention", async () => {
     const s = await setupTenant();
+    await setTare(s, "1");
     const m = await mutation(s.supervisor.deviceId, s.estate.id, "muster_entry", "create", weigh(s));
     const pepper = await mutation(
       s.supervisor.deviceId,
@@ -169,7 +208,7 @@ describe("daily log", () => {
     expect(res.status).toBe(200);
     expect(res.body.basis).toBe("server-accepted");
     expect(res.body.days).toHaveLength(14);
-    expect(res.body.days.at(-1)).toMatchObject({ date: today(), coffeeNetKg: "19.500", pepperNetKg: "3.250" });
+    expect(res.body.days.at(-1)).toMatchObject({ date: today(), coffeeNetKg: "19.500", pepperNetKg: "2.250" });
     expect(res.body.days[0]).toMatchObject({ coffeeNetKg: "0.000", pepperNetKg: "0.000" });
     expect(res.body.today).toMatchObject({ sheetState: "NOT_STARTED", activeWorkers: 3, weighIns: 2, coffeeNetKg: "19.500", dailyLogReadings: 0 });
     expect(res.body.attention).toMatchObject({ sheetsAwaitingApproval: [], openConflicts: 0 });

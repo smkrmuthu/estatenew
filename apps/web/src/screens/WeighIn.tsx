@@ -48,7 +48,12 @@ export function WeighIn() {
   const [varietyId, setVarietyId] = useState("");
   const [gross, setGross] = useState("");
   const [bags, setBags] = useState(1);
-  const [tare, setTare] = useState("");
+  // Supervisors always use the estate's tare; managers and owners may change it for a weigh-in.
+  const defaultTareG = ref?.estates.find((e) => e.id === estateId)?.defaultTareG ?? 0;
+  const estateTare = defaultTareG ? formatKg(defaultTareG) : "0";
+  const canSetTare = app.can("muster.correct", estateId);
+  const [tareEntered, setTare] = useState<string | null>(null);
+  const tare = canSetTare ? (tareEntered ?? estateTare) : estateTare;
   const [remarks, setRemarks] = useState("");
   const [saved, setSaved] = useState<string | null>(null);
   useUnsaved(!!(gross || remarks));
@@ -89,7 +94,7 @@ export function WeighIn() {
   const preview = (() => {
     if (!gross) return { net: null as string | null, error: null as string | null };
     try {
-      const w = computeWeighIn({ grossGrams: parseKg(gross), bags, tareGrams: tare ? parseKg(tare) : 0 }, "MANUAL");
+      const w = computeWeighIn({ grossGrams: parseKg(gross), bags, tareGrams: parseKg(tare || estateTare) }, "MANUAL");
       return { net: formatKg(w.netGrams), error: null };
     } catch (e) {
       return { net: null, error: e instanceof WeightError ? e.message : "Check the weight" };
@@ -170,17 +175,47 @@ export function WeighIn() {
   const [lCrop, setLCrop] = useState("");
   const [lState, setLState] = useState("");
   const rows = useMemo(() => {
-    const out = new Map<string, { id: string; workerId: string; fieldId: string; crop: string; netKg: string; status: LocalRecord["status"]; voided: boolean; message?: string; version: number }>();
+    const out = new Map<
+      string,
+      { id: string; workerId: string; fieldId: string; crop: string; grossKg: string; tareKg: string; netKg: string; status: LocalRecord["status"]; voided: boolean; message?: string; version: number }
+    >();
     for (const e of server.data ?? [])
-      out.set(e.id, { id: e.id, workerId: e.workerId, fieldId: e.fieldId, crop: e.crop, netKg: formatKg(e.netG), status: "accepted", voided: e.status === "VOID", version: e.version });
+      out.set(e.id, {
+        id: e.id,
+        workerId: e.workerId,
+        fieldId: e.fieldId,
+        crop: e.crop,
+        grossKg: formatKg(e.grossG),
+        tareKg: formatKg(e.tareG ?? 0),
+        netKg: formatKg(e.netG),
+        status: "accepted",
+        voided: e.status === "VOID",
+        version: e.version,
+      });
     for (const r of local) {
       const d = r.data as { workerId: string; fieldId: string; crop: string; grossKg: string; tareKg?: string | null; status?: string };
       if (out.has(r.entityId) && r.status === "accepted") continue;
       let netKg = "?";
+      let grossKg = "?";
+      let tareKg = "?";
       try {
+        grossKg = formatKg(parseKg(d.grossKg));
+        tareKg = formatKg(d.tareKg ? parseKg(d.tareKg) : 0);
         netKg = formatKg(parseKg(d.grossKg) - (d.tareKg ? parseKg(d.tareKg) : 0));
       } catch {}
-      out.set(r.entityId, { id: r.entityId, workerId: d.workerId, fieldId: d.fieldId, crop: d.crop, netKg, status: r.status, voided: d.status === "VOID", message: r.message, version: r.nextBase });
+      out.set(r.entityId, {
+        id: r.entityId,
+        workerId: d.workerId,
+        fieldId: d.fieldId,
+        crop: d.crop,
+        grossKg,
+        tareKg,
+        netKg,
+        status: r.status,
+        voided: d.status === "VOID",
+        message: r.message,
+        version: r.nextBase,
+      });
     }
     return [...out.values()].reverse();
   }, [server.data, local]);
@@ -252,7 +287,7 @@ export function WeighIn() {
       varietyId: varietyId || null,
       grossKg: gross,
       bags,
-      tareKg: tare || null,
+      tareKg: tare || estateTare,
       remarks: remarks.trim() || null,
     };
     await queueChange({
@@ -274,7 +309,7 @@ export function WeighIn() {
     if (next) pickWorker(next.id);
     else setWorkerId("");
     setGross("");
-    setTare("");
+    setTare(null);
     setRemarks("");
     setBags(1);
     void app.sync();
@@ -477,8 +512,8 @@ export function WeighIn() {
                 </Button>
               </div>
             </Field>
-            <Field label="Tare (kg)" htmlFor="tare" hint="Bag weight to take off, if any">
-              <Input id="tare" inputMode="decimal" placeholder="0" value={tare} onChange={(e) => KG_TEXT.test(e.target.value) && setTare(e.target.value)} />
+            <Field label="Tare (kg)" htmlFor="tare" hint={canSetTare ? "Taken off this weigh-in. Change it only if this one differs." : "Set by your manager for this estate"}>
+              <Input id="tare" inputMode="decimal" placeholder="0" value={tare} readOnly={!canSetTare} onChange={(e) => KG_TEXT.test(e.target.value) && setTare(e.target.value)} />
             </Field>
           </div>
           <div className="wide:order-1 wide:col-span-2">
@@ -628,7 +663,7 @@ export function WeighIn() {
               <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-line py-2">
                 <div>
                   <p className={r.voided ? "font-semibold line-through" : "font-semibold"}>
-                    {w?.name ?? "Worker"} · {r.netKg} kg {r.crop === "PEPPER" ? "pepper" : "coffee"}
+                    {w?.name ?? "Worker"} · {r.crop === "PEPPER" ? "pepper" : "coffee"}
                   </p>
                   <p className="text-sm text-muted">
                     {fields.find((f) => f.id === r.fieldId)?.name}
@@ -636,6 +671,20 @@ export function WeighIn() {
                   </p>
                   {r.message && r.status !== "accepted" && <p className="text-sm text-bad">{r.message}</p>}
                 </div>
+                <dl className="ml-auto grid grid-cols-3 gap-x-4 text-right text-sm tabular-nums">
+                  <div>
+                    <dt className="text-xs text-muted">Gross kg</dt>
+                    <dd className={r.voided ? "line-through" : ""}>{r.grossKg}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-muted">Tare kg</dt>
+                    <dd className={r.voided ? "line-through" : ""}>{r.tareKg}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-muted">Net kg</dt>
+                    <dd className={r.voided ? "font-semibold line-through" : "font-semibold"}>{r.netKg}</dd>
+                  </div>
+                </dl>
                 <div className="flex items-center gap-2">
                   <StatusBadge status={r.status} compact />
                   {!r.voided && r.status === "accepted" && app.can("muster.correct") && app.online && server.data?.some((e) => e.id === r.id) && (

@@ -1,4 +1,4 @@
-import { IMPORT_KINDS, importTemplate } from "@cemms/domain";
+import { formatKg, IMPORT_KINDS, importTemplate } from "@cemms/domain";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useApp } from "../app-context";
@@ -251,6 +251,57 @@ function Crops() {
   );
 }
 
+function EstateTare() {
+  const app = useApp();
+  const estates = app.ref?.estates ?? [];
+  const [edits, setEdits] = useState<Record<string, string>>({});
+  const [note, setNote] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
+  const shown = (e: (typeof estates)[number]) => edits[e.id] ?? (e.defaultTareG ? formatKg(e.defaultTareG) : "0");
+  return (
+    <Card title="Tare (bag weight)">
+      <p className="mb-2 text-sm text-muted">
+        The weight taken off every weigh-in at an estate. Supervisors cannot change it on the weigh-in form; managers and owners can. A change applies to weigh-ins saved from now on. Earlier weigh-ins
+        keep the tare they were saved with. The owner has not yet confirmed how tare is applied (questions OC-19 and OC-87).
+      </p>
+      <div className="flex flex-col gap-3">
+        {estates.map((e) => (
+          <div key={e.id} className="flex flex-wrap items-end gap-3">
+            <Field label={`${e.name} (kg)`} htmlFor={`tare-${e.id}`}>
+              <Input
+                id={`tare-${e.id}`}
+                inputMode="decimal"
+                value={shown(e)}
+                disabled={!app.online || !app.can("masters.write", e.id)}
+                onChange={(ev) => /^\d{0,3}(\.\d{0,3})?$/.test(ev.target.value) && setEdits({ ...edits, [e.id]: ev.target.value })}
+              />
+            </Field>
+            <Button
+              disabled={!app.online || !app.can("masters.write", e.id) || edits[e.id] === undefined || !edits[e.id]}
+              onClick={async () => {
+                try {
+                  await api(`/estates/${e.id}/tare`, { method: "PUT", body: { tareKg: edits[e.id] } });
+                  setNote({ tone: "ok", text: `Saved. ${e.name} now takes ${edits[e.id]} kg off each weigh-in.` });
+                  setEdits(({ [e.id]: _done, ...rest }) => rest);
+                  await app.reloadReference();
+                } catch (err) {
+                  setNote({ tone: "bad", text: msg(err) });
+                }
+              }}
+            >
+              Save
+            </Button>
+          </div>
+        ))}
+      </div>
+      {note && (
+        <div className="mt-3">
+          <Notice tone={note.tone}>{note.text}</Notice>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function SeasonStart() {
   const app = useApp();
   const qc = useQueryClient();
@@ -308,6 +359,7 @@ function Setup() {
     <div className="grid items-start gap-4 xl:grid-cols-2">
       <SeasonStart />
       <Crops />
+      <EstateTare />
       <AttendanceTypes />
       {app.can("settings.manage", null) && (
         <Card title="Go-live readiness" className="xl:col-span-2">

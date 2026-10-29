@@ -1,5 +1,5 @@
 import type { MusterEntryPayload } from "@cemms/contracts";
-import { computeWeighIn, parseKg, type TareMode, WeightError } from "@cemms/domain";
+import { computeWeighIn, formatKg, parseKg, type TareMode, WeightError } from "@cemms/domain";
 import { and, eq } from "drizzle-orm";
 import { AppError } from "../../core/errors";
 import { assertFound, type Db, staleVersion, type TenantContext } from "../context";
@@ -11,8 +11,11 @@ import { setting } from "./settings";
 
 type Core = Pick<MusterEntryPayload, "fieldId" | "subdivision" | "crop" | "varietyId" | "grossKg" | "bags" | "tareKg" | "remarks">;
 
-/** Validate references and recompute weights on the server (client net is never trusted). */
-function validated(db: Db, estateId: string, p: Core) {
+/**
+ * Validate references and recompute weights on the server (client net is never trusted).
+ * `tareKg` is what the caller's tare comes to: the estate default for supervisors, or the entered value.
+ */
+function validated(db: Db, estateId: string, p: Core, tareKg: string | null | undefined = p.tareKg) {
   const field = activeField(db, p.fieldId, estateId);
   if (!setting(db, "crops.enabled").includes(p.crop)) throw new AppError(422, "CROP_NOT_ENABLED", "This crop is not switched on", { crop: "Not enabled" });
   if (!field.crops.includes(p.crop)) throw new AppError(422, "CROP_NOT_ON_FIELD", "This crop is not grown in this field", { crop: "Not grown here" });
@@ -27,7 +30,7 @@ function validated(db: Db, estateId: string, p: Core) {
   }
   const mode = setting(db, "muster.tare.mode") as TareMode;
   try {
-    const w = computeWeighIn({ grossGrams: parseKg(p.grossKg), bags: p.bags, tareGrams: p.tareKg ? parseKg(p.tareKg) : 0, perBagTareGrams: setting(db, "muster.tare.perBagGrams") ?? undefined }, mode);
+    const w = computeWeighIn({ grossGrams: parseKg(p.grossKg), bags: p.bags, tareGrams: tareKg ? parseKg(tareKg) : 0, perBagTareGrams: setting(db, "muster.tare.perBagGrams") ?? undefined }, mode);
     return {
       fieldId: field.id,
       subdivision: p.subdivision?.trim() || null,
@@ -46,6 +49,15 @@ function validated(db: Db, estateId: string, p: Core) {
   }
 }
 
+/**
+ * A supervisor cannot choose the tare: every weigh-in gets the estate's default, whatever the phone sent.
+ * A manager or owner may enter another value; leaving it blank uses the default.
+ */
+function tareFor(ctx: TenantContext, estate: { id: string; defaultTareG: number }, entered: string | null | undefined): string | null {
+  if (ctx.can("muster.correct", estate.id) && entered) return entered;
+  return formatKg(estate.defaultTareG);
+}
+
 export function applyMusterCreate(ctx: TenantContext, db: Db, meta: ApplyMeta, payload: MusterEntryPayload): ApplyOutcome {
   ctx.require("muster.capture", meta.estateId);
   const estate = getEstate(db, meta.estateId);
@@ -58,7 +70,7 @@ export function applyMusterCreate(ctx: TenantContext, db: Db, meta: ApplyMeta, p
     estateId: estate.id,
     businessDate: payload.businessDate,
     workerId: payload.workerId,
-    ...validated(db, estate.id, payload),
+    ...validated(db, estate.id, payload, tareFor(ctx, estate, payload.tareKg)),
     status: "ACTIVE" as const,
     voidReason: null,
     capturedBy: ctx.scope.userId,
