@@ -7,6 +7,8 @@
 /* Palette, type and radii follow the prototype: warm cream surfaces, one roasted-brown action colour,
    cherry red on the brand mark; Fraunces headings, Inter text, JetBrains Mono for codes and weights. */
 @theme {
+  /* Wide monitors: used for one-row forms. */
+  --breakpoint-wide: 100rem;
   --color-bg: #f8f3ea;
   --color-surface: #fffdf9;
   --color-surface-2: #f3ece0;

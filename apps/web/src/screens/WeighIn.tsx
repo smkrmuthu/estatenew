@@ -345,7 +345,7 @@ export function WeighIn() {
       <Card title="Record weigh-ins" actions={<span className="text-sm text-muted">{pluckers.length ? `${weighedPluckers} of ${pluckers.length} pluckers weighed` : date}</span>}>
         {!canCapture && <Notice tone="warn">You can view weigh-ins but not record them.</Notice>}
         {saved && <Notice tone="ok">{saved}</Notice>}
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 wide:grid-cols-[minmax(12rem,1.5fr)_minmax(9rem,1fr)_minmax(9rem,1fr)_8rem_19rem_auto]">
           <Field
             label="Worker"
             htmlFor="worker"
@@ -465,7 +465,7 @@ export function WeighIn() {
               onChange={(e) => KG_TEXT.test(e.target.value) && setGross(e.target.value)}
             />
           </Field>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3 wide:grid-cols-[11rem_1fr]">
             <Field label="Bags" htmlFor="bags">
               <div className="flex items-center gap-2">
                 <Button variant="secondary" aria-label="One bag less" onClick={() => setBags(Math.max(0, bags - 1))}>
@@ -481,10 +481,12 @@ export function WeighIn() {
               <Input id="tare" inputMode="decimal" placeholder="0" value={tare} onChange={(e) => KG_TEXT.test(e.target.value) && setTare(e.target.value)} />
             </Field>
           </div>
-          <Field label="Remark (optional)" htmlFor="remarks">
-            <Input id="remarks" maxLength={500} value={remarks} onChange={(e) => setRemarks(e.target.value)} />
-          </Field>
-          <div className="flex items-center justify-between gap-3 sm:col-span-2">
+          <div className="wide:order-1 wide:col-span-full">
+            <Field label="Remark (optional)" htmlFor="remarks">
+              <Input id="remarks" maxLength={500} value={remarks} onChange={(e) => setRemarks(e.target.value)} />
+            </Field>
+          </div>
+          <div className="flex items-center justify-between gap-3 sm:col-span-2 wide:col-span-1 wide:mt-[1.6rem] wide:gap-5">
             <p className="text-lg">
               Net: <strong className="text-2xl">{preview.net ?? "–"}</strong> kg
             </p>
