@@ -35,7 +35,7 @@ Rules: a ticked box or written comment from the owner is confirmed; a blank is o
 | ID | Question | Owner answer | Status | Phase | Blocks production | Interim behaviour |
 |---|---|---|---|---|---|---|
 | OC-12 | The division names in the estate details sheet are the names everyone uses (for example Super Kadu, No 6, Field 9-1). |  | Open | 1A | Yes | Field names come from the import file as given; the label 'Division' is a tenant terminology setting. |
-| OC-13 | Some divisions have more than one variety (for example Super Kadu: 4 acres Chandana Giri and 6 acres Selection 9). |  | Open | 1A |  | A field can list several varieties; weigh-in variety is optional and not inferred. |
+| OC-13 | Some divisions have more than one variety (for example Super Kadu: 4 acres Chandana Giri and 6 acres Selection 9). |  | Open | 1A |  | A field can list several varieties; a weigh-in must name its variety (ADR-0018, project lead instruction 29 Oct 2026; setting muster.variety.required, on by default). The variety is not inferred when a field has more than one. |
 | OC-14 | The varieties are Chandana Giri, Selection 9 and YMG. Please add any others and explain what YMG is. |  | Open | 1A | Yes | Varieties are imported as master data; YMG and spellings stay as given until the owner explains them. |
 | OC-15 | The division list has been received. Is there also a list of workers (Excel or paper) that can be loaded into the application? |  | Open | 1A | Yes | Worker list not yet received; CSV import is ready. Go-live needs the real list. |
 

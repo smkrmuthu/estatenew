@@ -83,6 +83,8 @@ export interface ReferenceData {
     active?: boolean;
     version?: number;
   }[];
+  /** Rules the capture screens follow. Older cached lists may lack it; a weigh-in then needs a variety, the default. */
+  rules?: { varietyRequired?: boolean };
   logKinds: {
     id: string;
     code: string;

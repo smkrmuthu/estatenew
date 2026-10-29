@@ -67,6 +67,7 @@ export function WeighIn() {
     return [...byVariety.values()];
   }, [field, ref, crop]);
   const needsVariety = choices.length > 1;
+  const varietyRequired = ref?.rules?.varietyRequired !== false;
   const choiceLabel = (c: { name: string; letters: string[] }) => `${c.name} (${c.letters.join(", ")})`;
   useEffect(() => {
     if (choices.length === 1) setVarietyId(choices[0]?.id ?? "");
@@ -427,9 +428,13 @@ export function WeighIn() {
               </Select>
             </Field>
           ) : (
-            <Field label="Variety (optional)" htmlFor="variety">
+            <Field
+              label={varietyRequired ? "Variety" : "Variety (optional)"}
+              htmlFor="variety"
+              hint={varietyRequired && varieties.length === 0 ? "No variety is listed for this field. Add one in Masters → Varieties." : undefined}
+            >
               <Select id="variety" value={varietyId} onChange={(e) => setVarietyId(e.target.value)}>
-                <option value="">Not recorded</option>
+                <option value="">{varietyRequired ? "Pick the variety…" : "Not recorded"}</option>
                 {varieties.map((v) => (
                   <option key={v.id} value={v.id}>
                     {v.name}
@@ -468,11 +473,12 @@ export function WeighIn() {
             <Input id="remarks" maxLength={500} value={remarks} onChange={(e) => setRemarks(e.target.value)} />
           </Field>
         </div>
+        {worker && field && preview.net && (needsVariety || varietyRequired) && !varietyId && <p className="mt-3 text-sm text-bad">Pick the variety before saving.</p>}
         <div className="mt-4 flex items-center justify-between gap-3">
           <p className="text-lg">
             Net: <strong className="text-2xl">{preview.net ?? "–"}</strong> kg
           </p>
-          <Button size="lg" disabled={!canCapture || !worker || !field || !preview.net || (needsVariety && !varietyId)} onClick={save}>
+          <Button size="lg" disabled={!canCapture || !worker || !field || !preview.net || ((needsVariety || varietyRequired) && !varietyId)} onClick={save}>
             Save and next worker
           </Button>
         </div>

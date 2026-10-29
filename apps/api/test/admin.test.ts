@@ -506,7 +506,16 @@ describe("reports, season and user access", () => {
   it("reports weigh-ins by field and worker over a range, and hides worker detail from a supervisor", async () => {
     const s = await setupTenant();
     const w = (workerId: string, fieldId: string, gross: string, crop = "COFFEE") =>
-      mutation(s.supervisor.deviceId, s.estate.id, "muster_entry", "create", { businessDate: today(), workerId, fieldId, crop, grossKg: gross, bags: 1, tareKg: "0" });
+      mutation(s.supervisor.deviceId, s.estate.id, "muster_entry", "create", {
+        businessDate: today(),
+        workerId,
+        fieldId,
+        crop,
+        varietyId: crop === "PEPPER" ? s.pnl.id : s.cg.id,
+        grossKg: gross,
+        bags: 1,
+        tareKg: "0",
+      });
     const ms = [await w(s.w1.id, s.f1.id, "20"), await w(s.w1.id, s.f1.id, "5"), await w(s.w2.id, s.f2.id, "12"), await w(s.w2.id, s.f2.id, "3", "PEPPER")];
     expect((await push(s.supervisor, ms)).body.results.map((r: { status: string }) => r.status)).toEqual(["accepted", "accepted", "accepted", "accepted"]);
     const url = `/estates/${s.estate.id}/reports/plucking?from=${today()}&to=${today()}`;
@@ -555,6 +564,7 @@ describe("reports, season and user access", () => {
       workerId: s.w1.id,
       fieldId: s.f1.id,
       crop: "COFFEE",
+      varietyId: s.cg.id,
       grossKg: "250",
       bags: 1,
       tareKg: "0",

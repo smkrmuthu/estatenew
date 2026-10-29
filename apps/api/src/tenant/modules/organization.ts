@@ -63,6 +63,8 @@ export interface ReferenceData {
   jobTypes: (typeof jobTypes.$inferSelect)[];
   workers: (typeof workers.$inferSelect & { estateIds: string[] })[];
   logKinds: (typeof logKinds.$inferSelect)[];
+  /** Rules the capture screens follow without asking the server again. */
+  rules: { varietyRequired: boolean };
 }
 
 /** Master data for the estates the user can read; also the device bootstrap payload. */
@@ -70,7 +72,7 @@ export function referenceData(ctx: TenantContext, includeInactive = false): Refe
   const allowed = ctx.estates("masters.read");
   const estateRows = listEstates(ctx).filter((e) => allowed === "ALL" || allowed.includes(e.id));
   const ids = estateRows.map((e) => e.id);
-  if (ids.length === 0) return { estates: [], fields: [], varieties: [], jobTypes: [], workers: [], logKinds: [] };
+  if (ids.length === 0) return { estates: [], fields: [], varieties: [], jobTypes: [], workers: [], logKinds: [], rules: { varietyRequired: setting(ctx.db, "muster.variety.required") } };
   const fv = ctx.db.select().from(fieldVarieties).all();
   const subs = ctx.db.select().from(fieldSubdivisions).all();
   const keep = <T extends { active: boolean }>(r: T) => includeInactive || r.active;
@@ -105,6 +107,7 @@ export function referenceData(ctx: TenantContext, includeInactive = false): Refe
         return estateIds.length ? [{ ...w, estateIds }] : [];
       }),
     logKinds: ctx.db.select().from(logKinds).all().filter(keep),
+    rules: { varietyRequired: setting(ctx.db, "muster.variety.required") },
   };
 }
 

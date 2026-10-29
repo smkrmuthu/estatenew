@@ -117,8 +117,8 @@ export const SETTING_DEFS = {
   },
   "muster.variety.required": {
     key: "muster.variety.required",
-    description: "A variety must be chosen on each weigh-in.",
-    defaultValue: false,
+    description: "A variety must be chosen on each weigh-in. On by default (project lead instruction, 29 October 2026); the owner's answer to OC-13 and OC-14 is still open.",
+    defaultValue: true,
     basis: "proposed",
     gates: ["OC-13", "OC-14"],
     validate: isBool,

@@ -235,7 +235,7 @@
         "organization.fieldVarieties",
         "muster.variety"
       ],
-      "interimBehavior": "A field can list several varieties; weigh-in variety is optional and not inferred.",
+      "interimBehavior": "A field can list several varieties; a weigh-in must name its variety (ADR-0018, project lead instruction 29 Oct 2026; setting muster.variety.required, on by default). The variety is not inferred when a field has more than one.",
       "configKeys": [
         "muster.variety.required"
       ],

@@ -6,6 +6,7 @@ const weigh = (s: Awaited<ReturnType<typeof setupTenant>>, extra: Record<string,
   workerId: s.w1.id,
   fieldId: s.f1.id,
   crop: "COFFEE",
+  varietyId: s.cg.id,
   grossKg: "20.500",
   bags: 2,
   tareKg: "1",
@@ -61,12 +62,19 @@ describe("weigh-in (muster)", () => {
     expect(before.body.days).toEqual([]);
   });
 
-  it("refuses bad weights, crops not grown in the field and varieties of another crop", async () => {
+  it("refuses bad weights, a missing variety, crops not grown in the field and varieties of another crop", async () => {
     const s = await setupTenant();
-    const cases = [weigh(s, { grossKg: "1", tareKg: "2" }), weigh(s, { grossKg: "12.3456" }), weigh(s, { crop: "PEPPER" }), weigh(s, { varietyId: s.pnl.id }), weigh(s, { grossKg: "600" })];
+    const cases = [
+      weigh(s, { grossKg: "1", tareKg: "2" }),
+      weigh(s, { grossKg: "12.3456" }),
+      weigh(s, { crop: "PEPPER" }),
+      weigh(s, { varietyId: s.pnl.id }),
+      weigh(s, { grossKg: "600" }),
+      weigh(s, { varietyId: null }),
+    ];
     const ms = await Promise.all(cases.map((p) => mutation(s.supervisor.deviceId, s.estate.id, "muster_entry", "create", p)));
     const r = (await push(s.supervisor, ms)).body.results;
-    expect(r.map((x: { errorCode: string }) => x.errorCode)).toEqual(["NET_NEGATIVE", "VALIDATION", "CROP_NOT_ON_FIELD", "VARIETY_UNKNOWN", "WEIGHT_TOO_LARGE"]);
+    expect(r.map((x: { errorCode: string }) => x.errorCode)).toEqual(["NET_NEGATIVE", "VALIDATION", "CROP_NOT_ON_FIELD", "VARIETY_UNKNOWN", "WEIGHT_TOO_LARGE", "VARIETY_REQUIRED"]);
   });
 
   it("a supervisor cancels their own entry with a reason; managers correct with a reason", async () => {
@@ -83,9 +91,15 @@ describe("weigh-in (muster)", () => {
     expect((await api(`/muster-entries/${m2.entityId}/corrections`, { token: s.supervisor.token, body: { ...weigh(s), reason: "x wrong", baseVersion: 1 } })).status).toBe(403);
     const fix = await api(`/muster-entries/${m2.entityId}/corrections`, {
       token: s.owner.token,
-      body: { fieldId: s.f1.id, crop: "COFFEE", grossKg: "21", bags: 2, tareKg: "1", reason: "Scale misread", baseVersion: 1 },
+      body: { fieldId: s.f1.id, crop: "COFFEE", varietyId: null, grossKg: "21", bags: 2, tareKg: "1", reason: "Scale misread", baseVersion: 1 },
     });
-    expect(fix.body).toMatchObject({ netG: 20000, version: 2 });
+    // A correction cannot drop the variety either.
+    expect(fix.body.code).toBe("VARIETY_REQUIRED");
+    const fixed = await api(`/muster-entries/${m2.entityId}/corrections`, {
+      token: s.owner.token,
+      body: { fieldId: s.f1.id, crop: "COFFEE", varietyId: s.cg.id, grossKg: "21", bags: 2, tareKg: "1", reason: "Scale misread", baseVersion: 1 },
+    });
+    expect(fixed.body).toMatchObject({ netG: 20000, version: 2 });
     const summary = (await api(`/estates/${s.estate.id}/reports/daily/${today()}`, { token: s.owner.token })).body;
     expect(summary.weighIn.byCrop).toEqual([{ crop: "COFFEE", entries: 1, workers: 1, netKg: "20.000" }]);
   });
@@ -115,7 +129,13 @@ describe("daily log", () => {
   it("dashboard counts only accepted weigh-ins, per day, and lists what needs attention", async () => {
     const s = await setupTenant();
     const m = await mutation(s.supervisor.deviceId, s.estate.id, "muster_entry", "create", weigh(s));
-    const pepper = await mutation(s.supervisor.deviceId, s.estate.id, "muster_entry", "create", weigh(s, { fieldId: s.f2.id, crop: "PEPPER", grossKg: "3.25", bags: 1, tareKg: null }));
+    const pepper = await mutation(
+      s.supervisor.deviceId,
+      s.estate.id,
+      "muster_entry",
+      "create",
+      weigh(s, { fieldId: s.f2.id, crop: "PEPPER", varietyId: s.pnl.id, grossKg: "3.25", bags: 1, tareKg: null }),
+    );
     await push(s.supervisor, [m, pepper]);
     const res = await api(`/estates/${s.estate.id}/reports/dashboard/${today()}`, { token: s.supervisor.token });
     expect(res.status).toBe(200);
