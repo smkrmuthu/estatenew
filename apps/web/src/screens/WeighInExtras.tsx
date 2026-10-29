@@ -5,6 +5,7 @@ import { Button, Drawer, Field, Input, Notice, Select } from "../components/ui";
 import { ApiError, api } from "../lib/api";
 import { useCrops } from "../lib/crops";
 import type { ReferenceData } from "../lib/db";
+import { normalizeKg } from "../lib/kg";
 
 const KG_TEXT = /^\d{0,7}(\.\d{0,3})?$/;
 
@@ -76,7 +77,7 @@ export function CorrectWeighIn({
   const preview = (() => {
     if (!gross) return { net: null as string | null, error: null as string | null };
     try {
-      return { net: formatKg(computeWeighIn({ grossGrams: parseKg(gross), bags, tareGrams: tare ? parseKg(tare) : 0 }, "MANUAL").netGrams), error: null };
+      return { net: formatKg(computeWeighIn({ grossGrams: parseKg(normalizeKg(gross)), bags, tareGrams: tare ? parseKg(normalizeKg(tare)) : 0 }, "MANUAL").netGrams), error: null };
     } catch (e) {
       return { net: null, error: e instanceof WeightError ? e.message : "Check the weight" };
     }
@@ -98,9 +99,9 @@ export function CorrectWeighIn({
           subdivision,
           crop,
           varietyId: varietyId || null,
-          grossKg: gross,
+          grossKg: normalizeKg(gross),
           bags,
-          tareKg: tare || null,
+          tareKg: tare ? normalizeKg(tare) : null,
           remarks: remarks.trim() || null,
           reason: reason.trim(),
           baseVersion: entry.version,

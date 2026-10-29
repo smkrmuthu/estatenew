@@ -7,6 +7,7 @@ import { api } from "../lib/api";
 import { useCrops } from "../lib/crops";
 import { db, type LocalRecord } from "../lib/db";
 import { useLive } from "../lib/hooks";
+import { normalizeKg } from "../lib/kg";
 import { queueChange } from "../lib/outbox";
 import { useUnsaved } from "../lib/unsaved";
 import { CorrectWeighIn } from "./WeighInExtras";
@@ -92,12 +93,20 @@ export function WeighIn() {
   const worker = workers.find((w) => w.id === workerId);
 
   const preview = (() => {
-    if (!gross) return { net: null as string | null, error: null as string | null };
+    const none = { net: null as string | null, error: null as string | null, tareError: null as string | null };
+    if (!gross) return none;
+    const why = (e: unknown) => (e instanceof WeightError ? e.message : "Check the weight");
+    let tareGrams: number;
     try {
-      const w = computeWeighIn({ grossGrams: parseKg(gross), bags, tareGrams: parseKg(tare || estateTare) }, "MANUAL");
-      return { net: formatKg(w.netGrams), error: null };
+      tareGrams = parseKg(normalizeKg(tare || estateTare));
     } catch (e) {
-      return { net: null, error: e instanceof WeightError ? e.message : "Check the weight" };
+      return { ...none, tareError: why(e) };
+    }
+    try {
+      const w = computeWeighIn({ grossGrams: parseKg(normalizeKg(gross)), bags, tareGrams }, "MANUAL");
+      return { ...none, net: formatKg(w.netGrams) };
+    } catch (e) {
+      return { ...none, error: why(e) };
     }
   })();
 
@@ -285,9 +294,9 @@ export function WeighIn() {
       })(),
       crop,
       varietyId: varietyId || null,
-      grossKg: gross,
+      grossKg: normalizeKg(gross),
       bags,
-      tareKg: tare || estateTare,
+      tareKg: normalizeKg(tare || estateTare),
       remarks: remarks.trim() || null,
     };
     await queueChange({
@@ -512,7 +521,12 @@ export function WeighIn() {
                 </Button>
               </div>
             </Field>
-            <Field label="Tare (kg)" htmlFor="tare" hint={canSetTare ? "Taken off this weigh-in. Change it only if this one differs." : "Set by your manager for this estate"}>
+            <Field
+              label="Tare (kg)"
+              htmlFor="tare"
+              error={preview.tareError ?? undefined}
+              hint={canSetTare ? "Taken off this weigh-in. Change it only if this one differs." : "Set by your manager for this estate"}
+            >
               <Input id="tare" inputMode="decimal" placeholder="0" value={tare} readOnly={!canSetTare} onChange={(e) => KG_TEXT.test(e.target.value) && setTare(e.target.value)} />
             </Field>
           </div>
