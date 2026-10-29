@@ -106,7 +106,9 @@ export function DailyLog() {
   const tenantId = session.user.tenantId;
   const kinds = ref?.logKinds ?? [];
   const activeKinds = kinds.filter((k) => k.active !== false);
-  const estates = useMemo(() => (ref?.estates ?? []).filter((e) => app.can("dailylog.read", e.id)), [ref, app]);
+  const readable = useMemo(() => (ref?.estates ?? []).filter((e) => app.can("dailylog.read", e.id)), [ref, app]);
+  // The estate picker at the top decides what is listed: one estate, or all of them when "All estates" is chosen.
+  const estates = useMemo(() => (app.allEstates && readable.length > 1 ? readable : readable.filter((e) => e.id === estateId)), [readable, app.allEstates, estateId]);
   const writable = estates.filter((e) => app.can("dailylog.capture", e.id));
   const [range, setRange] = useState<"day" | "week">("day");
   const from = addDays(date, -(CHART_DAYS - 1));
@@ -121,6 +123,7 @@ export function DailyLog() {
   const [saved, setSaved] = useState<string | null>(null);
   useUnsaved(!!(value || remarks));
   useEffect(() => setFDate(date), [date]);
+  useEffect(() => setFEstate(""), [estateId, app.allEstates]);
   const formEstate = writable.find((e) => e.id === fEstate) ?? writable.find((e) => e.id === estateId) ?? writable[0];
   const kind = activeKinds.find((k) => k.id === (kindId || activeKinds[0]?.id));
 
@@ -190,7 +193,7 @@ export function DailyLog() {
   const listed = rows
     .filter((r) => (range === "day" ? r.date === date : r.date >= weekFrom && r.date <= date))
     .sort((a, b) => (a.date !== b.date ? (a.date < b.date ? 1 : -1) : a.at.localeCompare(b.at)));
-  const estateName = (id: string) => estates.find((e) => e.id === id)?.name ?? "?";
+  const estateName = (id: string) => readable.find((e) => e.id === id)?.name ?? "?";
   const unitOf = (id: string) => kindOf(id)?.unit ?? "";
 
   async function save() {

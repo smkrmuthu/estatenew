@@ -204,7 +204,7 @@ function Shell() {
           ))}
         </nav>
         <main className="mx-auto flex w-full min-w-0 max-w-6xl flex-col gap-4 p-4 lg:p-6">
-          {DAY_PAGES.includes(current) && estates.length > 0 && <DayPicker canAll={estates.length > 1 && (current === "dashboard" || current === "summary")} />}
+          {DAY_PAGES.includes(current) && estates.length > 0 && <DayPicker canAll={estates.length > 1 && (current === "dashboard" || current === "summary" || current === "dailylog")} />}
           {estates.length === 0 && app.ref && <Notice tone="warn">No estates yet. The owner imports the estate list under Manage → Import.</Notice>}
           {current === "dashboard" && <Dashboard go={setTab} />}
           {current === "attendance" && <Attendance />}
