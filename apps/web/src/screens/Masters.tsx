@@ -4,6 +4,7 @@ import { type ReactNode, useState } from "react";
 import { useApp } from "../app-context";
 import { Button, Card, Chip, Drawer, Field, FilterBar, FilterSearch, FilterSelect, Input, Notice, Select } from "../components/ui";
 import { ApiError, api } from "../lib/api";
+import { useCrops } from "../lib/crops";
 import type { EmploymentType, Gender, LandUse, ReferenceData } from "../lib/db";
 import { useDashboards } from "./Dashboard";
 
@@ -330,6 +331,7 @@ function FieldForm({ data, id, estateId, done }: { data: ReferenceData; id?: str
   const [elevation, setElevation] = useState(f?.elevationM ? String(f.elevationM) : "");
   const [active, setActive] = useState(f?.active !== false);
   const [crops, setCrops] = useState<string[]>(f?.crops ?? ["COFFEE"]);
+  const { pepper } = useCrops();
   const [subs, setSubs] = useState<SubRow[]>(
     f?.subdivisions?.length
       ? f.subdivisions.map((s) => ({ landUse: s.landUse, varietyId: s.varietyId ?? "", acres: String((s.areaCentiAcres ?? 0) / 100) }))
@@ -399,17 +401,19 @@ function FieldForm({ data, id, estateId, done }: { data: ReferenceData; id?: str
           </Select>
         </Field>
       </div>
-      <fieldset className="flex flex-wrap items-center gap-x-5 gap-y-1">
-        <legend className="mb-1 text-[0.8rem] font-medium text-muted">Crops grown</legend>
-        {[
-          ["COFFEE", "Coffee"],
-          ["PEPPER", "Pepper"],
-        ].map(([c, label]) => (
-          <label key={c} className="flex min-h-9 items-center gap-2">
-            <input type="checkbox" checked={crops.includes(c as string)} onChange={(e) => setCrops(e.target.checked ? [...crops, c as string] : crops.filter((x) => x !== c))} /> {label}
-          </label>
-        ))}
-      </fieldset>
+      {(pepper || crops.includes("PEPPER")) && (
+        <fieldset className="flex flex-wrap items-center gap-x-5 gap-y-1">
+          <legend className="mb-1 text-[0.8rem] font-medium text-muted">Crops grown</legend>
+          {[
+            ["COFFEE", "Coffee"],
+            ["PEPPER", "Pepper"],
+          ].map(([c, label]) => (
+            <label key={c} className="flex min-h-9 items-center gap-2">
+              <input type="checkbox" checked={crops.includes(c as string)} onChange={(e) => setCrops(e.target.checked ? [...crops, c as string] : crops.filter((x) => x !== c))} /> {label}
+            </label>
+          ))}
+        </fieldset>
+      )}
 
       <div>
         <h3>Subdivisions</h3>
@@ -502,6 +506,7 @@ function Fields({
   season: { start: string | null; to: string };
 }) {
   const app = useApp();
+  const { pepper } = useCrops();
   // Coffee plucked on each field since the season started, to compare with the expected cherry.
   const plucked = useQueries({
     queries: season.start
@@ -543,17 +548,24 @@ function Fields({
       >
         <FilterSearch label="Find a field" value={q} onChange={setQ} placeholder="Name or code" />
         <FilterSelect label="Estate" value={fEstate} onChange={setFEstate} options={[{ value: "", label: "All estates" }, ...data.estates.map((e) => ({ value: e.id, label: e.name }))]} />
+        {pepper && (
+          <FilterSelect
+            label="Crop"
+            value={fCrop}
+            onChange={setFCrop}
+            options={[
+              { value: "", label: "Coffee and pepper" },
+              { value: "COFFEE", label: "Coffee" },
+              { value: "PEPPER", label: "Pepper" },
+            ]}
+          />
+        )}
         <FilterSelect
-          label="Crop"
-          value={fCrop}
-          onChange={setFCrop}
-          options={[
-            { value: "", label: "Coffee and pepper" },
-            { value: "COFFEE", label: "Coffee" },
-            { value: "PEPPER", label: "Pepper" },
-          ]}
+          label="Variety"
+          value={fVariety}
+          onChange={setFVariety}
+          options={[{ value: "", label: "All varieties" }, ...data.varieties.filter((v) => pepper || v.crop !== "PEPPER").map((v) => ({ value: v.id, label: v.name }))]}
         />
-        <FilterSelect label="Variety" value={fVariety} onChange={setFVariety} options={[{ value: "", label: "All varieties" }, ...data.varieties.map((v) => ({ value: v.id, label: v.name }))]} />
         <FilterSelect
           label="Status"
           value={fStatus}
@@ -683,6 +695,7 @@ function VarietyForm({ data, id, done }: { data: ReferenceData; id?: string; don
   const [code, setCode] = useState(v?.code ?? "");
   const [name, setName] = useState(v?.name ?? "");
   const [crop, setCrop] = useState(v?.crop ?? "COFFEE");
+  const { pepper } = useCrops();
   const [active, setActive] = useState(v?.active !== false);
   const hasSubs = (f: ReferenceData["fields"][number]) => (f.subdivisions ?? []).length > 0;
   const [ticked, setTicked] = useState<Set<string>>(new Set(v ? fieldsGrowing(data, v.id).map((f) => f.id) : []));
@@ -716,12 +729,14 @@ function VarietyForm({ data, id, done }: { data: ReferenceData; id?: string; don
         <Field label="Variety" htmlFor="v-name">
           <Input id="v-name" value={name} onChange={(e) => setName(e.target.value)} />
         </Field>
-        <Field label="Crop" htmlFor="v-crop" hint={v ? "The crop cannot be changed once the variety is added" : undefined}>
-          <Select id="v-crop" value={crop} disabled={!!v} onChange={(e) => setCrop(e.target.value)}>
-            <option value="COFFEE">Coffee</option>
-            <option value="PEPPER">Pepper</option>
-          </Select>
-        </Field>
+        {(pepper || crop === "PEPPER") && (
+          <Field label="Crop" htmlFor="v-crop" hint={v ? "The crop cannot be changed once the variety is added" : undefined}>
+            <Select id="v-crop" value={crop} disabled={!!v} onChange={(e) => setCrop(e.target.value)}>
+              <option value="COFFEE">Coffee</option>
+              <option value="PEPPER">Pepper</option>
+            </Select>
+          </Field>
+        )}
         <Field label="Status" htmlFor="v-active">
           <Select id="v-active" value={active ? "1" : "0"} onChange={(e) => setActive(e.target.value === "1")}>
             <option value="1">Active</option>
@@ -769,6 +784,8 @@ function VarietyForm({ data, id, done }: { data: ReferenceData; id?: string; don
 }
 
 function Varieties({ data, canWrite, open }: { data: ReferenceData; canWrite: boolean; open: (id: string) => void }) {
+  const { pepper } = useCrops();
+  const shown = data.varieties.filter((v) => pepper || v.crop !== "PEPPER");
   return (
     <Card>
       <div className="overflow-x-auto">
@@ -777,27 +794,27 @@ function Varieties({ data, canWrite, open }: { data: ReferenceData; canWrite: bo
             <tr>
               <Th>Code</Th>
               <Th>Variety</Th>
-              <Th>Crop</Th>
+              {pepper && <Th>Crop</Th>}
               <Th>Grown in</Th>
               <Th>Status</Th>
               <Th />
             </tr>
           </thead>
           <tbody className="divide-y divide-line">
-            {data.varieties.map((v) => {
+            {shown.map((v) => {
               const growing = fieldsGrowing(data, v.id);
               return (
                 <tr key={v.id}>
                   <Td className="font-mono">{v.code}</Td>
                   <Td>{v.name}</Td>
-                  <Td>{CROP_LABEL[v.crop] ?? v.crop}</Td>
+                  {pepper && <Td>{CROP_LABEL[v.crop] ?? v.crop}</Td>}
                   <Td className="tabular-nums">{growing.length ? growing.map((f) => f.name).join(", ") : <span className="text-muted">No field yet</span>}</Td>
                   <Td>{statusChip(v.active)}</Td>
                   <Td right>{canWrite && <EditLink label={`Edit ${v.name}`} onClick={() => open(v.id)} />}</Td>
                 </tr>
               );
             })}
-            {data.varieties.length === 0 && (
+            {shown.length === 0 && (
               <tr>
                 <Td className="text-muted">No varieties yet.</Td>
               </tr>

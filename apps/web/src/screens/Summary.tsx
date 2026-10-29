@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useApp } from "../app-context";
 import { Button, Card, Field, FilterBar, FilterSearch, FilterSelect, Input, Notice } from "../components/ui";
 import { ApiError, api, apiFile } from "../lib/api";
+import { useCrops } from "../lib/crops";
 import { useDashboards } from "./Dashboard";
 
 interface Summary {
@@ -43,7 +44,7 @@ function nightLine(n: Summary["attendance"]["night"]): string {
   return `Night: ${n.present} present${n.bothShifts ? ` · ${n.bothShifts} also worked the day shift` : ""} (${(STATE_TEXT[n.sheetState] ?? n.sheetState).replace("_", " ")})`;
 }
 
-function whatsappMessage(date: string, list: Summary[]): string {
+function whatsappMessage(date: string, list: Summary[], pepper: boolean): string {
   const lines: string[] = [`*Estate summary · ${dayText(date)}*`];
   for (const s of list) {
     lines.push("", `*${s.estate.name}*`);
@@ -54,9 +55,9 @@ function whatsappMessage(date: string, list: Summary[]): string {
         : `Attendance: ${a.present} present${a.halfDayCount ? ` (${a.halfDayCount} half day)` : ""}, ${a.absent} absent, ${a.marked} of ${a.activeWorkers} marked · ${a.manDays} man-days (${STATE_TEXT[a.sheetState] ?? a.sheetState})`,
     );
     if (a.night.sheetState !== "NOT_STARTED") lines.push(nightLine(a.night));
-    if (s.weighIn.byCrop.length === 0) lines.push("Plucking: no weigh-ins yet");
-    for (const c of s.weighIn.byCrop)
-      lines.push(`${cropText(c.crop)}: ${c.netKg} kg from ${c.workers} ${c.workers === 1 ? "worker" : "workers"} (${c.entries} ${c.entries === 1 ? "weigh-in" : "weigh-ins"})`);
+    const crops = s.weighIn.byCrop.filter((c) => pepper || c.crop !== "PEPPER");
+    if (crops.length === 0) lines.push("Plucking: no weigh-ins yet");
+    for (const c of crops) lines.push(`${cropText(c.crop)}: ${c.netKg} kg from ${c.workers} ${c.workers === 1 ? "worker" : "workers"} (${c.entries} ${c.entries === 1 ? "weigh-in" : "weigh-ins"})`);
     if (s.dailyLog.length) lines.push(`Daily log: ${s.dailyLog.map((r) => `${r.kind} ${r.value}${r.unit ? ` ${r.unit}` : ""} (${timeText(r.readingAt)})`).join("; ")}`);
   }
   const waiting = list.reduce((n, s) => n + s.sync.entriesWaitingOnDevices, 0);
@@ -77,6 +78,8 @@ const Th = ({ children, right }: { children?: React.ReactNode; right?: boolean }
 );
 
 function DaySummary({ s }: { s: Summary }) {
+  const { pepper } = useCrops();
+  const byCrop = s.weighIn.byCrop.filter((c) => pepper || c.crop !== "PEPPER");
   return (
     <>
       <Card title={`Attendance · ${s.estate.name}`}>
@@ -109,9 +112,9 @@ function DaySummary({ s }: { s: Summary }) {
         </div>
       </Card>
       <Card title={`Plucking · ${s.estate.name}`}>
-        {s.weighIn.byCrop.length === 0 && <p className="text-muted">No weigh-ins yet.</p>}
+        {byCrop.length === 0 && <p className="text-muted">No weigh-ins yet.</p>}
         <ul>
-          {s.weighIn.byCrop.map((c) => (
+          {byCrop.map((c) => (
             <li key={c.crop} className="text-lg">
               {cropText(c.crop)}: <strong>{c.netKg} kg</strong> from {c.workers} {c.workers === 1 ? "worker" : "workers"} ({c.entries} {c.entries === 1 ? "weigh-in" : "weigh-ins"})
             </li>
@@ -142,6 +145,7 @@ const hasKg = (kg: string) => Number.parseFloat(kg) > 0;
 
 function PluckingRange({ estateId, name, from, to, showName, filter }: { estateId: string; name: string; from: string; to: string; showName: boolean; filter: RangeFilter }) {
   const app = useApp();
+  const { pepper } = useCrops();
   const q = useQuery({
     queryKey: ["season", estateId, from, to],
     queryFn: () => api<Plucking>(`/estates/${estateId}/reports/plucking?from=${from}&to=${to}`),
@@ -163,7 +167,7 @@ function PluckingRange({ estateId, name, from, to, showName, filter }: { estateI
         title={showName ? `By field · ${name}` : "By field"}
         actions={
           <span className="text-sm text-muted">
-            Coffee {r.totals.coffeeNetKg} kg · Pepper {r.totals.pepperNetKg} kg
+            Coffee {r.totals.coffeeNetKg} kg{pepper && <> · Pepper {r.totals.pepperNetKg} kg</>}
           </span>
         }
       >
@@ -178,7 +182,7 @@ function PluckingRange({ estateId, name, from, to, showName, filter }: { estateI
                   <Th right>Worker-days</Th>
                   <Th right>Coffee kg</Th>
                   <Th />
-                  <Th right>Pepper kg</Th>
+                  {pepper && <Th right>Pepper kg</Th>}
                   <Th right>Coffee per worker-day</Th>
                 </tr>
               </thead>
@@ -191,7 +195,7 @@ function PluckingRange({ estateId, name, from, to, showName, filter }: { estateI
                     <td className="px-3 py-2">
                       <Bar value={f.coffeeNetG} max={topField} />
                     </td>
-                    <td className="px-3 py-2 text-right tabular-nums">{f.pepperNetKg}</td>
+                    {pepper && <td className="px-3 py-2 text-right tabular-nums">{f.pepperNetKg}</td>}
                     <td className="px-3 py-2 text-right tabular-nums">{f.coffeePerWorkerDayKg}</td>
                   </tr>
                 ))}
@@ -214,7 +218,7 @@ function PluckingRange({ estateId, name, from, to, showName, filter }: { estateI
                     <Th right>Weigh-ins</Th>
                     <Th right>Coffee kg</Th>
                     <Th>Compared with the top worker</Th>
-                    <Th right>Pepper kg</Th>
+                    {pepper && <Th right>Pepper kg</Th>}
                     <Th right>Best day</Th>
                   </tr>
                 </thead>
@@ -230,7 +234,7 @@ function PluckingRange({ estateId, name, from, to, showName, filter }: { estateI
                       <td className="px-3 py-2">
                         <Bar value={w.coffeeNetG} max={topWorker} />
                       </td>
-                      <td className="px-3 py-2 text-right tabular-nums">{w.pepperNetKg}</td>
+                      {pepper && <td className="px-3 py-2 text-right tabular-nums">{w.pepperNetKg}</td>}
                       <td className="px-3 py-2 text-right tabular-nums">{w.bestDayKg}</td>
                     </tr>
                   ))}
@@ -260,6 +264,7 @@ export function Summary() {
   const [from, setFrom] = useState(addDays(app.date, -6));
   const [to, setTo] = useState(app.date);
   const [copied, setCopied] = useState<"ok" | "fail" | null>(null);
+  const { pepper } = useCrops();
   const seasonStart = useDashboards().list.find((d) => d.season.startDate)?.season.startDate ?? null;
 
   const results = useQueries({
@@ -270,7 +275,7 @@ export function Summary() {
     })),
   });
   const list = results.flatMap((r) => (r.data ? [r.data] : []));
-  const message = list.length ? whatsappMessage(app.date, list) : "";
+  const message = list.length ? whatsappMessage(app.date, list, pepper) : "";
 
   async function copy() {
     try {
@@ -481,16 +486,18 @@ export function Summary() {
                     ...(app.ref?.fields ?? []).filter((f) => scope.some((e) => e.id === f.estateId) && (!rEstate || f.estateId === rEstate)).map((f) => ({ value: f.id, label: f.name })),
                   ]}
                 />
-                <FilterSelect
-                  label="Crop"
-                  value={rCrop}
-                  onChange={setRCrop}
-                  options={[
-                    { value: "", label: "Coffee and pepper" },
-                    { value: "COFFEE", label: "Coffee" },
-                    { value: "PEPPER", label: "Pepper" },
-                  ]}
-                />
+                {pepper && (
+                  <FilterSelect
+                    label="Crop"
+                    value={rCrop}
+                    onChange={setRCrop}
+                    options={[
+                      { value: "", label: "Coffee and pepper" },
+                      { value: "COFFEE", label: "Coffee" },
+                      { value: "PEPPER", label: "Pepper" },
+                    ]}
+                  />
+                )}
                 <FilterSearch label="Find a worker" value={rWorker} onChange={setRWorker} placeholder="Name or code" />
               </FilterBar>
               <p className="mt-1 text-xs text-muted">Field applies to the by-field table, Find a worker to the by-worker table; Crop applies to both.</p>

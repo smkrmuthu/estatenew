@@ -43,6 +43,34 @@ describe("weigh-in (muster)", () => {
     expect(summary.weighIn.workersWithSeveralEntries).toBe(1);
   });
 
+  it("keeps Pepper off until it is switched on, and refuses pepper weigh-ins while it is off", async () => {
+    const s = await setupTenant();
+    const settingsOf = async () => ((await api("/admin/settings", { token: s.supervisor.token })).body as { key: string; value: unknown }[]).find((x) => x.key === "crops.enabled")?.value;
+    expect(await settingsOf()).toEqual(["COFFEE", "PEPPER"]);
+    // A manager or owner can switch it off; a supervisor cannot, and Coffee cannot be switched off.
+    expect((await api("/admin/settings/crops.enabled", { method: "PUT", token: s.supervisor.token, body: { value: ["COFFEE"] } })).status).toBe(403);
+    expect((await api("/admin/settings/crops.enabled", { method: "PUT", token: s.owner.token, body: { value: ["PEPPER"] } })).status).toBe(422);
+    expect((await api("/admin/settings/crops.enabled", { method: "PUT", token: s.owner.token, body: { value: ["COFFEE"] } })).status).toBe(200);
+    expect(await settingsOf()).toEqual(["COFFEE"]);
+    const pepper = await mutation(
+      s.supervisor.deviceId,
+      s.estate.id,
+      "muster_entry",
+      "create",
+      weigh(s, { fieldId: s.f2.id, crop: "PEPPER", grossKg: "3.25", bags: 1, tareKg: null, varietyId: s.pnl.id }),
+    );
+    expect((await push(s.supervisor, [pepper])).body.results[0]).toMatchObject({ status: "rejected", errorCode: "CROP_NOT_ENABLED" });
+    expect((await api("/admin/settings/crops.enabled", { method: "PUT", token: s.owner.token, body: { value: ["COFFEE", "PEPPER"] } })).status).toBe(200);
+    const again = await mutation(
+      s.supervisor.deviceId,
+      s.estate.id,
+      "muster_entry",
+      "create",
+      weigh(s, { fieldId: s.f2.id, crop: "PEPPER", grossKg: "3.25", bags: 1, tareKg: null, varietyId: s.pnl.id }),
+    );
+    expect((await push(s.supervisor, [again])).body.results[0].status).toBe("accepted");
+  });
+
   it("lists the recent days with accepted weigh-ins: counts and totals only, cancelled entries left out", async () => {
     const s = await setupTenant();
     const a = await mutation(s.supervisor.deviceId, s.estate.id, "muster_entry", "create", weigh(s, { varietyId: s.cg.id }));

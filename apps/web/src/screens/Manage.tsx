@@ -217,6 +217,40 @@ function AttendanceTypes() {
   );
 }
 
+/** Pepper is off until the estate needs it. Coffee is always on. Turning Pepper off hides it; nothing already recorded is deleted. */
+function Crops() {
+  const app = useApp();
+  const qc = useQueryClient();
+  const settings = useQuery({ queryKey: ["settings"], queryFn: () => api<{ key: string; value: unknown }[]>("/admin/settings"), enabled: app.online });
+  const enabled = (settings.data?.find((x) => x.key === "crops.enabled")?.value as string[] | undefined) ?? ["COFFEE"];
+  const [note, setNote] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
+  const toggle = async (on: boolean) => {
+    try {
+      await api("/admin/settings/crops.enabled", { method: "PUT", body: { value: on ? ["COFFEE", "PEPPER"] : ["COFFEE"] } });
+      setNote({ tone: "ok", text: on ? "Saved. Pepper now shows on Weigh-in, the dashboard, the summary and Masters." : "Saved. Pepper is hidden. Anything already recorded is kept." });
+      await qc.invalidateQueries({ queryKey: ["settings"] });
+      await qc.invalidateQueries({ queryKey: ["dashboard"] });
+    } catch (e) {
+      setNote({ tone: "bad", text: msg(e) });
+    }
+  };
+  return (
+    <Card title="Crops">
+      <p className="mb-2 text-sm text-muted">
+        Coffee is always on. Switch Pepper on only when the estate needs it. While it is off, Pepper is hidden everywhere and a pepper weigh-in is not accepted.
+      </p>
+      <label className="flex min-h-11 items-center gap-2">
+        <input type="checkbox" checked={enabled.includes("PEPPER")} disabled={!app.online || !app.canAny("settings.configure")} onChange={(e) => void toggle(e.target.checked)} /> Use Pepper
+      </label>
+      {note && (
+        <div className="mt-3">
+          <Notice tone={note.tone}>{note.text}</Notice>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function SeasonStart() {
   const app = useApp();
   const qc = useQueryClient();
@@ -273,6 +307,7 @@ function Setup() {
   return (
     <>
       <SeasonStart />
+      <Crops />
       <AttendanceTypes />
       {app.can("settings.manage", null) && (
         <Card title="Go-live readiness">

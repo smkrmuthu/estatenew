@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useApp } from "../app-context";
 import { Button, Card, Field, FilterBar, FilterSearch, FilterSelect, Input, KpiStrip, Notice, Select, StatusBadge } from "../components/ui";
 import { api } from "../lib/api";
+import { useCrops } from "../lib/crops";
 import { db, type LocalRecord } from "../lib/db";
 import { useLive } from "../lib/hooks";
 import { queueChange } from "../lib/outbox";
@@ -43,6 +44,7 @@ export function WeighIn() {
   const [workerId, setWorkerId] = useState("");
   const [fieldId, setFieldId] = useState("");
   const [crop, setCrop] = useState("COFFEE");
+  const { enabled: enabledCrops, pepper } = useCrops();
   const [varietyId, setVarietyId] = useState("");
   const [gross, setGross] = useState("");
   const [bags, setBags] = useState(1);
@@ -57,6 +59,11 @@ export function WeighIn() {
   const fields = useMemo(() => (ref?.fields ?? []).filter((f) => f.estateId === estateId), [ref, estateId]);
   const field = fields.find((f) => f.id === fieldId);
   const crops = field?.crops ?? ["COFFEE"];
+  // Pepper is hidden until it is switched on in Manage.
+  const firstCrop = (list: string[]) => list.find((c) => enabledCrops.includes(c)) ?? "COFFEE";
+  useEffect(() => {
+    if (!pepper && crop !== "COFFEE") setCrop("COFFEE");
+  }, [pepper, crop]);
   const varieties = (ref?.varieties ?? []).filter((v) => v.crop === crop && (!field?.varietyIds.length || field.varietyIds.includes(v.id)));
   // The field decides the variety: its bearing subdivisions carry one each (A, B, ...). One variety is filled in; several must be picked.
   const choices = useMemo(() => {
@@ -194,7 +201,7 @@ export function WeighIn() {
       setFieldId(f);
       setFieldFromAttendance(true);
       const ff = fields.find((x) => x.id === f);
-      if (ff && !ff.crops.includes(crop)) setCrop(ff.crops[0] ?? "COFFEE");
+      if (ff && !ff.crops.includes(crop)) setCrop(firstCrop(ff.crops));
       setVarietyId("");
     } else {
       setFieldFromAttendance(false);
@@ -382,7 +389,7 @@ export function WeighIn() {
                 setFieldId(e.target.value);
                 setFieldFromAttendance(false);
                 const f = fields.find((x) => x.id === e.target.value);
-                if (f && !f.crops.includes(crop)) setCrop(f.crops[0] ?? "COFFEE");
+                if (f && !f.crops.includes(crop)) setCrop(firstCrop(f.crops));
                 setVarietyId("");
               }}
             >
@@ -394,25 +401,27 @@ export function WeighIn() {
               ))}
             </Select>
           </Field>
-          <fieldset className="flex flex-col gap-1">
-            <legend className="text-sm font-semibold">Crop</legend>
-            <div className="grid grid-cols-2 gap-2">
-              {["COFFEE", "PEPPER"].map((c) => (
-                <Button
-                  key={c}
-                  variant={crop === c ? "primary" : "secondary"}
-                  aria-pressed={crop === c}
-                  disabled={!crops.includes(c)}
-                  onClick={() => {
-                    setCrop(c);
-                    setVarietyId("");
-                  }}
-                >
-                  {c === "COFFEE" ? "Coffee" : "Pepper"}
-                </Button>
-              ))}
-            </div>
-          </fieldset>
+          {pepper && (
+            <fieldset className="flex flex-col gap-1">
+              <legend className="text-sm font-semibold">Crop</legend>
+              <div className="grid grid-cols-2 gap-2">
+                {["COFFEE", "PEPPER"].map((c) => (
+                  <Button
+                    key={c}
+                    variant={crop === c ? "primary" : "secondary"}
+                    aria-pressed={crop === c}
+                    disabled={!crops.includes(c)}
+                    onClick={() => {
+                      setCrop(c);
+                      setVarietyId("");
+                    }}
+                  >
+                    {c === "COFFEE" ? "Coffee" : "Pepper"}
+                  </Button>
+                ))}
+              </div>
+            </fieldset>
+          )}
           {choices.length === 1 ? (
             <Field label="Variety" htmlFor="variety" hint="Set by the field">
               <p id="variety" className="flex min-h-12 items-center font-medium">
@@ -552,7 +561,7 @@ export function WeighIn() {
                       </td>
                       <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">
                         {d.coffeeNetKg} kg
-                        {d.pepperNetKg !== "0.000" && <span className="block text-xs text-muted">+ {d.pepperNetKg} kg pepper</span>}
+                        {pepper && d.pepperNetKg !== "0.000" && <span className="block text-xs text-muted">+ {d.pepperNetKg} kg pepper</span>}
                       </td>
                       <td className="px-3 py-2 text-right text-muted">–</td>
                       <td className="px-3 py-2 text-muted">
@@ -584,16 +593,18 @@ export function WeighIn() {
           >
             <FilterSearch label="Find a worker" value={lq} onChange={setLq} placeholder="Name or code" />
             <FilterSelect label="Field" value={lField} onChange={setLField} options={[{ value: "", label: "All fields" }, ...fields.map((f) => ({ value: f.id, label: f.name }))]} />
-            <FilterSelect
-              label="Crop"
-              value={lCrop}
-              onChange={setLCrop}
-              options={[
-                { value: "", label: "Coffee and pepper" },
-                { value: "COFFEE", label: "Coffee" },
-                { value: "PEPPER", label: "Pepper" },
-              ]}
-            />
+            {pepper && (
+              <FilterSelect
+                label="Crop"
+                value={lCrop}
+                onChange={setLCrop}
+                options={[
+                  { value: "", label: "Coffee and pepper" },
+                  { value: "COFFEE", label: "Coffee" },
+                  { value: "PEPPER", label: "Pepper" },
+                ]}
+              />
+            )}
             <FilterSelect
               label="State"
               value={lState}

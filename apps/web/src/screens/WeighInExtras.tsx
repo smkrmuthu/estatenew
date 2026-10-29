@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Button, Drawer, Field, Input, Notice, Select } from "../components/ui";
 import { ApiError, api } from "../lib/api";
+import { useCrops } from "../lib/crops";
 import type { ReferenceData } from "../lib/db";
 
 const KG_TEXT = /^\d{0,7}(\.\d{0,3})?$/;
@@ -53,6 +54,7 @@ export function CorrectWeighIn({
   const [busy, setBusy] = useState(false);
   const field = fields.find((f) => f.id === fieldId);
   const crops = field?.crops ?? [crop];
+  const { pepper } = useCrops();
   const required = ref.rules?.varietyRequired !== false;
 
   // The same rule as the weigh-in form: a field with bearing subdivisions offers their varieties, otherwise the field's list.
@@ -147,22 +149,24 @@ export function CorrectWeighIn({
               ))}
             </Select>
           </Field>
-          <Field label="Crop" htmlFor="cw-crop">
-            <Select
-              id="cw-crop"
-              value={crop}
-              onChange={(e) => {
-                setCrop(e.target.value);
-                setVarietyId("");
-              }}
-            >
-              {["COFFEE", "PEPPER"].map((c) => (
-                <option key={c} value={c} disabled={!crops.includes(c)}>
-                  {c === "COFFEE" ? "Coffee" : "Pepper"}
-                </option>
-              ))}
-            </Select>
-          </Field>
+          {(pepper || crop === "PEPPER") && (
+            <Field label="Crop" htmlFor="cw-crop">
+              <Select
+                id="cw-crop"
+                value={crop}
+                onChange={(e) => {
+                  setCrop(e.target.value);
+                  setVarietyId("");
+                }}
+              >
+                {["COFFEE", "PEPPER"].map((c) => (
+                  <option key={c} value={c} disabled={!crops.includes(c)}>
+                    {c === "COFFEE" ? "Coffee" : "Pepper"}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          )}
           <Field label={required ? "Variety" : "Variety (optional)"} htmlFor="cw-variety">
             <Select id="cw-variety" value={varietyId} onChange={(e) => setVarietyId(e.target.value)}>
               <option value="">{required ? "Pick the variety…" : "Not recorded"}</option>

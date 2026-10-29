@@ -141,11 +141,11 @@ export const SETTING_DEFS = {
   },
   "crops.enabled": {
     key: "crops.enabled",
-    description: "Crops captured at weigh-in.",
-    defaultValue: ["COFFEE", "PEPPER"],
+    description: "Crops captured at weigh-in. Coffee is always on; Pepper is switched on only when the estate needs it (project lead, 29 October 2026).",
+    defaultValue: ["COFFEE"],
     basis: "confirmed",
     gates: [],
-    validate: stringList(["COFFEE", "PEPPER"]),
+    validate: (v): v is string[] => stringList(["COFFEE", "PEPPER"])(v) && v.includes("COFFEE"),
   },
   locale: {
     key: "locale",

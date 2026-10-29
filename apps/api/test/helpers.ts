@@ -82,6 +82,8 @@ export async function setupTenant() {
     expect(done.status, JSON.stringify(done.body)).toBe(200);
     return done.body;
   };
+  // Pepper is off by default; these tenants use it.
+  expect((await api("/admin/settings/crops.enabled", { method: "PUT", token: owner.token, body: { value: ["COFFEE", "PEPPER"] } })).status).toBe(200);
   await imp("varieties", ["code,name,crop", "CG,Chandana Giri,COFFEE", "S9,Selection 9,COFFEE", "PNL,Panniyur,PEPPER"]);
   await imp("job_types", ["code,name", "PLK,Plucking", "WED,Weeding"]);
   await imp("fields", ["estate_code,code,name,area_acres,crops,varieties", "GLZ,F1,Field One,10.5,COFFEE,CG;S9", "GLZ,F2,Field Two,4,COFFEE;PEPPER,", "BYV,B1,Other Field,3,COFFEE,"]);

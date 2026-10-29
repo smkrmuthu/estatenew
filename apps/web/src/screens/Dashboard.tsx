@@ -4,6 +4,7 @@ import { useApp } from "../app-context";
 import { Icon } from "../components/Icon";
 import { Card, Notice } from "../components/ui";
 import { api } from "../lib/api";
+import { useCrops } from "../lib/crops";
 
 export interface DashboardData {
   basis: "server-accepted";
@@ -40,20 +41,20 @@ function Kpi({ label, value, note }: { label: string; value: React.ReactNode; no
 }
 
 /** Bars for the last days of accepted weigh-ins; the latest day is highlighted. */
-function DailyChart({ days }: { days: DashboardData["days"] }) {
+function DailyChart({ days, pepper }: { days: DashboardData["days"]; pepper: boolean }) {
   const W = 600;
   const H = 170;
   const L = 44;
   const B = 22;
   const T = 10;
-  const totals = days.map((d) => d.coffeeNetG + d.pepperNetG);
+  const totals = days.map((d) => d.coffeeNetG + (pepper ? d.pepperNetG : 0));
   const maxKg = Math.max(100, ...totals.map((g) => g / 1000));
   const top = Math.ceil(maxKg / 200) * 200;
   const bw = (W - L - 8) / days.length;
   const y = (kg: number) => T + (H - T - B) * (1 - kg / top);
   const kgText = (g: number) => `${(g / 1000).toLocaleString("en-IN", { maximumFractionDigits: 1 })} kg`;
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Net kilograms weighed in per day, coffee and pepper together" className="w-full">
+    <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={pepper ? "Net kilograms weighed in per day, coffee and pepper together" : "Net kilograms of coffee weighed in per day"} className="w-full">
       {[0, top / 2, top].map((t) => (
         <g key={t}>
           <line x1={L} x2={W - 4} y1={y(t)} y2={y(t)} stroke="var(--color-line)" />
@@ -148,6 +149,7 @@ export type DashboardPage = "attendance" | "weighin" | "dailylog" | "summary" | 
 
 export function Dashboard({ go }: { go: (page: DashboardPage) => void }) {
   const app = useApp();
+  const { pepper } = useCrops();
   const { scope, list, loading, failed } = useDashboards();
   const multi = scope.length > 1;
   const d = list.length ? merge(list) : undefined;
@@ -199,7 +201,7 @@ export function Dashboard({ go }: { go: (page: DashboardPage) => void }) {
 
       {d && season && (
         <>
-          <div className="grid overflow-hidden rounded-2xl border border-line bg-surface sm:grid-cols-2 lg:grid-cols-5">
+          <div className={`grid overflow-hidden rounded-2xl border border-line bg-surface sm:grid-cols-2 ${pepper ? "lg:grid-cols-5" : "lg:grid-cols-4"}`}>
             <Kpi
               label="Workers today"
               value={
@@ -210,7 +212,7 @@ export function Dashboard({ go }: { go: (page: DashboardPage) => void }) {
               note={`${d.today.halfDayCount} half day · ${d.today.absent} absent · ${sheetText}`}
             />
             <Kpi label="Coffee weighed today" value={`${d.today.coffeeNetKg} kg`} note={`${d.today.weighIns} weigh-ins in all`} />
-            <Kpi label="Pepper weighed today" value={`${d.today.pepperNetKg} kg`} note="Net weight, same weigh-in" />
+            {pepper && <Kpi label="Pepper weighed today" value={`${d.today.pepperNetKg} kg`} note="Net weight, same weigh-in" />}
             <Kpi
               label="Season to date"
               value={season.startDate ? `${Number(season.coffeeNetKg).toLocaleString("en-IN", { maximumFractionDigits: 0 })} kg` : "–"}
@@ -261,8 +263,8 @@ export function Dashboard({ go }: { go: (page: DashboardPage) => void }) {
                 </ul>
               )}
             </Card>
-            <Card title="Weighed in per day" actions={<span className="text-sm text-muted">Net kg, coffee and pepper</span>}>
-              <DailyChart days={d.days} />
+            <Card title="Weighed in per day" actions={<span className="text-sm text-muted">{pepper ? "Net kg, coffee and pepper" : "Net kg of coffee"}</span>}>
+              <DailyChart days={d.days} pepper={pepper} />
             </Card>
           </div>
         </>
