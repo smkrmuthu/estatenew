@@ -155,6 +155,12 @@ export function WeighInLog({
 
   const head = (key: SortKey, text: string, right = false): ReactNode => {
     const on = sort?.key === key;
+    // The arrow's slot sits on the inner side, so a number column's heading ends exactly where its figures end.
+    const arrow = (
+      <span aria-hidden="true" className="w-3 text-[0.65rem]">
+        {on ? (sort?.dir === "asc" ? "▲" : "▼") : ""}
+      </span>
+    );
     return (
       <th scope="col" aria-sort={on ? (sort?.dir === "asc" ? "ascending" : "descending") : "none"} className={`px-3 py-2 text-[0.8rem] font-medium text-muted ${right ? "text-right" : "text-left"}`}>
         <button
@@ -162,10 +168,9 @@ export function WeighInLog({
           className={`inline-flex min-h-9 items-center gap-1 whitespace-nowrap hover:text-ink ${on ? "text-ink" : ""}`}
           onClick={() => setSort(on && sort?.dir === "asc" ? { key, dir: "desc" } : on && sort?.dir === "desc" ? null : { key, dir: "asc" })}
         >
+          {right && arrow}
           {text}
-          <span aria-hidden="true" className="w-3 text-[0.65rem]">
-            {on ? (sort?.dir === "asc" ? "▲" : "▼") : ""}
-          </span>
+          {!right && arrow}
         </button>
       </th>
     );
