@@ -8,6 +8,7 @@ import { db, type LocalRecord } from "../lib/db";
 import { useLive } from "../lib/hooks";
 import { queueChange } from "../lib/outbox";
 import { useUnsaved } from "../lib/unsaved";
+import { CorrectWeighIn } from "./WeighInExtras";
 
 interface ServerEntry {
   id: string;
@@ -18,7 +19,9 @@ interface ServerEntry {
   subdivision?: string | null;
   varietyId?: string | null;
   grossG: number;
+  tareG?: number;
   bags: number;
+  remarks?: string | null;
   status: "ACTIVE" | "VOID";
   version: number;
 }
@@ -48,6 +51,7 @@ export function WeighIn() {
   const [saved, setSaved] = useState<string | null>(null);
   useUnsaved(!!(gross || remarks));
   const [fieldFromAttendance, setFieldFromAttendance] = useState(false);
+  const [correcting, setCorrecting] = useState<string | null>(null);
 
   const workers = useMemo(() => (ref?.workers ?? []).filter((w) => (w.estateIds ?? [w.estateId]).includes(estateId)), [ref, estateId]);
   const fields = useMemo(() => (ref?.fields ?? []).filter((f) => f.estateId === estateId), [ref, estateId]);
@@ -616,12 +620,17 @@ export function WeighIn() {
                   </p>
                   <p className="text-sm text-muted">
                     {fields.find((f) => f.id === r.fieldId)?.name}
-                    {r.voided ? " · cancelled" : ""}
+                    {r.voided ? " · cancelled" : r.status === "accepted" && r.version > 1 ? " · corrected" : ""}
                   </p>
                   {r.message && r.status !== "accepted" && <p className="text-sm text-bad">{r.message}</p>}
                 </div>
                 <div className="flex items-center gap-2">
                   <StatusBadge status={r.status} compact />
+                  {!r.voided && r.status === "accepted" && app.can("muster.correct") && app.online && server.data?.some((e) => e.id === r.id) && (
+                    <Button size="sm" variant="ghost" onClick={() => setCorrecting(r.id)}>
+                      Edit
+                    </Button>
+                  )}
                   {!r.voided && r.status === "accepted" && canCapture && (
                     <Button size="sm" variant="ghost" onClick={() => cancelEntry(r.id, r.version, w?.name ?? "worker")}>
                       Cancel
@@ -635,6 +644,14 @@ export function WeighIn() {
           {rows.length > 0 && listed.length === 0 && <li className="py-2 text-muted">No weigh-ins match these filters.</li>}
         </ul>
       </Card>
+      {correcting &&
+        (() => {
+          const entry = server.data?.find((e) => e.id === correcting);
+          if (!entry || !ref) return null;
+          return (
+            <CorrectWeighIn estateId={estateId} date={date} workerName={workers.find((w) => w.id === entry.workerId)?.name ?? "Worker"} entry={entry} ref={ref} onClose={() => setCorrecting(null)} />
+          );
+        })()}
     </div>
   );
 }
