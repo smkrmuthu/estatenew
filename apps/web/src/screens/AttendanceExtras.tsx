@@ -15,7 +15,7 @@ const STATUS_TEXT: Record<string, string> = { PRESENT: "Present", ABSENT: "Absen
 const dayText = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" });
 
 /** A worker's recent attendance: which days, what status, which field and job. */
-export function WorkerHistory({ estateId, workerId, onClose }: { estateId: string; workerId: string; onClose: () => void }) {
+export function WorkerHistory({ estateId, workerId, onClose, onCorrect }: { estateId: string; workerId: string; onClose: () => void; onCorrect?: () => void }) {
   const app = useApp();
   const q = useQuery({
     queryKey: ["worker-history", estateId, workerId],
@@ -30,6 +30,11 @@ export function WorkerHistory({ estateId, workerId, onClose }: { estateId: strin
       {q.error && <Notice tone="bad">Could not load the history.</Notice>}
       {h && (
         <>
+          {onCorrect && (
+            <Button variant="secondary" onClick={onCorrect}>
+              Correct this day's record
+            </Button>
+          )}
           <p className="text-sm text-muted">
             {h.daysWorked} days worked in the day shift (a half day counts as 0.5), and {h.nightShifts} night {h.nightShifts === 1 ? "shift" : "shifts"}. A night shift is not counted as a day.
           </p>

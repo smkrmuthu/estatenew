@@ -38,14 +38,11 @@ interface SheetResponse {
 type Prefill = SheetResponse["prefill"];
 type Draft = { dayFraction: "FULL" | "HALF"; fieldId: string | null; jobTypeId: string | null };
 
-/** The status buttons of the register, in the order of the prototype: P, half, A, L, Off, Hol. */
+/** The status buttons of the register: present, half day, absent. Leave, off day and holiday are not offered (project lead, 29 Oct 2026). */
 const CHIPS = [
   { id: "P", short: "P", long: "Present, full day", statusCode: "PRESENT", dayFraction: "FULL" as const },
   { id: "H", short: "½", long: "Half day", statusCode: "PRESENT", dayFraction: "HALF" as const },
   { id: "A", short: "A", long: "Absent", statusCode: "ABSENT", dayFraction: null },
-  { id: "L", short: "L", long: "Leave", statusCode: "LEAVE", dayFraction: null },
-  { id: "O", short: "Off", long: "Off day", statusCode: "OFF_DAY", dayFraction: null },
-  { id: "F", short: "Hol", long: "Holiday", statusCode: "HOLIDAY", dayFraction: null },
 ];
 const DEFAULT_STATUSES: StatusDef[] = [
   { code: "PRESENT", label: "Present", active: true, requiresAssignment: true },
@@ -335,7 +332,7 @@ export function Attendance() {
       fieldCounts.set(d.fieldId, cur);
     }
   }
-  const gridCols = "md:grid-cols-[2rem_minmax(9rem,1.2fr)_9.5rem_minmax(8rem,1fr)_minmax(7rem,0.8fr)_minmax(7rem,1fr)]";
+  const gridCols = "md:grid-cols-[2rem_minmax(13rem,1.4fr)_9.5rem_minmax(8rem,1fr)_minmax(7rem,0.8fr)_minmax(7rem,1fr)]";
 
   return (
     <div className="flex flex-col gap-4">
@@ -568,40 +565,33 @@ export function Attendance() {
                     setSelected(next);
                   }}
                 />
-                <div className="flex items-center justify-between gap-2 md:block">
-                  <p className="font-semibold">
-                    <span className="font-mono text-sm text-muted">{w.employeeCode}</span> {w.name}
+                <div className="min-w-0">
+                  <p className="font-semibold md:whitespace-nowrap">
+                    <button type="button" className="text-left hover:underline" aria-label={`History of ${w.name}`} onClick={() => setHistoryFor(w.id)}>
+                      <span className="font-mono text-sm text-muted">{w.employeeCode}</span> {w.name}
+                    </button>
                     {w.gender && (
                       <span className={`ml-2 rounded-full px-2 py-0.5 align-middle text-xs font-medium ${w.gender === "FEMALE" ? "bg-cherry/15 text-cherry" : "bg-info/15 text-info"}`}>
                         {w.gender === "FEMALE" ? "Female" : "Male"}
                       </span>
                     )}
+                  </p>
+                  <p className="flex flex-wrap items-center gap-x-2 text-xs text-muted">
                     {w.employmentType && (
-                      <span className={`ml-2 rounded-full px-2 py-0.5 align-middle text-xs font-medium ${w.employmentType === "PERMANENT" ? "bg-surface-2 text-muted" : "bg-warn/15 text-warn"}`}>
+                      <span className={`rounded-full px-2 py-0.5 font-medium ${w.employmentType === "PERMANENT" ? "bg-surface-2 text-muted" : "bg-warn/15 text-warn"}`}>
                         {w.employmentType === "PERMANENT" ? "Permanent" : w.employmentType === "CASUAL" ? "Casual" : w.employmentType === "CONTRACT" ? "Contract" : "North Indian"}
                       </span>
                     )}
+                    {w.area && <span>{w.area}</span>}
+                    {alsoOn.has(w.id) && (
+                      <span className="font-medium text-info">
+                        Also on {otherShift === "DAY" ? "Day" : "Night"}:{" "}
+                        {[jobs.find((j) => j.id === alsoOn.get(w.id)?.jobTypeId)?.name, fields.find((f) => f.id === alsoOn.get(w.id)?.fieldId)?.name].filter(Boolean).join(", ") || "present"}
+                      </span>
+                    )}
+                    {draft && <span className="font-semibold text-warn">Choose field and job</span>}
+                    {!draft && r && r.status !== "accepted" && <StatusBadge status={r.status} compact />}
                   </p>
-                  {w.area && <p className="text-xs text-muted">{w.area}</p>}
-                  {alsoOn.has(w.id) && (
-                    <p className="text-xs font-medium text-info">
-                      Also on {otherShift === "DAY" ? "Day" : "Night"}:{" "}
-                      {[jobs.find((j) => j.id === alsoOn.get(w.id)?.jobTypeId)?.name, fields.find((f) => f.id === alsoOn.get(w.id)?.fieldId)?.name].filter(Boolean).join(", ") || "present"}
-                    </p>
-                  )}
-                  <div className="text-sm">
-                    <span className="mr-2 inline-flex gap-1">
-                      <button type="button" className="min-h-8 px-1 text-xs font-medium text-roast hover:underline" aria-label={`History of ${w.name}`} onClick={() => setHistoryFor(w.id)}>
-                        History
-                      </button>
-                      {locked && r?.status === "accepted" && app.can("attendance.correct") && app.online && (
-                        <button type="button" className="min-h-8 px-1 text-xs font-medium text-roast hover:underline" aria-label={`Correct ${w.name}`} onClick={() => setCorrecting(w.id)}>
-                          Correct
-                        </button>
-                      )}
-                    </span>
-                    {draft ? <span className="font-semibold text-warn">Choose field and job</span> : r ? <StatusBadge status={r.status} compact /> : <span className="text-muted">Not marked</span>}
-                  </div>
                 </div>
                 <fieldset className="flex flex-wrap gap-1">
                   <legend className="sr-only">Attendance for {w.name}</legend>
@@ -705,7 +695,21 @@ export function Attendance() {
           </table>
         )}
       </Card>
-      {historyFor && <WorkerHistory estateId={estateId} workerId={historyFor} onClose={() => setHistoryFor(null)} />}
+      {historyFor && (
+        <WorkerHistory
+          estateId={estateId}
+          workerId={historyFor}
+          onClose={() => setHistoryFor(null)}
+          onCorrect={
+            locked && byWorker.get(historyFor)?.status === "accepted" && app.can("attendance.correct") && app.online
+              ? () => {
+                  setCorrecting(historyFor);
+                  setHistoryFor(null);
+                }
+              : undefined
+          }
+        />
+      )}
       {correcting &&
         (() => {
           const w = workers.find((x) => x.id === correcting);
