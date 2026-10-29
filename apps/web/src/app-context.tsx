@@ -1,5 +1,6 @@
 import { canAnyEstate, can as canDo, type Permission } from "@cemms/domain";
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./lib/api";
 import { db, type ReferenceData } from "./lib/db";
 import { todayIn, useLive, useOnline } from "./lib/hooks";
@@ -50,20 +51,69 @@ export function AppProvider({ session, deviceId, onSignOut, children }: { sessio
   const [lastReport, setLastReport] = useState<SyncReport | null>(null);
   const queue = useLive(() => counts(session.user.id), [session.user.id], { waiting: 0, rejected: 0, conflict: 0, otherUsersWaiting: 0 });
 
-  const reloadReference = useCallback(async () => {
+  const qc = useQueryClient();
+
+  /** Fetch the worker, field and job lists. Writes to the phone only when something changed, so screens do not redraw for nothing. */
+  const loadReference = useCallback(async () => {
     const data = await api<ReferenceData>("/reference");
+    const current = await db.reference.get(session.user.tenantId);
+    if (current && JSON.stringify(current.data) === JSON.stringify(data)) return;
     await db.reference.put({ tenantId: session.user.tenantId, data, fetchedAt: new Date().toISOString() });
   }, [session.user.tenantId]);
 
+  /** After something is changed here: reload the lists and make every screen read the server again. */
+  const reloadReference = useCallback(async () => {
+    await loadReference();
+    await qc.invalidateQueries();
+  }, [loadReference, qc]);
+
+  // Other people add workers, fields and jobs too: look again on open, on coming back to the app, when signal returns and every minute.
   useEffect(() => {
-    if (online) void reloadReference().catch(() => {});
-  }, [online, reloadReference]);
+    if (!online) return;
+    const go = () => void loadReference().catch(() => {});
+    const onVisible = () => document.visibilityState === "visible" && go();
+    go();
+    window.addEventListener("focus", go);
+    document.addEventListener("visibilitychange", onVisible);
+    const timer = window.setInterval(go, 60_000);
+    return () => {
+      window.removeEventListener("focus", go);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.clearInterval(timer);
+    };
+  }, [online, loadReference]);
+
+  // The server has just accepted, refused or flagged something from this phone: every total and list is out of date.
+  useEffect(() => {
+    if (lastReport && lastReport.sent > 0) void qc.invalidateQueries();
+  }, [lastReport, qc]);
 
   useEffect(() => {
     if (!estateId && ref?.estates[0]) setEstateIdState(ref.estates[0].id);
   }, [ref, estateId]);
 
   useEffect(() => setDate(todayIn(timeZone)), [timeZone]);
+
+  // Left open past midnight: a screen that was showing today moves on to the new day by itself. A date picked by hand stays.
+  const todayRef = useRef(todayIn(timeZone));
+  useEffect(() => {
+    const rollOver = () => {
+      const now = todayIn(timeZone);
+      const before = todayRef.current;
+      if (now === before) return;
+      todayRef.current = now;
+      setDate((d) => (d === before ? now : d));
+    };
+    todayRef.current = todayIn(timeZone);
+    const timer = window.setInterval(rollOver, 30_000);
+    document.addEventListener("visibilitychange", rollOver);
+    window.addEventListener("focus", rollOver);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", rollOver);
+      window.removeEventListener("focus", rollOver);
+    };
+  }, [timeZone]);
 
   useEffect(() => startAutoSync(session.user.id, deviceId, setLastReport), [session.user.id, deviceId]);
 

@@ -7,6 +7,7 @@ import { api } from "../lib/api";
 import { db, type LocalRecord } from "../lib/db";
 import { useLive } from "../lib/hooks";
 import { queueChange } from "../lib/outbox";
+import { useUnsaved } from "../lib/unsaved";
 
 interface ServerEntry {
   id: string;
@@ -38,6 +39,7 @@ export function WeighIn() {
   const [tare, setTare] = useState("");
   const [remarks, setRemarks] = useState("");
   const [saved, setSaved] = useState<string | null>(null);
+  useUnsaved(!!(gross || remarks));
   const [fieldFromAttendance, setFieldFromAttendance] = useState(false);
 
   const workers = useMemo(() => (ref?.workers ?? []).filter((w) => (w.estateIds ?? [w.estateId]).includes(estateId)), [ref, estateId]);

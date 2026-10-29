@@ -7,6 +7,7 @@ import { ApiError, api } from "../lib/api";
 import { db, getMeta, type LocalRecord, setMeta } from "../lib/db";
 import { useLive } from "../lib/hooks";
 import { queueChange } from "../lib/outbox";
+import { useUnsaved } from "../lib/unsaved";
 import { CorrectRecord, WorkerHistory } from "./AttendanceExtras";
 
 interface ServerRecord {
@@ -60,6 +61,7 @@ export function Attendance() {
   const [returnReason, setReturnReason] = useState("");
   /** Present marks waiting for a field and a job; nothing is queued until they are complete. */
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
+  useUnsaved(Object.keys(drafts).length > 0);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [historyFor, setHistoryFor] = useState<string | null>(null);
   const [correcting, setCorrecting] = useState<string | null>(null);

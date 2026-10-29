@@ -9,6 +9,7 @@ import { signOut as apiSignOut, refreshAccess } from "./lib/api";
 import { getMeta, setMeta } from "./lib/db";
 import { todayIn } from "./lib/hooks";
 import { deviceId as getDeviceId, loadSession, type StoredSession, saveSession, sessionUsable } from "./lib/session";
+import { hasUnsaved } from "./lib/unsaved";
 import { Attendance } from "./screens/Attendance";
 import { ChangePassword } from "./screens/ChangePassword";
 import { DailyLog } from "./screens/DailyLog";
@@ -21,7 +22,11 @@ import { Sync } from "./screens/Sync";
 import { Users } from "./screens/Users";
 import { WeighIn } from "./screens/WeighIn";
 
-const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1, staleTime: 15_000, networkMode: "online" } } });
+// Screens that are open read the server again every 30 seconds, when the app is brought back to the front and when signal returns,
+// so what other people enter shows without reloading the page.
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { retry: 1, staleTime: 5_000, networkMode: "online", refetchInterval: 30_000, refetchOnWindowFocus: true, refetchOnReconnect: true } },
+});
 
 type Tab = "dashboard" | "attendance" | "weighin" | "dailylog" | "summary" | "masters" | "users" | "sync" | "manage" | "password";
 const TABS: Tab[] = ["dashboard", "attendance", "weighin", "dailylog", "summary", "masters", "users", "sync", "manage", "password"];
@@ -241,18 +246,44 @@ function Shell() {
   );
 }
 
+/** How often the app asks the server whether a newer version of itself exists. */
+const VERSION_CHECK_MS = 2 * 60_000;
+
 function UpdateBanner() {
   const {
     needRefresh: [needRefresh],
     updateServiceWorker,
-  } = useRegisterSW();
-  if (!needRefresh) return null;
+  } = useRegisterSW({
+    onRegisteredSW(_url, registration) {
+      if (!registration) return;
+      const look = () => void registration.update().catch(() => {});
+      window.setInterval(look, VERSION_CHECK_MS);
+      window.addEventListener("focus", look);
+      window.addEventListener("online", look);
+      document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && look());
+    },
+  });
+  const [blocked, setBlocked] = useState(false);
+
+  // A new version loads by itself as soon as nobody is in the middle of typing. Saved data is on the phone, so a reload loses nothing.
+  useEffect(() => {
+    if (!needRefresh) return;
+    const apply = () => {
+      if (hasUnsaved()) return setBlocked(true);
+      void updateServiceWorker(true);
+    };
+    apply();
+    const timer = window.setInterval(apply, 4_000);
+    return () => window.clearInterval(timer);
+  }, [needRefresh, updateServiceWorker]);
+
+  if (!needRefresh || !blocked) return null;
   return (
     <div className="fixed inset-x-4 bottom-24 z-20 sm:bottom-6">
       <Notice>
-        A new version is ready.{" "}
+        A new version is ready and will load as soon as you save or clear what you are typing.{" "}
         <Button size="sm" onClick={() => updateServiceWorker(true)}>
-          Update
+          Update now
         </Button>
       </Notice>
     </div>

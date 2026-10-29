@@ -7,6 +7,7 @@ import { api } from "../lib/api";
 import { db, type LocalRecord } from "../lib/db";
 import { useLive } from "../lib/hooks";
 import { queueChange } from "../lib/outbox";
+import { useUnsaved } from "../lib/unsaved";
 
 interface ServerReading {
   id: string;
@@ -221,6 +222,7 @@ export function DailyLog() {
   const [time, setTime] = useState(localTime);
   const [remarks, setRemarks] = useState("");
   const [saved, setSaved] = useState<string | null>(null);
+  useUnsaved(!!(value || remarks));
   const kind = kinds.find((k) => k.id === kindId);
 
   const error = (() => {
