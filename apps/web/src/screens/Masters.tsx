@@ -5,7 +5,7 @@ import { useApp } from "../app-context";
 import { Button, Card, Chip, Drawer, Field, FilterBar, FilterSearch, FilterSelect, Input, Notice, Select } from "../components/ui";
 import { ApiError, api } from "../lib/api";
 import { useCrops } from "../lib/crops";
-import type { EmploymentType, Gender, LandUse, ReferenceData } from "../lib/db";
+import { EMPLOYMENT_LABEL, type EmploymentType, type Gender, type LandUse, type ReferenceData } from "../lib/db";
 import { normalizeKg } from "../lib/kg";
 import { useDashboards } from "./Dashboard";
 
@@ -13,7 +13,6 @@ type Tab = "fields" | "workers" | "varieties" | "jobs" | "logkinds" | "tare";
 type Target = { tab: Tab; id?: string } | null;
 
 const LAND_LABEL: Record<LandUse, string> = { BEARING: "Bearing", YOUNG: "Young plants", ROCK: "Rock", WATER: "Water", EMPTY: "Empty", OTHER_CROP: "Other crop" };
-const TYPE_LABEL: Record<EmploymentType, string> = { PERMANENT: "Permanent", CASUAL: "Casual", CONTRACT: "Contract", NORTH_INDIAN: "North Indian" };
 const GENDER_LABEL: Record<Gender, string> = { MALE: "Male", FEMALE: "Female" };
 const acres = (c: number | null | undefined) => (c === null || c === undefined ? "–" : (c / 100).toLocaleString("en-IN", { maximumFractionDigits: 2 }));
 const msg = (e: unknown) => (e instanceof ApiError ? e.message : "Could not reach the server.");
@@ -146,9 +145,9 @@ function WorkerForm({ data, id, estateId, done }: { data: ReferenceData; id?: st
         </Field>
         <Field label="Type" htmlFor="w-type">
           <Select id="w-type" value={type} onChange={(e) => setType(e.target.value)}>
-            {(Object.keys(TYPE_LABEL) as EmploymentType[]).map((t) => (
+            {(Object.keys(EMPLOYMENT_LABEL) as EmploymentType[]).map((t) => (
               <option key={t} value={t}>
-                {TYPE_LABEL[t]}
+                {EMPLOYMENT_LABEL[t]}
               </option>
             ))}
           </Select>
@@ -219,7 +218,7 @@ function Workers({ data, canWrite, open, pick }: { data: ReferenceData; canWrite
             label="Type"
             value={fType}
             onChange={setFType}
-            options={[{ value: "", label: "All types" }, ...(Object.keys(TYPE_LABEL) as EmploymentType[]).map((t) => ({ value: t, label: TYPE_LABEL[t] }))]}
+            options={[{ value: "", label: "All types" }, ...(Object.keys(EMPLOYMENT_LABEL) as EmploymentType[]).map((t) => ({ value: t, label: EMPLOYMENT_LABEL[t] }))]}
           />
           <FilterSelect label="Area" value={fArea} onChange={setFArea} options={[{ value: "", label: "All areas" }, ...areas.map((a) => ({ value: a, label: a }))]} />
           <FilterSelect
@@ -293,7 +292,7 @@ function Workers({ data, canWrite, open, pick }: { data: ReferenceData; canWrite
                     <span className="text-muted">Not set</span>
                   )}
                 </Td>
-                <Td>{w.employmentType ? <Chip tone={w.employmentType === "PERMANENT" ? "plain" : "warn"}>{TYPE_LABEL[w.employmentType]}</Chip> : <span className="text-muted">Not set</span>}</Td>
+                <Td>{w.employmentType ? <Chip tone={w.employmentType === "PERMANENT" ? "plain" : "warn"}>{EMPLOYMENT_LABEL[w.employmentType]}</Chip> : <span className="text-muted">Not set</span>}</Td>
                 <Td>{statusChip(w.active)}</Td>
                 <Td right>{canWrite(w.estateId) && <EditLink label={`Edit ${w.name}`} onClick={() => open(w.id)} />}</Td>
               </tr>

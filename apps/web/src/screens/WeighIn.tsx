@@ -5,7 +5,7 @@ import { useApp } from "../app-context";
 import { Button, Card, Field, Input, KpiStrip, Notice, Select } from "../components/ui";
 import { api } from "../lib/api";
 import { useCrops } from "../lib/crops";
-import { db, type LocalRecord } from "../lib/db";
+import { db, EMPLOYMENT_LABEL, type LocalRecord } from "../lib/db";
 import { useLive } from "../lib/hooks";
 import { normalizeKg } from "../lib/kg";
 import { queueChange } from "../lib/outbox";
@@ -374,6 +374,7 @@ export function WeighIn() {
                   {pluckers.map((w) => (
                     <option key={w.id} value={w.id}>
                       {w.employeeCode} · {w.name}
+                      {w.employmentType ? ` · ${EMPLOYMENT_LABEL[w.employmentType]}` : ""}
                       {weighedIds.has(w.id) ? " ✓" : ""}
                     </option>
                   ))}
@@ -384,6 +385,7 @@ export function WeighIn() {
                   {otherWorkers.map((w) => (
                     <option key={w.id} value={w.id}>
                       {w.employeeCode} · {w.name}
+                      {w.employmentType ? ` · ${EMPLOYMENT_LABEL[w.employmentType]}` : ""}
                       {weighedIds.has(w.id) ? " ✓" : ""}
                     </option>
                   ))}

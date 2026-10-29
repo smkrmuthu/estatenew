@@ -14,7 +14,7 @@ ADR-0019 gave each estate its own tare, set in Manage. The project lead now want
 - The Plucking form shows it read-only for supervisors. A manager or owner may enter another tare on one weigh-in; blank uses the default. The server takes the default off every supervisor weigh-in whatever the phone sent.
 - It reaches phones in the reference lists (`rules.tareG`), so it works offline.
 - Tenant migration 0008 keeps the highest per-estate figure already set (if any) as this setting and drops the `estates.default_tare_g` column. `PUT /estates/{estateId}/tare` and the Manage card are removed.
-- Tare is one figure per weigh-in, not multiplied by the number of bags.
+- Tare is one figure per weigh-in, not multiplied by the number of bags. The project lead confirmed in chat on 29 October 2026 to keep it this way for now: it will mostly be 0, and the setting stays in Masters. A per-bag weight (Bags × weight) can be asked for later.
 
 ## Consequences
 

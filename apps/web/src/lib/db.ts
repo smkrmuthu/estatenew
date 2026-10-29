@@ -50,6 +50,7 @@ export interface ReferenceCache {
 
 export type Gender = "MALE" | "FEMALE";
 export type EmploymentType = "PERMANENT" | "CASUAL" | "CONTRACT" | "NORTH_INDIAN";
+export const EMPLOYMENT_LABEL: Record<EmploymentType, string> = { PERMANENT: "Permanent", CASUAL: "Casual", CONTRACT: "Contract", NORTH_INDIAN: "North Indian" };
 export type LandUse = "BEARING" | "YOUNG" | "ROCK" | "WATER" | "EMPTY" | "OTHER_CROP";
 
 export interface ReferenceData {
