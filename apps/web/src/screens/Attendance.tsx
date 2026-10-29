@@ -390,7 +390,7 @@ export function Attendance() {
           )}
           {canCapture && app.can("attendance.submit") && (
             <Button onClick={submitDay} disabled={counts.P + counts.H + counts.A + counts.O === 0}>
-              {counts.none && shift === "DAY" ? `Submit (${counts.none} not marked)` : "Submit for approval"}
+              {counts.none && shift === "DAY" ? `Submit (${counts.none} not marked)` : app.can("attendance.approve") ? "Submit and approve" : "Submit for approval"}
             </Button>
           )}
           {app.can("attendance.approve") && app.online && sheetState === "SUBMITTED" && (

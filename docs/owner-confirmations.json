@@ -118,7 +118,7 @@
       "affects": [
         "attendance.approval"
       ],
-      "interimBehavior": "Approval workflow exists; approver is anyone holding attendance.approve on the estate (Owner or Estate Manager). Who approves is not confirmed.",
+      "interimBehavior": "Approval workflow exists; approver is anyone holding attendance.approve on the estate (Owner or Estate Manager). A manager's or owner's own submit is approved straight away (ADR-0017, project lead instruction 29 Oct 2026); a supervisor's submit waits for a manager. Who approves is not confirmed by the estate owner.",
       "configKeys": [
         "attendance.approval.required"
       ],

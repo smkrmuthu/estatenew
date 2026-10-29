@@ -77,6 +77,41 @@ describe("one worker on both shifts in one day", () => {
   });
 });
 
+describe("approval on submit", () => {
+  it("a manager's own submit is approved straight away; a supervisor's still waits for a manager", async () => {
+    const s = await setupTenant();
+    const d = today();
+    const mgr = await api("/admin/users", {
+      token: s.owner.token,
+      body: { username: "mgr1", displayName: "Manager One", password: "manager-pass-1234", grants: [{ role: "ESTATE_MANAGER", estateId: s.estate.id }] },
+    });
+    expect(mgr.status, JSON.stringify(mgr.body)).toBe(201);
+    const manager = await login(s.code, "mgr1", "manager-pass-1234");
+
+    // Supervisor: Day register stays Submitted.
+    const sr = await mutation(s.supervisor.deviceId, s.estate.id, "attendance_record", "upsert", present(s, s.w1.id));
+    const ss = await mutation(s.supervisor.deviceId, s.estate.id, "attendance_sheet", "submit", { businessDate: d });
+    expect((await push(s.supervisor, [sr, ss])).body.results.map((r: { status: string }) => r.status)).toEqual(["accepted", "accepted"]);
+    const supSheet = (await api(`/estates/${s.estate.id}/attendance/${d}`, { token: manager.token })).body.sheet;
+    expect(supSheet.state).toBe("SUBMITTED");
+
+    // Manager: the Night register is approved by the same submit, with who and when recorded.
+    const mr = await mutation(manager.deviceId, s.estate.id, "attendance_record", "upsert", present(s, s.w2.id, { shift: "NIGHT" }));
+    const ms = await mutation(manager.deviceId, s.estate.id, "attendance_sheet", "submit", { businessDate: d, shift: "NIGHT" });
+    expect((await push(manager, [mr, ms])).body.results.map((r: { status: string }) => r.status)).toEqual(["accepted", "accepted"]);
+    const night = (await api(`/estates/${s.estate.id}/attendance/${d}?shift=NIGHT`, { token: manager.token })).body.sheet;
+    expect(night).toMatchObject({ state: "APPROVED", submittedBy: manager.user.id, approvedBy: manager.user.id });
+    expect(night.approvedAt).toBeTruthy();
+
+    // Both steps are in the audit trail.
+    const audit = (await api(`/audit?estateId=${s.estate.id}`, { token: s.owner.token })).body as { action: string; entityId: string }[];
+    const forNight = audit.filter((x) => x.entityId === night.id).map((x) => x.action);
+    expect(forNight).toEqual(expect.arrayContaining(["attendance.sheet.submit", "attendance.sheet.approve"]));
+    // A supervisor's day still needs a manager.
+    expect((await api(`/estates/${s.estate.id}/attendance/${d}/actions`, { token: manager.token, body: { action: "approve" } })).body.state).toBe("APPROVED");
+  });
+});
+
 describe("attendance", () => {
   it("captures offline records, submits, approves and corrects with a reason and full history", async () => {
     const s = await setupTenant();

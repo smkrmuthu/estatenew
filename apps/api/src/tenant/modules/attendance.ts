@@ -150,6 +150,15 @@ function openConflict(ctx: TenantContext, db: Db, meta: ApplyMeta, server: typeo
   return { kind: "conflict", entityId: server.id, version: server.version, conflictId, message };
 }
 
+function openConflictsFor(db: Db, estateId: string, businessDate: string, shift: Shift) {
+  return db
+    .select()
+    .from(syncConflicts)
+    .where(and(eq(syncConflicts.estateId, estateId), eq(syncConflicts.state, "OPEN")))
+    .all()
+    .filter((c) => JSON.parse(c.serverJson).businessDate === businessDate && (JSON.parse(c.serverJson).shift ?? "DAY") === shift);
+}
+
 export function applySheetSubmit(ctx: TenantContext, db: Db, meta: ApplyMeta, businessDate: string, shift: Shift = "DAY"): ApplyOutcome {
   ctx.require("attendance.submit", meta.estateId);
   getEstate(db, meta.estateId);
@@ -158,18 +167,37 @@ export function applySheetSubmit(ctx: TenantContext, db: Db, meta: ApplyMeta, bu
   if (sheet.state !== "DRAFT") throw new AppError(409, "SHEET_STATE", "This day's attendance was already submitted");
   const count = db.select().from(attendanceRecords).where(eq(attendanceRecords.sheetId, sheet.id)).all().length;
   if (count === 0) throw new AppError(422, "SHEET_EMPTY", "Mark at least one worker before submitting");
+  const now = ctx.nowIso();
+  const submitted = transitionSheet(sheet.state, "submit");
+  // Someone who may approve (an estate manager or owner) does not need a second person: their own submit is the approval.
+  // Unresolved conflicting entries still hold the day until a manager has chosen which to keep.
+  const selfApprove = ctx.can("attendance.approve", sheet.estateId) && openConflictsFor(db, sheet.estateId, businessDate, shift).length === 0;
   const after = {
     ...sheet,
-    state: transitionSheet(sheet.state, "submit"),
-    submittedAt: ctx.nowIso(),
+    state: selfApprove ? transitionSheet(submitted, "approve") : submitted,
+    submittedAt: now,
     submittedBy: ctx.scope.userId,
+    ...(selfApprove ? { approvedAt: now, approvedBy: ctx.scope.userId } : {}),
     returnedReason: null,
     version: sheet.version + 1,
-    updatedAt: ctx.nowIso(),
+    updatedAt: now,
   };
   db.update(attendanceSheets).set(after).where(eq(attendanceSheets.id, sheet.id)).run();
   ctx.audit(db, { action: "attendance.sheet.submit", entityType: "attendance_sheet", entityId: sheet.id, estateId: sheet.estateId, before: sheet, after, mutationId: meta.mutationId });
   ctx.emit(db, "attendance.sheet.submitted", "attendance_sheet", sheet.id, { estateId: sheet.estateId, businessDate, shift });
+  if (selfApprove) {
+    ctx.audit(db, {
+      action: "attendance.sheet.approve",
+      entityType: "attendance_sheet",
+      entityId: sheet.id,
+      estateId: sheet.estateId,
+      reason: "Approved on submit by a user who may approve",
+      before: sheet,
+      after,
+      mutationId: meta.mutationId,
+    });
+    ctx.emit(db, "attendance.sheet.approved", "attendance_sheet", sheet.id, { estateId: sheet.estateId, businessDate, shift });
+  }
   return { kind: "accepted", entityId: sheet.id, version: after.version };
 }
 
@@ -232,12 +260,7 @@ export function sheetAction(ctx: TenantContext, estateId: string, businessDate: 
       const err = e as { code: string; message: string };
       throw new AppError(409, err.code, err.message);
     }
-    const open = db
-      .select()
-      .from(syncConflicts)
-      .where(and(eq(syncConflicts.estateId, estateId), eq(syncConflicts.state, "OPEN")))
-      .all()
-      .filter((c) => JSON.parse(c.serverJson).businessDate === businessDate && (JSON.parse(c.serverJson).shift ?? "DAY") === shift);
+    const open = openConflictsFor(db, estateId, businessDate, shift);
     if (action === "approve" && open.length) throw new AppError(409, "CONFLICTS_OPEN", "Resolve the conflicting entries for this day first");
     const now = ctx.nowIso();
     const after = {
