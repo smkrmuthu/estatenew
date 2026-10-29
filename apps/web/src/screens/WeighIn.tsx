@@ -2,7 +2,7 @@ import { computeWeighIn, formatKg, parseKg, WeightError } from "@cemms/domain";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useApp } from "../app-context";
-import { Button, Card, Field, FilterBar, FilterSearch, FilterSelect, Input, KpiStrip, Notice, Select, StatusBadge } from "../components/ui";
+import { Button, Card, Field, Input, KpiStrip, Notice, Select } from "../components/ui";
 import { api } from "../lib/api";
 import { useCrops } from "../lib/crops";
 import { db, type LocalRecord } from "../lib/db";
@@ -11,6 +11,7 @@ import { normalizeKg } from "../lib/kg";
 import { queueChange } from "../lib/outbox";
 import { useUnsaved } from "../lib/unsaved";
 import { CorrectWeighIn } from "./WeighInExtras";
+import { type LogRow, WeighInLog } from "./WeighInLog";
 
 interface ServerEntry {
   id: string;
@@ -26,14 +27,6 @@ interface ServerEntry {
   remarks?: string | null;
   status: "ACTIVE" | "VOID";
   version: number;
-}
-
-interface MusterDay {
-  date: string;
-  entries: number;
-  workers: number;
-  coffeeNetKg: string;
-  pepperNetKg: string;
 }
 
 const KG_TEXT = /^\d{0,7}(\.\d{0,3})?$/;
@@ -160,66 +153,56 @@ export function WeighIn() {
     const weighed = new Set(active.map((e) => e.workerId)).size;
     return { kg: formatKg(g), entries: active.length, workers: weighed, perWorker: weighed ? formatKg(Math.round(g / weighed)) : "0.000" };
   }, [server.data]);
-  // Accepted weigh-ins grouped by field, subdivision and variety. The letter is filled only when one subdivision carries the variety.
-  const bySubdivision = useMemo(() => {
-    const m = new Map<string, { field: string; subdivision: string; variety: string; workers: Set<string>; netG: number }>();
-    for (const e of (server.data ?? []).filter((x) => x.status === "ACTIVE")) {
-      const key = `${e.fieldId}|${e.subdivision ?? ""}|${e.varietyId ?? ""}`;
-      const cur = m.get(key) ?? {
-        field: fields.find((f) => f.id === e.fieldId)?.name ?? "?",
-        subdivision: e.subdivision ?? "",
-        variety: (ref?.varieties ?? []).find((v) => v.id === e.varietyId)?.name ?? "",
-        workers: new Set<string>(),
-        netG: 0,
-      };
-      cur.workers.add(e.workerId);
-      cur.netG += e.netG;
-      m.set(key, cur);
-    }
-    return [...m.values()].sort((a, b) => b.netG - a.netG);
-  }, [server.data, fields, ref]);
-  // Filters over the day's list (they only change what is listed).
-  const [lq, setLq] = useState("");
-  const [lField, setLField] = useState("");
-  const [lCrop, setLCrop] = useState("");
-  const [lState, setLState] = useState("");
   const rows = useMemo(() => {
-    const out = new Map<
-      string,
-      { id: string; workerId: string; fieldId: string; crop: string; grossKg: string; tareKg: string; netKg: string; status: LocalRecord["status"]; voided: boolean; message?: string; version: number }
-    >();
+    const out = new Map<string, LogRow>();
     for (const e of server.data ?? [])
       out.set(e.id, {
         id: e.id,
         workerId: e.workerId,
         fieldId: e.fieldId,
+        varietyId: e.varietyId ?? null,
         crop: e.crop,
-        grossKg: formatKg(e.grossG),
-        tareKg: formatKg(e.tareG ?? 0),
-        netKg: formatKg(e.netG),
+        bags: e.bags,
+        remarks: e.remarks ?? null,
+        grossG: e.grossG,
+        tareG: e.tareG ?? 0,
+        netG: e.netG,
         status: "accepted",
         voided: e.status === "VOID",
         version: e.version,
       });
     for (const r of local) {
-      const d = r.data as { workerId: string; fieldId: string; crop: string; grossKg: string; tareKg?: string | null; status?: string };
+      const d = r.data as {
+        workerId: string;
+        fieldId: string;
+        varietyId?: string | null;
+        crop: string;
+        bags?: number;
+        remarks?: string | null;
+        grossKg: string;
+        tareKg?: string | null;
+        status?: string;
+      };
       if (out.has(r.entityId) && r.status === "accepted") continue;
-      let netKg = "?";
-      let grossKg = "?";
-      let tareKg = "?";
+      let grossG: number | null = null;
+      let tareG: number | null = null;
+      let netG: number | null = null;
       try {
-        grossKg = formatKg(parseKg(d.grossKg));
-        tareKg = formatKg(d.tareKg ? parseKg(d.tareKg) : 0);
-        netKg = formatKg(parseKg(d.grossKg) - (d.tareKg ? parseKg(d.tareKg) : 0));
+        grossG = parseKg(normalizeKg(d.grossKg));
+        tareG = d.tareKg ? parseKg(normalizeKg(d.tareKg)) : 0;
+        netG = grossG - tareG;
       } catch {}
       out.set(r.entityId, {
         id: r.entityId,
         workerId: d.workerId,
         fieldId: d.fieldId,
+        varietyId: d.varietyId ?? null,
         crop: d.crop,
-        grossKg,
-        tareKg,
-        netKg,
+        bags: d.bags ?? null,
+        remarks: d.remarks ?? null,
+        grossG,
+        tareG,
+        netG,
         status: r.status,
         voided: d.status === "VOID",
         message: r.message,
@@ -231,12 +214,6 @@ export function WeighIn() {
 
   const weighedIds = useMemo(() => new Set(rows.filter((r) => !r.voided).map((r) => r.workerId)), [rows]);
   const weighedPluckers = pluckers.filter((w) => weighedIds.has(w.id)).length;
-  const days = useQuery({
-    queryKey: ["muster-days", estateId, date],
-    queryFn: () => api<{ days: MusterDay[] }>(`/estates/${estateId}/muster-days/${date}`),
-    enabled: app.online && !!estateId && app.can("muster.read"),
-  });
-
   /** Choose a worker and bring in the field and variety they were marked on this morning. */
   function pickWorker(id: string) {
     setWorkerId(id);
@@ -267,19 +244,6 @@ export function WeighIn() {
     if (first) pickWorker(first.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [estateId, date, pluckers, weighedIds]);
-
-  const listed = rows.filter((r) => {
-    const w = workers.find((x) => x.id === r.workerId);
-    if (lq && !`${w?.name ?? ""} ${w?.employeeCode ?? ""}`.toLowerCase().includes(lq.toLowerCase())) return false;
-    if (lField && r.fieldId !== lField) return false;
-    if (lCrop && r.crop !== lCrop) return false;
-    if (lState === "CANCELLED") return r.voided;
-    if (lState === "ACCEPTED") return r.status === "accepted" && !r.voided;
-    if (lState === "WAITING") return r.status === "waiting";
-    if (lState === "PROBLEM") return r.status !== "accepted" && r.status !== "waiting";
-    return true;
-  });
-  const listFiltersOn = !!(lq || lField || lCrop || lState);
 
   async function save() {
     if (!worker || !field || !preview.net) return;
@@ -366,7 +330,9 @@ export function WeighIn() {
     <div className="flex flex-col gap-4">
       <div className="lg:flex lg:flex-wrap lg:items-baseline lg:gap-x-4">
         <h1>Plucking</h1>
-        <p className="mt-1 lg:mt-0 max-w-3xl text-sm text-muted">The evening muster: every weigh-in by worker, field, subdivision and variety. Weights count here once the server has accepted them.</p>
+        <p className="mt-1 lg:mt-0 max-w-3xl text-sm text-muted">
+          The evening muster: record each weigh-in, then see the day as a table and charts. Weights count here once the server has accepted them.
+        </p>
       </div>
 
       <KpiStrip
@@ -547,178 +513,17 @@ export function WeighIn() {
         {worker && field && preview.net && (needsVariety || varietyRequired) && !varietyId && <p className="mt-3 text-sm text-bad">Pick the variety before saving.</p>}
       </Card>
 
-      <div className="grid gap-4 xl:grid-cols-2">
-        <Card title="By subdivision" actions={<span className="text-sm text-muted">{date}</span>}>
-          {bySubdivision.length === 0 ? (
-            <p className="text-muted">No weigh-ins yet.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[26rem] text-sm">
-                <thead className="border-b border-line">
-                  <tr>
-                    {["Field", "Subdivision", "Variety"].map((t) => (
-                      <th key={t} className="px-3 py-2 text-left text-[0.8rem] font-medium text-muted">
-                        {t}
-                      </th>
-                    ))}
-                    <th className="px-3 py-2 text-right text-[0.8rem] font-medium text-muted">Workers</th>
-                    <th className="px-3 py-2 text-right text-[0.8rem] font-medium text-muted">Net kg</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-line">
-                  {bySubdivision.map((r) => (
-                    <tr key={`${r.field}|${r.subdivision}|${r.variety}`}>
-                      <td className="px-3 py-2">{r.field}</td>
-                      <td className="px-3 py-2">{r.subdivision || <span className="text-muted">Not recorded</span>}</td>
-                      <td className="px-3 py-2">{r.variety || <span className="text-muted">Not recorded</span>}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{r.workers.size}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{formatKg(r.netG)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-          <p className="mt-2 text-sm text-muted">
-            The subdivision is filled in only when the field has one bearing subdivision with the chosen variety. Which part of a field a weighing came from is still to be confirmed with the owner.
-          </p>
-        </Card>
-
-        <Card title="Muster and washing" actions={<span className="text-sm text-muted">Last 10 days</span>}>
-          {days.isError ? (
-            <p className="text-muted">The recent days could not be loaded. They will appear when the connection is back.</p>
-          ) : !days.data ? (
-            <p className="text-muted">{app.online ? "Loading…" : "Connect to the internet to see the recent days."}</p>
-          ) : days.data.days.length === 0 ? (
-            <p className="text-muted">No weigh-ins yet.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[22rem] text-sm">
-                <thead className="border-b border-line">
-                  <tr>
-                    <th className="px-3 py-2 text-left text-[0.8rem] font-medium text-muted">Day</th>
-                    <th className="px-3 py-2 text-right text-[0.8rem] font-medium text-muted">Muster</th>
-                    <th className="px-3 py-2 text-right text-[0.8rem] font-medium text-muted">Washed</th>
-                    <th className="px-3 py-2 text-left text-[0.8rem] font-medium text-muted">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-line">
-                  {days.data.days.map((d) => (
-                    <tr key={d.date} className={d.date === date ? "bg-bg" : undefined}>
-                      <td className="px-3 py-2">
-                        <button type="button" className="min-h-11 text-left font-medium underline-offset-2 hover:underline" onClick={() => app.setDate(d.date)}>
-                          {new Date(`${d.date}T12:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
-                        </button>
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">
-                        {d.coffeeNetKg} kg
-                        {pepper && d.pepperNetKg !== "0.000" && <span className="block text-xs text-muted">+ {d.pepperNetKg} kg pepper</span>}
-                      </td>
-                      <td className="px-3 py-2 text-right text-muted">–</td>
-                      <td className="px-3 py-2 text-muted">
-                        {d.entries} weigh-in{d.entries === 1 ? "" : "s"} · {d.workers} worker{d.workers === 1 ? "" : "s"}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-          <p className="mt-2 text-sm text-muted">Washing is not recorded in the app yet, so the Washed column stays empty. Only weigh-ins the server has accepted are counted.</p>
-        </Card>
-      </div>
-
-      <Card title="Today's weigh-ins">
-        <div className="mb-3">
-          <FilterBar
-            shown={listed.length}
-            total={rows.length}
-            noun="weigh-ins"
-            active={listFiltersOn}
-            onClear={() => {
-              setLq("");
-              setLField("");
-              setLCrop("");
-              setLState("");
-            }}
-          >
-            <FilterSearch label="Find a worker" value={lq} onChange={setLq} placeholder="Name or code" />
-            <FilterSelect label="Field" value={lField} onChange={setLField} options={[{ value: "", label: "All fields" }, ...fields.map((f) => ({ value: f.id, label: f.name }))]} />
-            {pepper && (
-              <FilterSelect
-                label="Crop"
-                value={lCrop}
-                onChange={setLCrop}
-                options={[
-                  { value: "", label: "Coffee and pepper" },
-                  { value: "COFFEE", label: "Coffee" },
-                  { value: "PEPPER", label: "Pepper" },
-                ]}
-              />
-            )}
-            <FilterSelect
-              label="State"
-              value={lState}
-              onChange={setLState}
-              options={[
-                { value: "", label: "All" },
-                { value: "ACCEPTED", label: "Accepted by the office" },
-                { value: "WAITING", label: "Waiting on this phone" },
-                { value: "PROBLEM", label: "Not accepted or conflict" },
-                { value: "CANCELLED", label: "Cancelled" },
-              ]}
-            />
-          </FilterBar>
-        </div>
-        <ul className="2xl:grid 2xl:grid-cols-2 2xl:gap-x-10">
-          {listed.map((r) => {
-            const w = workers.find((x) => x.id === r.workerId);
-            return (
-              <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-line py-2">
-                <div>
-                  <p className={r.voided ? "font-semibold line-through" : "font-semibold"}>
-                    {w?.name ?? "Worker"} · {r.crop === "PEPPER" ? "pepper" : "coffee"}
-                  </p>
-                  <p className="text-sm text-muted">
-                    {fields.find((f) => f.id === r.fieldId)?.name}
-                    {r.voided ? " · cancelled" : r.status === "accepted" && r.version > 1 ? " · corrected" : ""}
-                  </p>
-                  {r.message && r.status !== "accepted" && <p className="text-sm text-bad">{r.message}</p>}
-                </div>
-                <dl className="ml-auto grid grid-cols-3 gap-x-4 text-right text-sm tabular-nums">
-                  <div>
-                    <dt className="text-xs text-muted">Gross kg</dt>
-                    <dd className={r.voided ? "line-through" : ""}>{r.grossKg}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs text-muted">Tare kg</dt>
-                    <dd className={r.voided ? "line-through" : ""}>{r.tareKg}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs text-muted">Net kg</dt>
-                    <dd className={r.voided ? "font-semibold line-through" : "font-semibold"}>{r.netKg}</dd>
-                  </div>
-                </dl>
-                <div className="flex items-center gap-2">
-                  <StatusBadge status={r.status} compact />
-                  {!r.voided && r.status === "accepted" && app.can("muster.correct") && app.online && server.data?.some((e) => e.id === r.id) && (
-                    <Button size="sm" variant="ghost" onClick={() => setCorrecting(r.id)}>
-                      Edit
-                    </Button>
-                  )}
-                  {!r.voided && r.status === "accepted" && canCapture && (
-                    <Button size="sm" variant="ghost" onClick={() => cancelEntry(r.id, r.version, w?.name ?? "worker")}>
-                      Cancel
-                    </Button>
-                  )}
-                </div>
-              </li>
-            );
-          })}
-          {rows.length === 0 && <li className="py-2 text-muted">No weigh-ins yet.</li>}
-          {rows.length > 0 && listed.length === 0 && <li className="py-2 text-muted">No weigh-ins match these filters.</li>}
-        </ul>
-      </Card>
+      <WeighInLog
+        rows={rows}
+        workers={workers}
+        fields={fields}
+        varieties={ref.varieties}
+        pepper={pepper}
+        canEdit={(r) => !r.voided && r.status === "accepted" && app.can("muster.correct") && app.online && !!server.data?.some((e) => e.id === r.id)}
+        canCancel={(r) => !r.voided && r.status === "accepted" && canCapture}
+        onEdit={setCorrecting}
+        onCancel={(r, name) => cancelEntry(r.id, r.version, name)}
+      />
       {correcting &&
         (() => {
           const entry = server.data?.find((e) => e.id === correcting);
