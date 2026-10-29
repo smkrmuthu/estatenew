@@ -8,6 +8,7 @@ import { db, type LocalRecord } from "../lib/db";
 import { todayIn, useLive } from "../lib/hooks";
 import { queueChange } from "../lib/outbox";
 import { useUnsaved } from "../lib/unsaved";
+import { CorrectReading } from "./DailyLogExtras";
 
 interface RangeReading {
   id: string;
@@ -17,6 +18,8 @@ interface RangeReading {
   valueScaled: number | null;
   valueText: string | null;
   remarks: string | null;
+  version: number;
+  capturedBy: string;
 }
 interface RangeData {
   from: string;
@@ -36,6 +39,10 @@ interface Row {
   remarks: string;
   status: LocalRecord["status"];
   message?: string;
+  /** Known only for readings the server holds: what a cancel or a correction is based on. */
+  version?: number;
+  capturedBy?: string;
+  cancelled?: boolean;
 }
 
 const CHART_DAYS = 14;
@@ -111,6 +118,7 @@ export function DailyLog() {
   const estates = useMemo(() => (app.allEstates && readable.length > 1 ? readable : readable.filter((e) => e.id === estateId)), [readable, app.allEstates, estateId]);
   const writable = estates.filter((e) => app.can("dailylog.capture", e.id));
   const [range, setRange] = useState<"day" | "week">("day");
+  const [correcting, setCorrecting] = useState<string | null>(null);
   const from = addDays(date, -(CHART_DAYS - 1));
 
   // The form: its own date, time and estate, starting from the day and estate chosen at the top.
@@ -168,9 +176,28 @@ export function DailyLog() {
       const e = estates[i];
       if (!e) return;
       for (const r of q.data?.readings ?? [])
-        out.set(r.id, { id: r.id, estateId: e.id, date: r.businessDate, at: r.readingAt, kindId: r.kindId, value: show(r, r.kindId), remarks: r.remarks ?? "", status: "accepted" });
+        out.set(r.id, {
+          id: r.id,
+          estateId: e.id,
+          date: r.businessDate,
+          at: r.readingAt,
+          kindId: r.kindId,
+          value: show(r, r.kindId),
+          remarks: r.remarks ?? "",
+          status: "accepted",
+          version: r.version,
+          capturedBy: r.capturedBy,
+        });
     });
     for (const r of local) {
+      // A cancel on this phone: the reading stays listed, struck through, until the server has accepted the cancel.
+      if ((r.data as { status?: string }).status === "VOID") {
+        const base = out.get(r.entityId);
+        if (!base) continue;
+        if (r.status === "accepted") out.delete(r.entityId);
+        else out.set(r.entityId, { ...base, status: r.status, message: r.message, cancelled: true, version: undefined });
+        continue;
+      }
       if (out.has(r.entityId) && r.status === "accepted") continue;
       const d = r.data as { kindId: string; readingAt: string; value: string; remarks?: string | null };
       out.set(r.entityId, {
@@ -214,6 +241,42 @@ export function DailyLog() {
     setValue("");
     setRemarks("");
     setTime(localTime());
+    void app.sync();
+  }
+
+  /** Cancel a reading with a reason. */
+  async function cancelReading(r: Row) {
+    const reason = window.prompt(`Why cancel this ${kindOf(r.kindId)?.label ?? "reading"} reading?`);
+    if (!reason || reason.trim().length < 3 || r.version === undefined) return;
+    // Base the cancel on the server's current version: this phone's own copy may be older if the reading was corrected since.
+    const key = `dailylog_entry:${r.id}`;
+    const existing = await db.records.get(key);
+    await db.records.put({
+      key,
+      tenantId,
+      entityType: "dailylog_entry",
+      entityId: r.id,
+      estateId: r.estateId,
+      businessDate: r.date,
+      data: existing?.data ?? {},
+      status: "accepted",
+      serverVersion: r.version,
+      nextBase: r.version,
+      lastMutationId: existing?.lastMutationId ?? "",
+      updatedAt: new Date().toISOString(),
+    });
+    await queueChange({
+      tenantId,
+      userId: session.user.id,
+      deviceId: app.deviceId,
+      entityType: "dailylog_entry",
+      op: "void",
+      estateId: r.estateId,
+      businessDate: r.date,
+      entityId: r.id,
+      payload: { reason: reason.trim() },
+      label: `Cancel reading: ${kindOf(r.kindId)?.label ?? "reading"} ${r.value}`,
+    });
     void app.sync();
   }
 
@@ -369,11 +432,12 @@ export function DailyLog() {
                   <th className="px-3 py-2 text-right text-[0.8rem] font-medium text-muted">Data</th>
                   <th className="px-3 py-2 text-left text-[0.8rem] font-medium text-muted">Remarks</th>
                   <th className="px-3 py-2 text-left text-[0.8rem] font-medium text-muted">State</th>
+                  <th className="px-3 py-2" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-line">
                 {listed.map((r) => (
-                  <tr key={r.id}>
+                  <tr key={r.id} className={r.cancelled ? "text-muted line-through" : undefined}>
                     <td className="whitespace-nowrap px-3 py-2">{dayWithWeekday(r.date)}</td>
                     <td className="whitespace-nowrap px-3 py-2 tabular-nums">{clock(r.at)}</td>
                     <td className="px-3 py-2">{estateName(r.estateId)}</td>
@@ -387,6 +451,20 @@ export function DailyLog() {
                     </td>
                     <td className="px-3 py-2">
                       <StatusBadge status={r.status} compact />
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2 text-right">
+                      {r.status === "accepted" && r.version !== undefined && app.online && app.can("dailylog.correct", r.estateId) && (
+                        <Button size="sm" variant="ghost" onClick={() => setCorrecting(r.id)}>
+                          Edit
+                        </Button>
+                      )}
+                      {r.status === "accepted" &&
+                        r.version !== undefined &&
+                        (app.can("dailylog.correct", r.estateId) || (app.can("dailylog.capture", r.estateId) && r.capturedBy === session.user.id)) && (
+                          <Button size="sm" variant="ghost" onClick={() => cancelReading(r)}>
+                            Cancel
+                          </Button>
+                        )}
                     </td>
                   </tr>
                 ))}
@@ -433,6 +511,24 @@ export function DailyLog() {
           <p className="mt-2 text-sm text-muted">The last {CHART_DAYS} days up to the day chosen above. Only readings the server has accepted are drawn.</p>
         </Card>
       )}
+      {correcting &&
+        (() => {
+          const r = rows.find((x) => x.id === correcting);
+          const k = r ? kindOf(r.kindId) : undefined;
+          if (!r || r.version === undefined) return null;
+          return (
+            <CorrectReading
+              id={r.id}
+              version={r.version}
+              title={`${k?.label ?? "Reading"} · ${estateName(r.estateId)}`}
+              unit={k?.unit ?? null}
+              numeric={k?.valueType === "NUMBER"}
+              value={r.value}
+              remarks={r.remarks}
+              onClose={() => setCorrecting(null)}
+            />
+          );
+        })()}
     </div>
   );
 }

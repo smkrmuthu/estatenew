@@ -276,24 +276,23 @@ export function WeighIn() {
   async function cancelEntry(id: string, version: number, name: string) {
     const reason = window.prompt(`Why cancel this weigh-in for ${name}?`);
     if (!reason || reason.trim().length < 3) return;
-    // Entries made on another phone have no local copy yet: base the change on the server version.
+    // Base the cancel on the server's current version: this phone's own copy may be older if the weigh-in was corrected since.
     const key = `muster_entry:${id}`;
-    if (!(await db.records.get(key))) {
-      await db.records.put({
-        key,
-        tenantId,
-        entityType: "muster_entry",
-        entityId: id,
-        estateId,
-        businessDate: date,
-        data: {},
-        status: "accepted",
-        serverVersion: version,
-        nextBase: version,
-        lastMutationId: "",
-        updatedAt: new Date().toISOString(),
-      });
-    }
+    const existing = await db.records.get(key);
+    await db.records.put({
+      key,
+      tenantId,
+      entityType: "muster_entry",
+      entityId: id,
+      estateId,
+      businessDate: date,
+      data: existing?.data ?? {},
+      status: "accepted",
+      serverVersion: version,
+      nextBase: version,
+      lastMutationId: existing?.lastMutationId ?? "",
+      updatedAt: new Date().toISOString(),
+    });
     await queueChange({
       tenantId,
       userId: session.user.id,

@@ -403,7 +403,17 @@ export function dailyLogRange(ctx: TenantContext, estateId: string, from: string
     to,
     kinds: kinds.map((k) => ({ id: k.id, label: k.label, unit: k.unit, decimals: k.decimals, valueType: k.valueType, expectedPerDay: k.expectedPerDay, active: k.active })),
     readings: rows
-      .map((r) => ({ id: r.id, businessDate: r.businessDate, readingAt: r.readingAt, kindId: r.kindId, valueScaled: r.valueScaled, valueText: r.valueText, remarks: r.remarks }))
+      .map((r) => ({
+        id: r.id,
+        businessDate: r.businessDate,
+        readingAt: r.readingAt,
+        kindId: r.kindId,
+        valueScaled: r.valueScaled,
+        valueText: r.valueText,
+        remarks: r.remarks,
+        version: r.version,
+        capturedBy: r.capturedBy,
+      }))
       .sort((a, b) => a.readingAt.localeCompare(b.readingAt)),
   };
 }

@@ -90,6 +90,9 @@ export async function dismissRejected(mutationId: string) {
     await db.outbox.delete(mutationId);
     const key = `${item.envelope.entityType}:${item.envelope.entityId}`;
     const rec = await db.records.get(key);
-    if (rec && rec.lastMutationId === mutationId && rec.serverVersion === 0) await db.records.delete(key);
+    if (!rec || rec.lastMutationId !== mutationId) return;
+    // Weigh-ins and Daily log readings are listed from the server, so dropping the rejected local copy brings back what the server holds.
+    const listedFromServer = item.envelope.entityType === "muster_entry" || item.envelope.entityType === "dailylog_entry";
+    if (rec.serverVersion === 0 || listedFromServer) await db.records.delete(key);
   });
 }
