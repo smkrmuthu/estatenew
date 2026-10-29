@@ -1695,7 +1695,7 @@
       "affects": [
         "privacy.workerGender"
       ],
-      "interimBehavior": "Optional Male/Female field on a worker (project lead instruction, 28 Oct 2026). Shown in Masters and as a women/men count on the attendance register; not used for tasks, pay or rates and not exported to public trace. Estate-owner answer still open.",
+      "interimBehavior": "Optional Male/Female field on a worker (project lead instruction, 28 Oct 2026), also read from a gender column in the workers CSV (29 Oct 2026). Shown in Masters and the register as a coloured Male/Female tag, with a female/male count on the attendance register; not used for tasks, pay or rates and not exported to public trace. Estate-owner answer still open.",
       "configKeys": [],
       "source": "Coffee Estate Application - Process Confirmation for Estate Owner (23 Oct 2026), answers as exported 27 Oct 2026",
       "approver": null,

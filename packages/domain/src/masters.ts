@@ -77,7 +77,7 @@ const COLUMNS: Record<ImportKind, { required: string[]; optional: string[] }> = 
   fields: { required: ["estate_code", "code", "name"], optional: ["area_acres", "crops", "varieties"] },
   varieties: { required: ["code", "name", "crop"], optional: [] },
   job_types: { required: ["code", "name"], optional: [] },
-  // Gender is deliberately not imported (OC-99 open; collect only for a confirmed need).
+  // Gender is read when the file has a gender column (project lead instruction, 29 October 2026); how it is used is still open (OC-99).
   workers: { required: ["estate_code", "employee_code", "name"], optional: ["employment_type", "area", "all_estates", "estates", "gender"] },
 };
 

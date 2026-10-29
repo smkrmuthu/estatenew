@@ -220,14 +220,17 @@ function plan(ctx: TenantContext, kind: ImportKind, csv: string): { ops: Op[]; e
           continue;
         }
         const employmentType = v.employmentType as WorkerRow["employmentType"];
-        // Only a file that has the employment_type, area, all_estates or estates column changes it; otherwise it stays as it is.
+        // Only a file that has the employment_type, area, gender, all_estates or estates column changes it; otherwise it stays as it is.
         const area = v.area as WorkerRow["area"];
+        // A gender column (Male/Female, or M/F) sets it; a file without the column leaves it as it is.
+        const gender = v.gender as WorkerRow["gender"];
         const values = {
           estateId: estate.id,
           employeeCode: v.employeeCode as string,
           name: v.name as string,
           ...(employmentType !== undefined ? { employmentType } : {}),
           ...(area !== undefined ? { area } : {}),
+          ...(gender !== undefined ? { gender } : {}),
         };
         // The estates the worker is allotted to: undefined leaves an existing worker's allotment as it is.
         let allotted: string[] | undefined;

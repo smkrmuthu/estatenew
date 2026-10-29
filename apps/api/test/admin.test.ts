@@ -163,6 +163,28 @@ describe("imports", () => {
   });
 });
 
+describe("worker gender by file", () => {
+  it("saves a gender column (Male, Female, M, F), leaves it alone when the column is missing, and refuses other words", async () => {
+    const s = await setupTenant();
+    const commit = async (csv: string) => {
+      const pre = (await api("/imports/preview", { token: s.owner.token, body: { kind: "workers", csv } })).body;
+      return { pre, done: pre.errors.length ? null : (await api("/imports/commit", { token: s.owner.token, body: { kind: "workers", csv, previewHash: pre.previewHash } })).body };
+    };
+    const genders = async () =>
+      Object.fromEntries(((await api("/reference", { token: s.owner.token })).body.workers as { employeeCode: string; gender: string | null }[]).map((w) => [w.employeeCode, w.gender]));
+
+    await commit("estate_code,employee_code,name,gender\nGLZ,W001,Worker A,Male\nGLZ,W002,Worker B,female\nGLZ,W003,Worker C,M\n");
+    expect(await genders()).toMatchObject({ W001: "MALE", W002: "FEMALE", W003: "MALE" });
+    // A file with no gender column does not touch it.
+    await commit("estate_code,employee_code,name,area\nGLZ,W001,Worker A,Keeraikadu\n");
+    expect((await genders()).W001).toBe("MALE");
+    // Another word is a row error, and nothing is applied.
+    const bad = await commit("estate_code,employee_code,name,gender\nGLZ,W002,Worker B,Other\n");
+    expect(bad.pre.errors.map((e: { column: string }) => e.column)).toEqual(["gender"]);
+    expect((await genders()).W002).toBe("FEMALE");
+  });
+});
+
 describe("settings and readiness", () => {
   it("lists settings with gates, validates changes and audits them", async () => {
     const s = await setupTenant();

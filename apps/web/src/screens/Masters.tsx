@@ -226,8 +226,8 @@ function Workers({ data, canWrite, open, pick }: { data: ReferenceData; canWrite
             onChange={setFGender}
             options={[
               { value: "", label: "Everyone" },
-              { value: "FEMALE", label: "Women" },
-              { value: "MALE", label: "Men" },
+              { value: "FEMALE", label: "Female" },
+              { value: "MALE", label: "Male" },
             ]}
           />
           <FilterSelect
@@ -284,7 +284,13 @@ function Workers({ data, canWrite, open, pick }: { data: ReferenceData; canWrite
                   </span>
                 </Td>
                 <Td>{w.area || <span className="text-muted">Not set</span>}</Td>
-                <Td>{w.gender ? GENDER_LABEL[w.gender] : <span className="text-muted">Not set</span>}</Td>
+                <Td>
+                  {w.gender ? (
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${w.gender === "FEMALE" ? "bg-cherry/15 text-cherry" : "bg-info/15 text-info"}`}>{GENDER_LABEL[w.gender]}</span>
+                  ) : (
+                    <span className="text-muted">Not set</span>
+                  )}
+                </Td>
                 <Td>{w.employmentType ? <Chip tone={w.employmentType === "PERMANENT" ? "plain" : "warn"}>{TYPE_LABEL[w.employmentType]}</Chip> : <span className="text-muted">Not set</span>}</Td>
                 <Td>{statusChip(w.active)}</Td>
                 <Td right>{canWrite(w.estateId) && <EditLink label={`Edit ${w.name}`} onClick={() => open(w.id)} />}</Td>

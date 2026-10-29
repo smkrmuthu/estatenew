@@ -379,7 +379,7 @@ export function Attendance() {
           </small>
           {counts.women + counts.men > 0 && (
             <small className="w-full text-muted">
-              {counts.women} {counts.women === 1 ? "woman" : "women"}, {counts.men} {counts.men === 1 ? "man" : "men"} working
+              {counts.women} female, {counts.men} male working
             </small>
           )}
           <span className="flex-1" />
@@ -507,8 +507,8 @@ export function Attendance() {
               onChange={setFGender}
               options={[
                 { value: "", label: "Everyone" },
-                { value: "FEMALE", label: "Women" },
-                { value: "MALE", label: "Men" },
+                { value: "FEMALE", label: "Female" },
+                { value: "MALE", label: "Male" },
               ]}
             />
             <FilterSelect
@@ -573,7 +573,7 @@ export function Attendance() {
                     <span className="font-mono text-sm text-muted">{w.employeeCode}</span> {w.name}
                     {w.gender && (
                       <span className={`ml-2 rounded-full px-2 py-0.5 align-middle text-xs font-medium ${w.gender === "FEMALE" ? "bg-cherry/15 text-cherry" : "bg-info/15 text-info"}`}>
-                        {w.gender === "FEMALE" ? "Woman" : "Man"}
+                        {w.gender === "FEMALE" ? "Female" : "Male"}
                       </span>
                     )}
                     {w.employmentType && (
