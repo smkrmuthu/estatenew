@@ -481,7 +481,7 @@ export function WeighIn() {
               <Input id="tare" inputMode="decimal" placeholder="0" value={tare} onChange={(e) => KG_TEXT.test(e.target.value) && setTare(e.target.value)} />
             </Field>
           </div>
-          <div className="wide:order-1 wide:col-span-full">
+          <div className="wide:order-1 wide:col-span-2">
             <Field label="Remark (optional)" htmlFor="remarks">
               <Input id="remarks" maxLength={500} value={remarks} onChange={(e) => setRemarks(e.target.value)} />
             </Field>
