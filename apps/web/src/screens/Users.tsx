@@ -259,9 +259,9 @@ export function Users() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
+        <div className="lg:flex lg:flex-wrap lg:items-baseline lg:gap-x-4">
           <h1>Users and roles</h1>
-          <p className="mt-1 max-w-xl text-sm text-muted">Each person signs in with their own username. Their role decides which screens they see.</p>
+          <p className="mt-1 lg:mt-0 max-w-xl text-sm text-muted">Each person signs in with their own username. Their role decides which screens they see.</p>
         </div>
         <Button onClick={() => setAdding(true)}>Add user</Button>
       </div>

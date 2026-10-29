@@ -14,7 +14,7 @@ export function Sync() {
   const r = app.lastReport;
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="grid items-start gap-4 xl:grid-cols-2">
       <Card title="Sync">
         <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {[

@@ -316,9 +316,9 @@ export function DailyLog() {
   if (!ref) return <Notice>Connect to the internet once to download the lists.</Notice>;
   return (
     <div className="flex flex-col gap-4">
-      <div>
+      <div className="lg:flex lg:flex-wrap lg:items-baseline lg:gap-x-4">
         <h1>Daily log</h1>
-        <p className="mt-1 max-w-3xl text-sm text-muted">Readings for every estate, such as temperature and rain. Pick the time of each reading. New kinds are added under Masters.</p>
+        <p className="mt-1 lg:mt-0 max-w-3xl text-sm text-muted">Readings for every estate, such as temperature and rain. Pick the time of each reading. New kinds are added under Masters.</p>
       </div>
 
       {expected.length > 0 && estates.length > 0 && (
@@ -345,7 +345,7 @@ export function DailyLog() {
         {activeKinds.length === 0 && <Notice tone="warn">No reading types are set up yet. The owner adds them under Masters → Log kinds.</Notice>}
         {writable.length === 0 && activeKinds.length > 0 && <Notice tone="warn">You can view the log but not add readings.</Notice>}
         {saved && <Notice tone="ok">{saved}</Notice>}
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5 xl:grid-cols-[9.5rem_7.5rem_minmax(9rem,1fr)_minmax(9rem,1fr)_9rem_minmax(12rem,2fr)_auto]">
           <Field label="Date" htmlFor="dl-date">
             <Input id="dl-date" type="date" value={fDate} max={today} onChange={(e) => e.target.value && setFDate(e.target.value)} />
           </Field>
@@ -373,144 +373,145 @@ export function DailyLog() {
           <Field label={`Data${kind?.unit ? ` (${kind.unit})` : ""}`} htmlFor="dl-value" error={error ?? undefined}>
             <Input id="dl-value" inputMode={kind?.valueType === "TEXT" ? "text" : "decimal"} placeholder="0.0" value={value} onChange={(e) => setValue(e.target.value)} />
           </Field>
-        </div>
-        <div className="mt-3">
-          <Field label="Remarks (optional)" htmlFor="dl-remarks" error={timing ?? undefined}>
-            <Input id="dl-remarks" maxLength={500} placeholder="For example, heavy shower at 3 pm" value={remarks} onChange={(e) => setRemarks(e.target.value)} />
-          </Field>
-        </div>
-        <div className="mt-4">
-          <Button size="lg" disabled={!app.can("dailylog.capture") || !formEstate || !kind || !value || !!error || !!timing} onClick={save}>
-            Add to the log
-          </Button>
+          <div className="sm:col-span-2 lg:col-span-4 xl:col-span-1">
+            <Field label="Remarks (optional)" htmlFor="dl-remarks" error={timing ?? undefined}>
+              <Input id="dl-remarks" maxLength={500} placeholder="For example, heavy shower at 3 pm" value={remarks} onChange={(e) => setRemarks(e.target.value)} />
+            </Field>
+          </div>
+          <div className="self-end sm:col-span-2 lg:col-span-1 xl:col-span-1">
+            <Button size="lg" className="w-full" disabled={!app.can("dailylog.capture") || !formEstate || !kind || !value || !!error || !!timing} onClick={save}>
+              Add to the log
+            </Button>
+          </div>
         </div>
       </Card>
 
-      <Card
-        title={range === "day" ? dayWithWeekday(date) : `Readings from ${shortDay(weekFrom)} to ${shortDay(date)}`}
-        actions={
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-muted">
-              {listed.length} reading{listed.length === 1 ? "" : "s"}
-            </span>
-            <fieldset className="inline-flex gap-0.5 rounded-xl border-0 bg-surface-2 p-[3px]">
-              <legend className="sr-only">Show</legend>
-              {(
-                [
-                  ["day", "This day"],
-                  ["week", "Last 7 days"],
-                ] as const
-              ).map(([id, label]) => (
-                <button
-                  key={id}
-                  type="button"
-                  aria-pressed={range === id}
-                  onClick={() => setRange(id)}
-                  className={`min-h-9 rounded-lg px-3 text-sm font-medium ${range === id ? "bg-surface text-ink shadow-[0_0_0_1px_var(--color-line)]" : "text-muted hover:text-ink"}`}
-                >
-                  {label}
-                </button>
-              ))}
-            </fieldset>
-          </div>
-        }
-      >
-        {app.online && queries.some((q) => q.isLoading) && listed.length === 0 && <p>Loading…</p>}
-        {queries.some((q) => q.isError) && <Notice tone="bad">Some readings could not be loaded.</Notice>}
-        {listed.length === 0 && !queries.some((q) => q.isLoading) ? (
-          <p className="text-muted">No readings for this period.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[40rem] text-sm">
-              <thead className="border-b border-line">
-                <tr>
-                  {["Date", "Time", "Estate", "Kind"].map((t) => (
-                    <th key={t} className="px-3 py-2 text-left text-[0.8rem] font-medium text-muted">
-                      {t}
-                    </th>
-                  ))}
-                  <th className="px-3 py-2 text-right text-[0.8rem] font-medium text-muted">Data</th>
-                  <th className="px-3 py-2 text-left text-[0.8rem] font-medium text-muted">Remarks</th>
-                  <th className="px-3 py-2 text-left text-[0.8rem] font-medium text-muted">State</th>
-                  <th className="px-3 py-2" />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-line">
-                {listed.map((r) => (
-                  <tr key={r.id} className={r.cancelled ? "text-muted line-through" : undefined}>
-                    <td className="whitespace-nowrap px-3 py-2">{dayWithWeekday(r.date)}</td>
-                    <td className="whitespace-nowrap px-3 py-2 tabular-nums">{clock(r.at)}</td>
-                    <td className="px-3 py-2">{estateName(r.estateId)}</td>
-                    <td className="px-3 py-2">{kindOf(r.kindId)?.label ?? "?"}</td>
-                    <td className="whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums">
-                      {r.value} {unitOf(r.kindId)}
-                    </td>
-                    <td className="px-3 py-2">
-                      {r.remarks}
-                      {r.message && r.status !== "accepted" && <span className="block text-bad">{r.message}</span>}
-                    </td>
-                    <td className="px-3 py-2">
-                      <StatusBadge status={r.status} compact />
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-2 text-right">
-                      {r.status === "accepted" && r.version !== undefined && app.online && app.can("dailylog.correct", r.estateId) && (
-                        <Button size="sm" variant="ghost" onClick={() => setCorrecting(r.id)}>
-                          Edit
-                        </Button>
-                      )}
-                      {r.status === "accepted" &&
-                        r.version !== undefined &&
-                        (app.can("dailylog.correct", r.estateId) || (app.can("dailylog.capture", r.estateId) && r.capturedBy === session.user.id)) && (
-                          <Button size="sm" variant="ghost" onClick={() => cancelReading(r)}>
-                            Cancel
-                          </Button>
-                        )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Card>
-
-      {chartKind && estates.length > 0 && (
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <Card
-          title={`${chartKind.label} per day${chartKind.unit ? ` (${chartKind.unit})` : ""}`}
+          title={range === "day" ? dayWithWeekday(date) : `Readings from ${shortDay(weekFrom)} to ${shortDay(date)}`}
           actions={
-            <span className="flex flex-wrap items-center gap-3 text-sm text-muted">
-              {series.map((s) => (
-                <span key={s.estateId} className="inline-flex items-center gap-1.5">
-                  <span aria-hidden className="inline-block size-3 rounded-sm" style={{ background: s.color }} />
-                  {estateName(s.estateId)}
-                </span>
-              ))}
-            </span>
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-muted">
+                {listed.length} reading{listed.length === 1 ? "" : "s"}
+              </span>
+              <fieldset className="inline-flex gap-0.5 rounded-xl border-0 bg-surface-2 p-[3px]">
+                <legend className="sr-only">Show</legend>
+                {(
+                  [
+                    ["day", "This day"],
+                    ["week", "Last 7 days"],
+                  ] as const
+                ).map(([id, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    aria-pressed={range === id}
+                    onClick={() => setRange(id)}
+                    className={`min-h-9 rounded-lg px-3 text-sm font-medium ${range === id ? "bg-surface text-ink shadow-[0_0_0_1px_var(--color-line)]" : "text-muted hover:text-ink"}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </fieldset>
+            </div>
           }
         >
-          <div className="mb-3 grid gap-3 sm:grid-cols-2">
-            <Field label="Reading" htmlFor="chart-kind">
-              <Select id="chart-kind" value={chartKind.id} onChange={(e) => setChartKindId(e.target.value)}>
-                {numeric.map((k) => (
-                  <option key={k.id} value={k.id}>
-                    {k.label}
-                    {k.unit ? ` (${k.unit})` : ""}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Field label="Per day show" htmlFor="chart-how">
-              <Select id="chart-how" value={mode} onChange={(e) => setHow(e.target.value as "total" | "average" | "highest")}>
-                <option value="total">Total of the day</option>
-                <option value="average">Average of the day</option>
-                <option value="highest">Highest of the day</option>
-              </Select>
-            </Field>
-          </div>
-          <EstateChart days={days} series={series} unit={chartKind.unit} />
-          <p className="mt-2 text-sm text-muted">The last {CHART_DAYS} days up to the day chosen above. Only readings the server has accepted are drawn.</p>
+          {app.online && queries.some((q) => q.isLoading) && listed.length === 0 && <p>Loading…</p>}
+          {queries.some((q) => q.isError) && <Notice tone="bad">Some readings could not be loaded.</Notice>}
+          {listed.length === 0 && !queries.some((q) => q.isLoading) ? (
+            <p className="text-muted">No readings for this period.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[40rem] text-sm">
+                <thead className="border-b border-line">
+                  <tr>
+                    {["Date", "Time", "Estate", "Kind"].map((t) => (
+                      <th key={t} className="px-3 py-2 text-left text-[0.8rem] font-medium text-muted">
+                        {t}
+                      </th>
+                    ))}
+                    <th className="px-3 py-2 text-right text-[0.8rem] font-medium text-muted">Data</th>
+                    <th className="px-3 py-2 text-left text-[0.8rem] font-medium text-muted">Remarks</th>
+                    <th className="px-3 py-2 text-left text-[0.8rem] font-medium text-muted">State</th>
+                    <th className="px-3 py-2" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-line">
+                  {listed.map((r) => (
+                    <tr key={r.id} className={r.cancelled ? "text-muted line-through" : undefined}>
+                      <td className="whitespace-nowrap px-3 py-2">{dayWithWeekday(r.date)}</td>
+                      <td className="whitespace-nowrap px-3 py-2 tabular-nums">{clock(r.at)}</td>
+                      <td className="px-3 py-2">{estateName(r.estateId)}</td>
+                      <td className="px-3 py-2">{kindOf(r.kindId)?.label ?? "?"}</td>
+                      <td className="whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums">
+                        {r.value} {unitOf(r.kindId)}
+                      </td>
+                      <td className="px-3 py-2">
+                        {r.remarks}
+                        {r.message && r.status !== "accepted" && <span className="block text-bad">{r.message}</span>}
+                      </td>
+                      <td className="px-3 py-2">
+                        <StatusBadge status={r.status} compact />
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2 text-right">
+                        {r.status === "accepted" && r.version !== undefined && app.online && app.can("dailylog.correct", r.estateId) && (
+                          <Button size="sm" variant="ghost" onClick={() => setCorrecting(r.id)}>
+                            Edit
+                          </Button>
+                        )}
+                        {r.status === "accepted" &&
+                          r.version !== undefined &&
+                          (app.can("dailylog.correct", r.estateId) || (app.can("dailylog.capture", r.estateId) && r.capturedBy === session.user.id)) && (
+                            <Button size="sm" variant="ghost" onClick={() => cancelReading(r)}>
+                              Cancel
+                            </Button>
+                          )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </Card>
-      )}
+        {chartKind && estates.length > 0 && (
+          <Card
+            title={`${chartKind.label} per day${chartKind.unit ? ` (${chartKind.unit})` : ""}`}
+            actions={
+              <span className="flex flex-wrap items-center gap-3 text-sm text-muted">
+                {series.map((s) => (
+                  <span key={s.estateId} className="inline-flex items-center gap-1.5">
+                    <span aria-hidden className="inline-block size-3 rounded-sm" style={{ background: s.color }} />
+                    {estateName(s.estateId)}
+                  </span>
+                ))}
+              </span>
+            }
+          >
+            <div className="mb-3 grid gap-3 sm:grid-cols-2">
+              <Field label="Reading" htmlFor="chart-kind">
+                <Select id="chart-kind" value={chartKind.id} onChange={(e) => setChartKindId(e.target.value)}>
+                  {numeric.map((k) => (
+                    <option key={k.id} value={k.id}>
+                      {k.label}
+                      {k.unit ? ` (${k.unit})` : ""}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Per day show" htmlFor="chart-how">
+                <Select id="chart-how" value={mode} onChange={(e) => setHow(e.target.value as "total" | "average" | "highest")}>
+                  <option value="total">Total of the day</option>
+                  <option value="average">Average of the day</option>
+                  <option value="highest">Highest of the day</option>
+                </Select>
+              </Field>
+            </div>
+            <EstateChart days={days} series={series} unit={chartKind.unit} />
+            <p className="mt-2 text-sm text-muted">The last {CHART_DAYS} days up to the day chosen above. Only readings the server has accepted are drawn.</p>
+          </Card>
+        )}{" "}
+      </div>
       {correcting &&
         (() => {
           const r = rows.find((x) => x.id === correcting);

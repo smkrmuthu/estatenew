@@ -320,9 +320,9 @@ export function WeighIn() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div>
+      <div className="lg:flex lg:flex-wrap lg:items-baseline lg:gap-x-4">
         <h1>Plucking</h1>
-        <p className="mt-1 max-w-3xl text-sm text-muted">The evening muster: every weigh-in by worker, field, subdivision and variety. Weights count here once the server has accepted them.</p>
+        <p className="mt-1 lg:mt-0 max-w-3xl text-sm text-muted">The evening muster: every weigh-in by worker, field, subdivision and variety. Weights count here once the server has accepted them.</p>
       </div>
 
       <KpiStrip
@@ -345,7 +345,7 @@ export function WeighIn() {
       <Card title="Record weigh-ins" actions={<span className="text-sm text-muted">{pluckers.length ? `${weighedPluckers} of ${pluckers.length} pluckers weighed` : date}</span>}>
         {!canCapture && <Notice tone="warn">You can view weigh-ins but not record them.</Notice>}
         {saved && <Notice tone="ok">{saved}</Notice>}
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <Field
             label="Worker"
             htmlFor="worker"
@@ -484,16 +484,16 @@ export function WeighIn() {
           <Field label="Remark (optional)" htmlFor="remarks">
             <Input id="remarks" maxLength={500} value={remarks} onChange={(e) => setRemarks(e.target.value)} />
           </Field>
+          <div className="flex items-center justify-between gap-3 sm:col-span-2">
+            <p className="text-lg">
+              Net: <strong className="text-2xl">{preview.net ?? "–"}</strong> kg
+            </p>
+            <Button size="lg" disabled={!canCapture || !worker || !field || !preview.net || ((needsVariety || varietyRequired) && !varietyId)} onClick={save}>
+              Save and next worker
+            </Button>
+          </div>
         </div>
         {worker && field && preview.net && (needsVariety || varietyRequired) && !varietyId && <p className="mt-3 text-sm text-bad">Pick the variety before saving.</p>}
-        <div className="mt-4 flex items-center justify-between gap-3">
-          <p className="text-lg">
-            Net: <strong className="text-2xl">{preview.net ?? "–"}</strong> kg
-          </p>
-          <Button size="lg" disabled={!canCapture || !worker || !field || !preview.net || ((needsVariety || varietyRequired) && !varietyId)} onClick={save}>
-            Save and next worker
-          </Button>
-        </div>
       </Card>
 
       <div className="grid gap-4 xl:grid-cols-2">
@@ -619,11 +619,11 @@ export function WeighIn() {
             />
           </FilterBar>
         </div>
-        <ul className="divide-y divide-line">
+        <ul className="2xl:grid 2xl:grid-cols-2 2xl:gap-x-10">
           {listed.map((r) => {
             const w = workers.find((x) => x.id === r.workerId);
             return (
-              <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+              <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-line py-2">
                 <div>
                   <p className={r.voided ? "font-semibold line-through" : "font-semibold"}>
                     {w?.name ?? "Worker"} · {r.netKg} kg {r.crop === "PEPPER" ? "pepper" : "coffee"}

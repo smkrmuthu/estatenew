@@ -81,7 +81,7 @@ function DaySummary({ s }: { s: Summary }) {
   const { pepper } = useCrops();
   const byCrop = s.weighIn.byCrop.filter((c) => pepper || c.crop !== "PEPPER");
   return (
-    <>
+    <div className="grid items-start gap-4 xl:grid-cols-[3fr_2fr]">
       <Card title={`Attendance · ${s.estate.name}`}>
         <p>
           {s.attendance.present} present ({s.attendance.halfDayCount} half day), {s.attendance.absent} absent, {s.attendance.marked} of {s.attendance.activeWorkers} marked · {s.attendance.manDays}{" "}
@@ -111,28 +111,30 @@ function DaySummary({ s }: { s: Summary }) {
           </table>
         </div>
       </Card>
-      <Card title={`Plucking · ${s.estate.name}`}>
-        {byCrop.length === 0 && <p className="text-muted">No weigh-ins yet.</p>}
-        <ul>
-          {byCrop.map((c) => (
-            <li key={c.crop} className="text-lg">
-              {cropText(c.crop)}: <strong>{c.netKg} kg</strong> from {c.workers} {c.workers === 1 ? "worker" : "workers"} ({c.entries} {c.entries === 1 ? "weigh-in" : "weigh-ins"})
-            </li>
-          ))}
-        </ul>
-        {s.weighIn.workersWithSeveralEntries > 0 && <p className="text-sm text-muted">{s.weighIn.workersWithSeveralEntries} worker(s) were weighed more than once today.</p>}
-      </Card>
-      <Card title={`Daily log · ${s.estate.name}`}>
-        <ul>
-          {s.dailyLog.map((r) => (
-            <li key={r.readingAt + r.kind}>
-              {timeText(r.readingAt)} · {r.kind}: {r.value} {r.unit ?? ""}
-            </li>
-          ))}
-          {s.dailyLog.length === 0 && <li className="text-muted">No readings yet.</li>}
-        </ul>
-      </Card>
-    </>
+      <div className="flex flex-col gap-4">
+        <Card title={`Plucking · ${s.estate.name}`}>
+          {byCrop.length === 0 && <p className="text-muted">No weigh-ins yet.</p>}
+          <ul>
+            {byCrop.map((c) => (
+              <li key={c.crop} className="text-lg">
+                {cropText(c.crop)}: <strong>{c.netKg} kg</strong> from {c.workers} {c.workers === 1 ? "worker" : "workers"} ({c.entries} {c.entries === 1 ? "weigh-in" : "weigh-ins"})
+              </li>
+            ))}
+          </ul>
+          {s.weighIn.workersWithSeveralEntries > 0 && <p className="text-sm text-muted">{s.weighIn.workersWithSeveralEntries} worker(s) were weighed more than once today.</p>}
+        </Card>
+        <Card title={`Daily log · ${s.estate.name}`}>
+          <ul>
+            {s.dailyLog.map((r) => (
+              <li key={r.readingAt + r.kind}>
+                {timeText(r.readingAt)} · {r.kind}: {r.value} {r.unit ?? ""}
+              </li>
+            ))}
+            {s.dailyLog.length === 0 && <li className="text-muted">No readings yet.</li>}
+          </ul>
+        </Card>
+      </div>
+    </div>
   );
 }
 
@@ -313,9 +315,9 @@ export function Summary() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
+        <div className="lg:flex lg:flex-wrap lg:items-baseline lg:gap-x-4">
           <h1>Reports</h1>
-          <p className="mt-1 max-w-xl text-sm text-muted">{multi ? "All estates together." : "One estate."} Figures count only what the server has received.</p>
+          <p className="mt-1 lg:mt-0 max-w-xl text-sm text-muted">{multi ? "All estates together." : "One estate."} Figures count only what the server has received.</p>
         </div>
         <fieldset className="inline-flex gap-0.5 rounded-xl border-0 bg-surface-2 p-[3px]">
           <legend className="sr-only">Report</legend>

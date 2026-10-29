@@ -190,9 +190,9 @@ export function Dashboard({ go }: { go: (page: DashboardPage) => void }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <div>
+      <div className="lg:flex lg:flex-wrap lg:items-baseline lg:gap-x-4">
         <h1>{title}</h1>
-        <p className="mt-1 text-sm text-muted">The last 14 days up to {longDate(app.date)}. Figures count only what the server has received.</p>
+        <p className="mt-1 lg:mt-0 text-sm text-muted">The last 14 days up to {longDate(app.date)}. Figures count only what the server has received.</p>
       </div>
 
       {!app.online && <Notice tone="warn">No signal. The dashboard needs the server, so it is not shown. {app.queue.waiting} entries are waiting on this phone.</Notice>}

@@ -1152,9 +1152,11 @@ export function Masters() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
+        <div className="lg:flex lg:flex-wrap lg:items-baseline lg:gap-x-4">
           <h1>Masters</h1>
-          <p className="mt-1 max-w-xl text-sm text-muted">The lists that attendance, muster and reports pick from. Inactive entries stay in history but no longer appear in the daily register.</p>
+          <p className="mt-1 lg:mt-0 max-w-xl text-sm text-muted">
+            The lists that attendance, muster and reports pick from. Inactive entries stay in history but no longer appear in the daily register.
+          </p>
         </div>
         <div className="flex items-center gap-3">
           <fieldset className="inline-flex gap-0.5 rounded-xl border-0 bg-surface-2 p-[3px]">

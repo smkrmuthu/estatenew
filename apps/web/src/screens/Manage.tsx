@@ -305,12 +305,12 @@ function Setup() {
     enabled: app.online && app.can("settings.manage", null),
   });
   return (
-    <>
+    <div className="grid items-start gap-4 xl:grid-cols-2">
       <SeasonStart />
       <Crops />
       <AttendanceTypes />
       {app.can("settings.manage", null) && (
-        <Card title="Go-live readiness">
+        <Card title="Go-live readiness" className="xl:col-span-2">
           {readiness.data?.ready ? (
             <Notice tone="ok">No open owner questions block Phase 1A.</Notice>
           ) : (
@@ -332,7 +332,7 @@ function Setup() {
           )}
         </Card>
       )}
-    </>
+    </div>
   );
 }
 
