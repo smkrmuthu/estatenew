@@ -11,7 +11,7 @@ The first tenant runs two estates, Glazebrooke and Byson Valley.
 | Architecture and technical design | Revised 27 October 2026 for Cloudflare and a phased go-live; some owner answers still open |
 | Owner process confirmation | Sent to the estate owner; answers coming in |
 | Clickable prototype | Ready for owner review (this repository) |
-| Application code | Phase 1A built and tested locally (not deployed). See `docs/implementation-status.md` |
+| Application code | Phase 1A built and running on staging (`glazebrooke-staging.oneuptech.co`); production not created yet. See `docs/implementation-status.md` and `docs/architecture/technical-architecture.md` |
 
 ## Prototype
 

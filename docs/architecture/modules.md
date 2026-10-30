@@ -12,3 +12,5 @@ Enforced by `npm run boundaries` (`scripts/check-boundaries.mjs`).
 | `apps/web` | React PWA: screens, IndexedDB outbox, sync engine | domain, contracts; talks to the API over HTTP only |
 
 Layering inside the API: route → `callTenant` (verified scope) → `TenantDb.run(op)` (input schema, tenant check) → module service (permission check, validation, transaction, audit, revision, outbox) → Drizzle repository calls.
+
+The whole system, its data, security, sync and operations are described in `technical-architecture.md`.
