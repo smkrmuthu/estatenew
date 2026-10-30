@@ -40,11 +40,11 @@ function describeChange(now: Revision, before: Revision | undefined, ref: Refere
   const fieldName = (id?: string) => ref.fields.find((f) => f.id === id)?.name ?? "?";
   const varietyName = (id?: string | null) => (id ? (ref.varieties.find((v) => v.id === id)?.name ?? "?") : "not recorded");
   const kg = (g?: number) => formatKg(g ?? 0);
-  if (!before) return [`Gross ${kg(d.grossG)} kg`, `Tare ${kg(d.tareG)} kg`, `Net ${kg(d.netG)} kg`, `${d.bags ?? 0} bag${d.bags === 1 ? "" : "s"}`, fieldName(d.fieldId), varietyName(d.varietyId)];
+  if (!before) return [`Gross ${kg(d.grossG)} kg`, `Bag wt ${kg(d.tareG)} kg`, `Net ${kg(d.netG)} kg`, `${d.bags ?? 0} bag${d.bags === 1 ? "" : "s"}`, fieldName(d.fieldId), varietyName(d.varietyId)];
   const b = before.data;
   const out: string[] = [];
   if (d.grossG !== b.grossG) out.push(`Gross ${kg(b.grossG)} → ${kg(d.grossG)} kg`);
-  if (d.tareG !== b.tareG) out.push(`Tare ${kg(b.tareG)} → ${kg(d.tareG)} kg`);
+  if (d.tareG !== b.tareG) out.push(`Bag wt ${kg(b.tareG)} → ${kg(d.tareG)} kg`);
   if (d.netG !== b.netG) out.push(`Net ${kg(b.netG)} → ${kg(d.netG)} kg`);
   if (d.bags !== b.bags) out.push(`Bags ${b.bags ?? 0} → ${d.bags ?? 0}`);
   if (d.fieldId !== b.fieldId) out.push(`Field ${fieldName(b.fieldId)} → ${fieldName(d.fieldId)}`);
@@ -56,7 +56,7 @@ function describeChange(now: Revision, before: Revision | undefined, ref: Refere
 }
 
 /** Every version of one weigh-in, newest first, with who changed it, when, and why. */
-function ChangeHistory({ estateId, entryId, ref }: { estateId: string; entryId: string; ref: ReferenceData }) {
+export function ChangeHistory({ estateId, entryId, ref }: { estateId: string; entryId: string; ref: ReferenceData }) {
   const q = useQuery({
     queryKey: ["muster-history", entryId],
     queryFn: () => api<Revision[]>(`/audit/history?entityType=muster_entry&entityId=${entryId}&estateId=${estateId}`),
@@ -124,6 +124,15 @@ function ChangeHistory({ estateId, entryId, ref }: { estateId: string; entryId: 
         </div>
       )}
     </section>
+  );
+}
+
+/** The change history of one weigh-in on its own, opened from the "corrected" or "cancelled" label in the table. */
+export function WeighInHistory({ estateId, entryId, workerName, ref, onClose }: { estateId: string; entryId: string; workerName: string; ref: ReferenceData; onClose: () => void }) {
+  return (
+    <Drawer title={workerName} subtitle="Change history" onClose={onClose}>
+      <ChangeHistory estateId={estateId} entryId={entryId} ref={ref} />
+    </Drawer>
   );
 }
 
@@ -277,7 +286,7 @@ export function CorrectWeighIn({ estateId, workerName, entry, ref, onClose }: { 
           <Field label="Bags" htmlFor="cw-bags">
             <Input id="cw-bags" inputMode="numeric" value={bags} onChange={(e) => setBags(Math.min(100, Number(e.target.value.replace(/\D/g, "")) || 0))} />
           </Field>
-          <Field label="Tare (kg)" htmlFor="cw-tare" hint="Bag weight to take off, if any">
+          <Field label="Bag wt (kg)" htmlFor="cw-tare" hint="Bag weight to take off, if any">
             <Input id="cw-tare" inputMode="decimal" placeholder="0" value={tare} onChange={(e) => KG_TEXT.test(e.target.value) && setTare(e.target.value)} />
           </Field>
         </div>

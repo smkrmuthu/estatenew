@@ -1068,13 +1068,13 @@ function Tare({ data, canWrite }: { data: ReferenceData; canWrite: boolean }) {
   })();
   const bad = typeof parsed === "string";
   return (
-    <Card title="Tare (bag weight)">
+    <Card title="Bag wt (tare)">
       <p className="mb-3 max-w-2xl text-sm text-muted">
         The weight taken off every weigh-in, the same for all estates. It is filled in on the Plucking form; supervisors cannot change it, managers and owners can. A change applies to weigh-ins saved
         from now on. Earlier weigh-ins keep the tare they were saved with. It starts at 0.
       </p>
       <div className="flex flex-wrap items-end gap-3">
-        <Field label="Tare (kg)" htmlFor="tare-default" error={bad ? parsed : undefined}>
+        <Field label="Bag wt (kg)" htmlFor="tare-default" error={bad ? parsed : undefined}>
           <Input id="tare-default" inputMode="decimal" value={shown} disabled={!canWrite} onChange={(e) => /^\d{0,3}(\.\d{0,3})?$/.test(e.target.value) && setText(e.target.value)} />
         </Field>
         <Button
@@ -1124,7 +1124,7 @@ export function Masters() {
     { id: "varieties", label: "Varieties" },
     { id: "jobs", label: "Jobs" },
     { id: "logkinds", label: "Log kinds" },
-    { id: "tare", label: "Tare" },
+    { id: "tare", label: "Bag wt" },
   ];
   const addLabel = { fields: "Add field", workers: "Add worker", varieties: "Add variety", jobs: "Add job", logkinds: "Add kind", tare: "" }[tab];
   const canAdd = tab === "tare" ? false : tab === "jobs" || tab === "varieties" ? jobsWrite : tab === "logkinds" ? kindsWrite : anyWrite;

@@ -10,7 +10,7 @@ import { useLive } from "../lib/hooks";
 import { normalizeKg } from "../lib/kg";
 import { queueChange } from "../lib/outbox";
 import { useUnsaved } from "../lib/unsaved";
-import { CorrectWeighIn } from "./WeighInExtras";
+import { CorrectWeighIn, WeighInHistory } from "./WeighInExtras";
 import { type LogRow, WeighInLog } from "./WeighInLog";
 
 interface ServerEntry {
@@ -115,6 +115,7 @@ export function WeighIn() {
   useUnsaved(!!(gross || remarks));
   const [fieldFromAttendance, setFieldFromAttendance] = useState(false);
   const [correcting, setCorrecting] = useState<string | null>(null);
+  const [historyFor, setHistoryFor] = useState<string | null>(null);
 
   const workers = useMemo(() => (ref?.workers ?? []).filter((w) => (w.estateIds ?? [w.estateId]).includes(estateId)), [ref, estateId]);
   const fields = useMemo(() => (ref?.fields ?? []).filter((f) => f.estateId === estateId), [ref, estateId]);
@@ -561,9 +562,16 @@ export function WeighIn() {
         problem={rangeProblem}
         canEdit={(r) => !r.voided && r.status === "accepted" && app.can("muster.correct") && app.online && !!range.data?.some((e) => e.id === r.id)}
         canCancel={(r) => !r.voided && r.status === "accepted" && canCapture}
+        canHistory={() => app.can("audit.read", estateId) && app.online}
         onEdit={setCorrecting}
+        onHistory={setHistoryFor}
         onCancel={(r, name) => cancelEntry(r.id, r.version, name, r.businessDate)}
       />
+      {historyFor &&
+        (() => {
+          const row = logRows.find((r) => r.id === historyFor);
+          return <WeighInHistory estateId={estateId} entryId={historyFor} workerName={workers.find((w) => w.id === row?.workerId)?.name ?? "Worker"} ref={ref} onClose={() => setHistoryFor(null)} />;
+        })()}
       {correcting &&
         (() => {
           const entry = range.data?.find((e) => e.id === correcting);

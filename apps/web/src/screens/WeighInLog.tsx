@@ -69,7 +69,9 @@ export function WeighInLog({
   problem,
   canEdit,
   canCancel,
+  canHistory,
   onEdit,
+  onHistory,
   onCancel,
 }: {
   rows: LogRow[];
@@ -84,7 +86,9 @@ export function WeighInLog({
   problem: string | null;
   canEdit: (r: LogRow) => boolean;
   canCancel: (r: LogRow) => boolean;
+  canHistory: (r: LogRow) => boolean;
   onEdit: (id: string) => void;
+  onHistory: (id: string) => void;
   onCancel: (r: LogRow, workerName: string) => void;
 }) {
   const [q, setQ] = useState("");
@@ -240,7 +244,7 @@ export function WeighInLog({
               onChange={setState}
               options={[
                 { value: "", label: "All" },
-                { value: "ACCEPTED", label: "Accepted by the office" },
+                { value: "ACCEPTED", label: "Saved on server" },
                 { value: "WAITING", label: "Waiting on this phone" },
                 { value: "PROBLEM", label: "Not accepted or conflict" },
                 { value: "CANCELLED", label: "Cancelled" },
@@ -267,7 +271,7 @@ export function WeighInLog({
                   {head("variety", "Variety")}
                   {head("bags", "Bags", true)}
                   {head("gross", "Gross kg", true)}
-                  {head("tare", "Tare kg", true)}
+                  {head("tare", "Bag wt kg", true)}
                   {head("net", "Net kg", true)}
                   <th scope="col" className="px-3 py-2 text-left text-[0.8rem] font-medium text-muted">
                     Remark
@@ -302,7 +306,20 @@ export function WeighInLog({
                       <td className="px-3 py-2">
                         <div className="flex flex-col items-start gap-0.5">
                           <StatusBadge status={r.status} compact />
-                          {r.voided ? <span className="text-xs text-muted">cancelled</span> : r.status === "accepted" && r.version > 1 ? <span className="text-xs text-muted">corrected</span> : null}
+                          {r.voided || (r.status === "accepted" && r.version > 1) ? (
+                            canHistory(r) ? (
+                              <button
+                                type="button"
+                                className="text-xs text-muted underline decoration-dotted underline-offset-2 hover:text-ink"
+                                aria-label={`Change history of ${w?.name ?? "worker"}'s weigh-in`}
+                                onClick={() => onHistory(r.id)}
+                              >
+                                {r.voided ? "cancelled" : "corrected"}
+                              </button>
+                            ) : (
+                              <span className="text-xs text-muted">{r.voided ? "cancelled" : "corrected"}</span>
+                            )
+                          ) : null}
                           {r.message && r.status !== "accepted" && <span className="text-xs text-bad">{r.message}</span>}
                         </div>
                       </td>
