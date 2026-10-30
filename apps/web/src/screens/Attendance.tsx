@@ -158,7 +158,20 @@ export function Attendance() {
     return m;
   }, [local]);
   const assignment = (workerId: string) => prefill?.assignments.find((a) => a.workerId === workerId);
-  const locked = sheetState !== "DRAFT";
+  /** A submit saved on this phone that has not reached the office yet: the day is already closed for new entries. */
+  const submitWaiting = useLive(
+    async () => {
+      const waiting = await db.outbox.where({ userId: session.user.id, status: "waiting" }).toArray();
+      return waiting.some((o) => {
+        const p = o.envelope.payload as { businessDate?: string; shift?: string };
+        return o.envelope.entityType === "attendance_sheet" && o.envelope.op === "submit" && o.envelope.estateId === estateId && p.businessDate === date && (p.shift ?? "DAY") === shift;
+      });
+    },
+    [session.user.id, estateId, date, shift],
+    false,
+  );
+  const submitted = sheetState !== "DRAFT" || submitWaiting;
+  const locked = submitted;
   const canCapture = app.can("attendance.capture") && !locked;
 
   /** What the register shows for a worker: the saved record, or a present mark still missing its field or job. */
@@ -379,7 +392,9 @@ export function Attendance() {
 
       <Card>
         <div className="flex flex-wrap items-center gap-2">
-          <span className="rounded-full bg-bg px-2 py-1 text-xs font-semibold">{sheetState === "DRAFT" ? "Draft" : sheetState === "SUBMITTED" ? "Submitted" : "Approved"}</span>
+          <span className="rounded-full bg-bg px-2 py-1 text-xs font-semibold">
+            {sheetState === "DRAFT" ? (submitWaiting ? "Submitted, waiting to sync" : "Draft") : sheetState === "SUBMITTED" ? "Submitted" : "Approved"}
+          </span>
           <small className="text-muted">
             {counts.P} present · {counts.H} half day · {counts.A} absent or leave{counts.O ? ` · ${counts.O} off or holiday` : ""}
             {counts.none && shift === "DAY" ? (
@@ -400,9 +415,23 @@ export function Attendance() {
               Mark the rest present
             </Button>
           )}
-          {canCapture && app.can("attendance.submit") && (
-            <Button onClick={submitDay} disabled={counts.P + counts.H + counts.A + counts.O === 0}>
-              {counts.none && shift === "DAY" ? `Submit (${counts.none} not marked)` : app.can("attendance.approve") ? "Submit and approve" : "Submit for approval"}
+          {app.can("attendance.submit") && (
+            <Button
+              onClick={submitDay}
+              disabled={submitted || counts.P + counts.H + counts.A + counts.O === 0}
+              title={submitted ? "This day is already submitted. New entries are closed." : counts.P + counts.H + counts.A + counts.O === 0 ? "Mark at least one worker first." : undefined}
+            >
+              {submitWaiting && sheetState === "DRAFT"
+                ? "Submitted (waiting to sync)"
+                : sheetState === "APPROVED"
+                  ? "Submitted and approved"
+                  : sheetState === "SUBMITTED"
+                    ? "Submitted"
+                    : counts.none && shift === "DAY"
+                      ? `Submit (${counts.none} not marked)`
+                      : app.can("attendance.approve")
+                        ? "Submit and approve"
+                        : "Submit for approval"}
             </Button>
           )}
           {app.can("attendance.approve") && app.online && sheetState === "SUBMITTED" && (
@@ -437,7 +466,9 @@ export function Attendance() {
         )}
         {locked && (
           <p className="mt-3 text-sm text-muted">
-            This day is {sheetState === "SUBMITTED" ? "submitted" : "approved"}. Changes now go through a manager's correction with a reason; the old entry is kept in the history.
+            {sheetState === "DRAFT"
+              ? "This day is submitted on this phone and waits to reach the office. No new entries can be added."
+              : `This day is ${sheetState === "SUBMITTED" ? "submitted" : "approved"}. No new entries can be added. Changes go through a manager's correction with a reason; the old entry is kept in the history.`}
           </p>
         )}
 
