@@ -186,6 +186,16 @@ describe("weigh-in (muster)", () => {
     expect(fixed.body).toMatchObject({ netG: 20000, version: 2 });
     const summary = (await api(`/estates/${s.estate.id}/reports/daily/${today()}`, { token: s.owner.token })).body;
     expect(summary.weighIn.byCrop).toEqual([{ crop: "COFFEE", entries: 1, workers: 1, netKg: "20.000" }]);
+
+    // The change history lists every version with the reason and the name of who made it; a supervisor cannot read it.
+    const history = `/audit/history?entityType=muster_entry&entityId=${m2.entityId}&estateId=${s.estate.id}`;
+    const rows = (await api(history, { token: s.owner.token })).body as { version: number; change: string; reason: string | null; actorName: string | null; data: { grossG: number } }[];
+    expect(rows.map((r) => [r.version, r.change, r.reason, r.actorName])).toEqual([
+      [1, "create", null, "Supervisor One"],
+      [2, "correct", "Scale misread", "Test Owner"],
+    ]);
+    expect(rows.map((r) => r.data.grossG)).toEqual([20500, 21000]);
+    expect((await api(history, { token: s.supervisor.token })).status).toBe(403);
   });
 });
 

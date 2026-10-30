@@ -3286,7 +3286,7 @@
     },
     "/api/v1/audit/history": {
       "get": {
-        "summary": "Every version of one record",
+        "summary": "Every version of one record, with the name of who made each change",
         "tags": ["audit"],
         "description": "Requires permission `audit.read` on the estate in scope.",
         "security": [

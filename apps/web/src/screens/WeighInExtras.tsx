@@ -1,5 +1,5 @@
 import { computeWeighIn, formatKg, parseKg, WeightError } from "@cemms/domain";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Button, Drawer, Field, Input, Notice, Select } from "../components/ui";
 import { ApiError, api } from "../lib/api";
@@ -20,6 +20,84 @@ export interface CorrectableEntry {
   tareG?: number;
   bags: number;
   remarks?: string | null;
+}
+
+interface Revision {
+  id: string;
+  version: number;
+  change: string;
+  reason: string | null;
+  actorName: string | null;
+  at: string;
+  data: { fieldId?: string; varietyId?: string | null; crop?: string; grossG?: number; tareG?: number; netG?: number; bags?: number; remarks?: string | null; status?: string };
+}
+
+const CHANGE_LABEL: Record<string, string> = { create: "Recorded", correct: "Corrected", void: "Cancelled" };
+
+/** What this version changed compared with the one before it, in plain words. */
+function describeChange(now: Revision, before: Revision | undefined, ref: ReferenceData): string[] {
+  const d = now.data;
+  const fieldName = (id?: string) => ref.fields.find((f) => f.id === id)?.name ?? "?";
+  const varietyName = (id?: string | null) => (id ? (ref.varieties.find((v) => v.id === id)?.name ?? "?") : "not recorded");
+  const kg = (g?: number) => formatKg(g ?? 0);
+  if (!before) return [`Gross ${kg(d.grossG)} kg`, `Tare ${kg(d.tareG)} kg`, `Net ${kg(d.netG)} kg`, `${d.bags ?? 0} bag${d.bags === 1 ? "" : "s"}`, fieldName(d.fieldId), varietyName(d.varietyId)];
+  const b = before.data;
+  const out: string[] = [];
+  if (d.grossG !== b.grossG) out.push(`Gross ${kg(b.grossG)} → ${kg(d.grossG)} kg`);
+  if (d.tareG !== b.tareG) out.push(`Tare ${kg(b.tareG)} → ${kg(d.tareG)} kg`);
+  if (d.netG !== b.netG) out.push(`Net ${kg(b.netG)} → ${kg(d.netG)} kg`);
+  if (d.bags !== b.bags) out.push(`Bags ${b.bags ?? 0} → ${d.bags ?? 0}`);
+  if (d.fieldId !== b.fieldId) out.push(`Field ${fieldName(b.fieldId)} → ${fieldName(d.fieldId)}`);
+  if (d.varietyId !== b.varietyId) out.push(`Variety ${varietyName(b.varietyId)} → ${varietyName(d.varietyId)}`);
+  if (d.crop !== b.crop) out.push(`Crop ${b.crop === "PEPPER" ? "Pepper" : "Coffee"} → ${d.crop === "PEPPER" ? "Pepper" : "Coffee"}`);
+  if ((d.remarks ?? "") !== (b.remarks ?? "")) out.push("Remark changed");
+  if (d.status === "VOID" && b.status !== "VOID") out.push("Weigh-in cancelled");
+  return out;
+}
+
+/** Every version of one weigh-in, newest first, with who changed it, when, and why. */
+function ChangeHistory({ estateId, entryId, ref }: { estateId: string; entryId: string; ref: ReferenceData }) {
+  const q = useQuery({
+    queryKey: ["muster-history", entryId],
+    queryFn: () => api<Revision[]>(`/audit/history?entityType=muster_entry&entityId=${entryId}&estateId=${estateId}`),
+  });
+  const timeZone = ref.estates.find((e) => e.id === estateId)?.timeZone ?? "Asia/Kolkata";
+  const versions = [...(q.data ?? [])].sort((a, b) => a.version - b.version);
+  return (
+    <section aria-label="Change history" className="rounded-xl border border-line bg-bg p-3">
+      <h3 className="text-sm font-semibold">
+        Change history
+        {versions.length > 0 && (
+          <span className="ml-2 font-normal text-muted">
+            {versions.length} version{versions.length === 1 ? "" : "s"}
+          </span>
+        )}
+      </h3>
+      {q.isLoading && <p className="mt-2 text-sm text-muted">Loading…</p>}
+      {q.isError && <p className="mt-2 text-sm text-bad">The history could not be loaded.</p>}
+      {q.data && versions.length === 0 && <p className="mt-2 text-sm text-muted">No earlier versions.</p>}
+      <ol className="mt-2 flex max-h-56 flex-col gap-2 overflow-y-auto text-sm">
+        {versions
+          .map((v, i) => ({ v, changes: describeChange(v, versions[i - 1], ref) }))
+          .reverse()
+          .map(({ v, changes }) => (
+            <li key={v.id} className="border-b border-line pb-2 last:border-b-0 last:pb-0">
+              <p>
+                <span className="font-semibold">
+                  Version {v.version} · {CHANGE_LABEL[v.change] ?? v.change}
+                </span>
+                <span className="text-muted">
+                  {" "}
+                  · {new Date(v.at).toLocaleString("en-IN", { timeZone, day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })} · {v.actorName ?? "A user"}
+                </span>
+              </p>
+              {changes.length > 0 && <p className="text-muted">{changes.join(" · ")}</p>}
+              {v.reason && <p>Reason: {v.reason}</p>}
+            </li>
+          ))}
+      </ol>
+    </section>
+  );
 }
 
 /**
@@ -96,6 +174,7 @@ export function CorrectWeighIn({ estateId, workerName, entry, ref, onClose }: { 
       await Promise.all([
         qc.invalidateQueries({ queryKey: ["muster", estateId] }),
         qc.invalidateQueries({ queryKey: ["muster-range"] }),
+        qc.invalidateQueries({ queryKey: ["muster-history", entry.id] }),
         qc.invalidateQueries({ queryKey: ["muster-days"] }),
         qc.invalidateQueries({ queryKey: ["dashboard"] }),
         qc.invalidateQueries({ queryKey: ["summary"] }),
@@ -111,6 +190,7 @@ export function CorrectWeighIn({ estateId, workerName, entry, ref, onClose }: { 
   return (
     <Drawer title={workerName} subtitle="Correct weigh-in" onClose={onClose}>
       <p className="text-sm text-muted">The old weigh-in stays in the history with your reason and the time of the correction. The net weight is worked out again.</p>
+      <ChangeHistory estateId={estateId} entryId={entry.id} ref={ref} />
       <form
         className="flex flex-col gap-4"
         onSubmit={(e) => {

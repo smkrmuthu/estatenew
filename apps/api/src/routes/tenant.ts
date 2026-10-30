@@ -18,8 +18,11 @@ import {
   workerInput,
 } from "@cemms/contracts";
 import { type ExportData, IMPORT_KINDS, type ImportKind, importTemplate, newFormatSheets, newFormatSheetsFor, oldFormatSheets, oldFormatSheetsFor } from "@cemms/domain";
+import { and, eq, inArray } from "drizzle-orm";
 import type { Context, Hono } from "hono";
 import { z } from "zod";
+import { controlDb } from "../control/db";
+import { users } from "../control/schema";
 import { AppError } from "../core/errors";
 import { readJson } from "../core/http";
 import { route } from "../core/registry";
@@ -363,7 +366,22 @@ export function tenantRoutes(app: Hono<AppEnv>) {
   );
   route(
     app,
-    { method: "get", path: "/audit/history", summary: "Every version of one record", tag: "audit", auth: "bearer", permission: "audit.read" },
-    call("audit.history", (c) => z.object({ entityType: z.string(), entityId: z.string(), estateId: z.string() }).parse(c.req.query())),
+    { method: "get", path: "/audit/history", summary: "Every version of one record, with the name of who made each change", tag: "audit", auth: "bearer", permission: "audit.read" },
+    async (c) => {
+      const query = z.object({ entityType: z.string(), entityId: z.string(), estateId: z.string() }).parse(c.req.query());
+      const rows = (await callTenant(c, "audit.history", query)) as { actorUserId: string }[];
+      // Names live in the control database; only users of the caller's own tenant are looked up.
+      const tenantId = c.get("auth")?.tenant.id ?? "";
+      const ids = [...new Set(rows.map((r) => r.actorUserId))];
+      const named = ids.length
+        ? await controlDb(c.env)
+            .select({ id: users.id, displayName: users.displayName })
+            .from(users)
+            .where(and(eq(users.tenantId, tenantId), inArray(users.id, ids)))
+            .all()
+        : [];
+      const names = new Map(named.map((u) => [u.id, u.displayName]));
+      return c.json(rows.map((r) => ({ ...r, actorName: names.get(r.actorUserId) ?? null })));
+    },
   );
 }
