@@ -297,7 +297,9 @@ CI (`.github/workflows/ci.yml`): lint and format, module boundaries, owner regis
 
 Release and rollback (`docs/operations/rollout-and-rollback.md`): code rolls back by redeploying the previous Worker version, which still works because migrations are additive; data is fixed forward, or restored into a scratch tenant, never by discarding writes made after the release; phones keep queued entries through any rollback and the server deduplicates them.
 
-Quality gate before any release: `npm run check` (lint, boundaries, register check, types, all tests, build). At this revision it runs 4 tests in contracts, 56 in domain, 72 in the API and 5 in the web package, all passing.
+Production is the same code base as staging, deployed to its own set of resources with `--env production`; a production bug is fixed on `main`, checked, deployed to staging, then deployed to production after the project lead's go-ahead, with the previous Worker version as the immediate rollback (`docs/operations/rollout-and-rollback.md`, "Fixing a production bug").
+
+Quality gate before any release: `npm run check` (lint, boundaries, register check, types, all tests, build). At this revision it runs 4 tests in contracts, 56 in domain, 73 in the API and 5 in the web package, all passing.
 
 ## 14. Observability
 
