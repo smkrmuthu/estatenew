@@ -195,6 +195,36 @@ describe("attendance", () => {
     expect((await api(`/attendance-records/${r2.entityId}/removal`, { token: s.owner.token, body: { reason: "Again please", baseVersion: 1 } })).status).toBe(404);
   });
 
+  it("a mark can be taken off again while the day is open, and the removal is kept in the history", async () => {
+    const s = await setupTenant();
+    const d = today();
+    const a = await mutation(s.supervisor.deviceId, s.estate.id, "attendance_record", "upsert", present(s, s.w1.id));
+    const b = await mutation(s.supervisor.deviceId, s.estate.id, "attendance_record", "upsert", present(s, s.w2.id));
+    expect((await push(s.supervisor, [a, b])).body.results.map((r: { status: string }) => r.status)).toEqual(["accepted", "accepted"]);
+    expect((await push(s.supervisor, [await mutation(s.supervisor.deviceId, s.estate.id, "attendance_sheet", "submit", { businessDate: d })])).body.results[0].status).toBe("accepted");
+
+    const stale = await mutation(s.supervisor.deviceId, s.estate.id, "attendance_record", "void", { reason: "Taken off the register" }, { entityId: a.entityId, baseVersion: 5 });
+    expect((await push(s.supervisor, [stale])).body.results[0]).toMatchObject({ status: "rejected", errorCode: "STALE_VERSION" });
+
+    const unmark = await mutation(s.supervisor.deviceId, s.estate.id, "attendance_record", "void", { reason: "Taken off the register" }, { entityId: a.entityId, baseVersion: 1 });
+    expect((await push(s.supervisor, [unmark])).body.results[0]).toMatchObject({ status: "accepted" });
+    const sheet = (await api(`/estates/${s.estate.id}/attendance/${d}`, { token: s.supervisor.token })).body;
+    expect(sheet.records.map((r: { id: string }) => r.id)).toEqual([b.entityId]);
+    expect(sheet.sheet.state).toBe("DRAFT");
+    const history = (await api(`/audit/history?entityType=attendance_record&entityId=${a.entityId}&estateId=${s.estate.id}`, { token: s.owner.token })).body;
+    expect(history.map((h: { change: string }) => h.change)).toEqual(["create", "remove"]);
+    expect(history[1].reason).toBe("Taken off the register");
+
+    // Taking off a mark that is already gone changes nothing and is not an error; the worker can be marked again.
+    const again = await mutation(s.supervisor.deviceId, s.estate.id, "attendance_record", "void", { reason: "Taken off the register" }, { entityId: a.entityId, baseVersion: 1 });
+    expect((await push(s.supervisor, [again])).body.results[0].status).toBe("accepted");
+    const remark = await mutation(s.supervisor.deviceId, s.estate.id, "attendance_record", "upsert", present(s, s.w1.id, { dayFraction: "HALF" }));
+    expect((await push(s.supervisor, [remark])).body.results[0].status).toBe("accepted");
+    // A supervisor of another estate cannot take it off.
+    const outsider = await mutation(s.supervisor.deviceId, s.estate2.id, "attendance_record", "void", { reason: "Taken off the register" }, { entityId: b.entityId, baseVersion: 1 });
+    expect((await push(s.supervisor, [outsider])).body.results[0].status).toBe("rejected");
+  });
+
   it("a submitted day closes when its day is over, unless the back-entry days setting keeps it open", async () => {
     const s = await setupTenant();
     const yesterday = addDays(today(), -1);
@@ -211,6 +241,10 @@ describe("attendance", () => {
     expect((await push(s.owner, [late])).body.results[0]).toMatchObject({ status: "rejected", errorCode: "SHEET_LOCKED" });
     const resubmit = await mutation(s.owner.deviceId, s.estate.id, "attendance_sheet", "submit", { businessDate: yesterday });
     expect((await push(s.owner, [resubmit])).body.results[0]).toMatchObject({ status: "rejected", errorCode: "SHEET_STATE" });
+
+    // Taking a mark off needs the day to be open too.
+    const unmarkClosed = await mutation(s.owner.deviceId, s.estate.id, "attendance_record", "void", { reason: "Taken off the register" }, { entityId: first.entityId, baseVersion: 1 });
+    expect((await push(s.owner, [unmarkClosed])).body.results[0]).toMatchObject({ status: "rejected", errorCode: "SHEET_LOCKED" });
 
     // One day back allowed (OC-86): the previous day takes entries again, and a supervisor may add them too.
     expect((await api("/admin/settings/attendance.backEntryDays", { method: "PUT", token: s.owner.token, body: { value: 1 } })).status).toBe(200);

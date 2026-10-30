@@ -5,7 +5,7 @@ import { AppError, fieldErrorsFromZod } from "../../core/errors";
 import { log } from "../../core/log";
 import type { Db, TenantContext } from "../context";
 import { deviceStatus, syncMutations } from "../schema";
-import { type ApplyMeta, type ApplyOutcome, applyAttendanceRecord, applySheetSubmit } from "./attendance";
+import { type ApplyMeta, type ApplyOutcome, applyAttendanceRecord, applyAttendanceUnmark, applySheetSubmit } from "./attendance";
 import { applyDailyLogCreate, applyDailyLogVoid } from "./dailylog";
 import { applyMusterCreate, applyMusterVoid } from "./muster";
 
@@ -13,6 +13,7 @@ type Handler = (ctx: TenantContext, db: Db, meta: ApplyMeta, payload: never) => 
 
 const HANDLERS: Record<MutationKind, Handler> = {
   "attendance_record:upsert": applyAttendanceRecord as Handler,
+  "attendance_record:void": ((ctx, db, meta, p: { reason: string }) => applyAttendanceUnmark(ctx, db, meta, p.reason)) as Handler,
   "attendance_sheet:submit": ((ctx, db, meta, p: { businessDate: string; shift?: "DAY" | "NIGHT" }) => applySheetSubmit(ctx, db, meta, p.businessDate, p.shift)) as Handler,
   "muster_entry:create": applyMusterCreate as Handler,
   "muster_entry:void": ((ctx, db, meta, p: { reason: string }) => applyMusterVoid(ctx, db, meta, p.reason)) as Handler,

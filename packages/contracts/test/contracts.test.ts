@@ -32,6 +32,7 @@ describe("contracts", () => {
     expect(syncPush.safeParse({ deviceId: uuidv7(), pendingCount: 0, mutations: Array.from({ length: 101 }, () => m) }).success).toBe(false);
     expect(Object.keys(MUTATION_PAYLOADS).sort()).toEqual([
       "attendance_record:upsert",
+      "attendance_record:void",
       "attendance_sheet:submit",
       "dailylog_entry:create",
       "dailylog_entry:void",

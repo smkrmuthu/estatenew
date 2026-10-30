@@ -1,6 +1,6 @@
 import { uuidv7 } from "@cemms/domain";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useApp } from "../app-context";
 import { Button, Card, FilterBar, FilterSelect, Input, Notice, Select, StatusBadge } from "../components/ui";
 import { ApiError, api } from "../lib/api";
@@ -77,6 +77,8 @@ export function Attendance() {
   const [fStatus, setFStatus] = useState("");
   const [fField, setFField] = useState("");
   const tenantId = session.user.tenantId;
+  /** Which button got the first click of a possible double-click, and whether it was already the chosen one. */
+  const firstClick = useRef("");
 
   const sheet = useQuery({
     queryKey: ["sheet", estateId, date, shift],
@@ -126,11 +128,13 @@ export function Attendance() {
     });
   }, [sheet.data, tenantId, estateId, date]);
 
-  const localAll = useLive(
+  const localEvery = useLive(
     () => db.records.where("[tenantId+entityType+estateId+businessDate]").equals([tenantId, "attendance_record", estateId, date]).toArray(),
     [tenantId, estateId, date],
     [] as LocalRecord[],
   );
+  /** Entries taken off the register on this phone (waiting for the office to remove them) no longer show. */
+  const localAll = useMemo(() => localEvery.filter((r) => r.data.status !== "VOID"), [localEvery]);
   const local = useMemo(() => localAll.filter((r) => ((r.data.shift as string | undefined) ?? "DAY") === shift), [localAll, shift]);
   const otherShift = shift === "DAY" ? "NIGHT" : "DAY";
   const otherLocal = useMemo(() => localAll.filter((r) => ((r.data.shift as string | undefined) ?? "DAY") === otherShift), [localAll, otherShift]);
@@ -178,7 +182,7 @@ export function Attendance() {
   /** Submitted and the day is over: only a manager's correction changes it. While the day is open, new entries are still taken. */
   const locked = (sheetState !== "DRAFT" || submitWaiting) && !dayOpen;
   const canCapture = app.can("attendance.capture") && !locked;
-  const hasWaiting = local.some((r) => r.status === "waiting");
+  const hasWaiting = localEvery.some((r) => ((r.data.shift as string | undefined) ?? "DAY") === shift && r.status === "waiting");
 
   /** What the register shows for a worker: the saved record, or a present mark still missing its field or job. */
   const viewOf = (workerId: string) => {
@@ -269,6 +273,32 @@ export function Attendance() {
       entityId: current?.entityId,
       payload,
       label: `Attendance: ${worker?.name ?? "worker"} ${chip?.long.toLowerCase() ?? payload.statusCode.toLowerCase()}`,
+    });
+    void app.sync();
+  }
+
+  /** Take the mark off again (double-click on the chosen button). A mark not yet sent is simply followed by its removal. */
+  async function unmark(workerId: string) {
+    const current = byWorker.get(workerId);
+    if (drafts[workerId]) {
+      setDrafts((d) => {
+        const { [workerId]: _, ...rest } = d;
+        return rest;
+      });
+    }
+    if (!current) return;
+    const worker = workers.find((w) => w.id === workerId);
+    await queueChange({
+      tenantId,
+      userId: session.user.id,
+      deviceId: app.deviceId,
+      entityType: "attendance_record",
+      op: "void",
+      estateId,
+      businessDate: date,
+      entityId: current.entityId,
+      payload: { reason: "Taken off the register" },
+      label: `Attendance: ${worker?.name ?? "worker"} cleared`,
     });
     void app.sync();
   }
@@ -666,12 +696,30 @@ export function Attendance() {
                       <button
                         key={c.id}
                         type="button"
-                        title={c.long}
+                        title={on ? `${c.long} (double-click to clear)` : c.long}
                         aria-label={c.long}
                         aria-pressed={on}
                         disabled={!canCapture}
-                        onClick={() => mark(w.id, { statusCode: c.statusCode, dayFraction: c.dayFraction })}
-                        className={`min-h-11 min-w-11 rounded-lg border px-2 text-sm font-semibold transition-colors disabled:opacity-50 md:min-h-9 md:min-w-9 ${on ? "border-roast bg-roast text-roast-ink" : "border-line bg-bg text-ink hover:bg-surface"}`}
+                        onClick={(e) => {
+                          const key = `${w.id}:${c.id}`;
+                          // The second click of a double-click on the button that was already chosen clears the mark.
+                          if (e.detail >= 2) {
+                            if (firstClick.current === `${key}:on`) {
+                              firstClick.current = "";
+                              void unmark(w.id);
+                            }
+                            return;
+                          }
+                          // Pressed with the keyboard (no click count): pressing the chosen button again clears it.
+                          if (on) {
+                            if (e.detail === 0) void unmark(w.id);
+                            else firstClick.current = `${key}:on`;
+                            return;
+                          }
+                          firstClick.current = key;
+                          void mark(w.id, { statusCode: c.statusCode, dayFraction: c.dayFraction });
+                        }}
+                        className={`min-h-11 min-w-11 touch-manipulation rounded-lg border px-2 text-sm font-semibold transition-colors disabled:opacity-50 md:min-h-9 md:min-w-9 ${on ? "border-roast bg-roast text-roast-ink" : "border-line bg-bg text-ink hover:bg-surface"}`}
                       >
                         {c.short}
                       </button>

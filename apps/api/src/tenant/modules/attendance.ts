@@ -170,6 +170,32 @@ export function applyAttendanceRecord(ctx: TenantContext, db: Db, meta: ApplyMet
   return { kind: "accepted", entityId: row.id, version: 1 };
 }
 
+/**
+ * Take a worker's mark off the register again (marked by mistake, or the worker did not come after all). Allowed while the day is a draft or still open;
+ * a day that is over needs a manager's removal with a reason. The removed entry stays in the history.
+ */
+export function applyAttendanceUnmark(ctx: TenantContext, db: Db, meta: ApplyMeta, reason: string): ApplyOutcome {
+  ctx.require("attendance.capture", meta.estateId);
+  const estate = getEstate(db, meta.estateId);
+  const before = db.select().from(attendanceRecords).where(eq(attendanceRecords.id, meta.entityId)).get();
+  // Already gone (a manager removed it first): the register is what the phone wanted, so there is nothing more to do.
+  if (!before) return { kind: "accepted", entityId: meta.entityId, version: meta.baseVersion };
+  if (before.estateId !== estate.id) throw new AppError(422, "ENTITY_MISMATCH", "This record belongs to another estate");
+  checkCaptureDate(ctx, estate, before.businessDate, meta.capturedAt, "attendance.correct");
+  if (before.version !== meta.baseVersion) throw staleVersion();
+  const sheet = db.select().from(attendanceSheets).where(eq(attendanceSheets.id, before.sheetId)).get();
+  if (!sheet) throw new Error("sheet missing");
+  if (editRequiresCorrection(sheet.state) && !dayStaysOpen(ctx, db, estate, before.businessDate)) {
+    throw new AppError(409, "SHEET_LOCKED", "This day's attendance has been submitted and the day is over. A manager must remove it.");
+  }
+  reopenSheet(ctx, db, sheet, meta.mutationId);
+  db.delete(attendanceRecords).where(eq(attendanceRecords.id, before.id)).run();
+  ctx.revision(db, "attendance_record", before.id, before.version + 1, before, "remove", reason, meta.mutationId);
+  ctx.audit(db, { action: "attendance.record.unmark", entityType: "attendance_record", entityId: before.id, estateId: before.estateId, reason, before, after: null, mutationId: meta.mutationId });
+  ctx.emit(db, "attendance.record.removed", "attendance_record", before.id, { estateId: before.estateId, businessDate: before.businessDate });
+  return { kind: "accepted", entityId: before.id, version: before.version + 1 };
+}
+
 /** OC-103 is open: never pick a winner. Keep both versions for a manager to decide. */
 function openConflict(ctx: TenantContext, db: Db, meta: ApplyMeta, server: typeof attendanceRecords.$inferSelect, incoming: Record<string, unknown>, message: string): ApplyOutcome {
   const conflictId = uuidv7();

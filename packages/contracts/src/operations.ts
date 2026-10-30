@@ -69,6 +69,7 @@ export const syncPush = z.object({
 /** Payload schema for each (entityType, op) the sync endpoint accepts. */
 export const MUTATION_PAYLOADS = {
   "attendance_record:upsert": attendanceRecordPayload,
+  "attendance_record:void": voidPayload,
   "attendance_sheet:submit": attendanceSheetSubmitPayload,
   "muster_entry:create": musterEntryPayload,
   "muster_entry:void": voidPayload,
