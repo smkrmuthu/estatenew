@@ -43,6 +43,7 @@ describe("tenant and estate isolation", () => {
       ["PUT", `/workers/${a.w1.id}`, { estateId: a.estate.id, employeeCode: "W001", name: "x" }],
       ["POST", `/workers/${a.w1.id}/delete`, { reason: "test reason" }],
       ["POST", `/fields/${a.f1.id}/delete`, { reason: "test reason" }],
+      ["GET", `/estates/${a.estate.id}/muster?from=2026-01-01&to=2026-01-31`],
       ["GET", `/audit?estateId=${a.estate.id}`],
       ["GET", `/audit/history?entityType=attendance_record&entityId=${m.entityId}&estateId=${a.estate.id}`],
     ];

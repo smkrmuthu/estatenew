@@ -1,6 +1,6 @@
 import type { MusterEntryPayload } from "@cemms/contracts";
 import { computeWeighIn, formatKg, parseKg, type TareMode, WeightError } from "@cemms/domain";
-import { and, eq } from "drizzle-orm";
+import { and, eq, gte, lte } from "drizzle-orm";
 import { AppError } from "../../core/errors";
 import { assertFound, type Db, staleVersion, type TenantContext } from "../context";
 import { fieldVarieties, musterEntries, varieties } from "../schema";
@@ -115,6 +115,22 @@ export function correctMuster(ctx: TenantContext, entryId: string, input: Core &
     ctx.emit(db, "muster.entry.corrected", "muster_entry", entryId, { estateId: before.estateId, businessDate: before.businessDate });
     return after;
   });
+}
+
+const MAX_RANGE_DAYS = 93;
+const dayNumber = (d: string) => Date.UTC(Number(d.slice(0, 4)), Number(d.slice(5, 7)) - 1, Number(d.slice(8, 10))) / 86_400_000;
+
+/** Weigh-ins over a range of days (both ends included), for the day table's From and To filter. */
+export function listMusterRange(ctx: TenantContext, estateId: string, from: string, to: string) {
+  ctx.require("muster.read", estateId);
+  getEstate(ctx.db, estateId);
+  if (from > to) throw new AppError(422, "RANGE_INVALID", "The From date cannot be after the To date", { from: "After the To date" });
+  if (dayNumber(to) - dayNumber(from) + 1 > MAX_RANGE_DAYS) throw new AppError(422, "RANGE_TOO_LONG", `Choose up to ${MAX_RANGE_DAYS} days at a time`, { to: "Too far from the From date" });
+  return ctx.db
+    .select()
+    .from(musterEntries)
+    .where(and(eq(musterEntries.estateId, estateId), gte(musterEntries.businessDate, from), lte(musterEntries.businessDate, to)))
+    .all();
 }
 
 export function listMuster(ctx: TenantContext, estateId: string, businessDate: string) {

@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useApp } from "../app-context";
 import { Button, Card, Field, Input, KpiStrip, Notice, Select } from "../components/ui";
-import { api } from "../lib/api";
+import { ApiError, api } from "../lib/api";
 import { useCrops } from "../lib/crops";
 import { db, EMPLOYMENT_LABEL, type LocalRecord } from "../lib/db";
 import { useLive } from "../lib/hooks";
@@ -15,6 +15,7 @@ import { type LogRow, WeighInLog } from "./WeighInLog";
 
 interface ServerEntry {
   id: string;
+  businessDate: string;
   workerId: string;
   fieldId: string;
   crop: string;
@@ -30,6 +31,67 @@ interface ServerEntry {
 }
 
 const KG_TEXT = /^\d{0,7}(\.\d{0,3})?$/;
+
+function buildRows(serverEntries: ServerEntry[], localRecords: LocalRecord[]): LogRow[] {
+  const out = new Map<string, LogRow>();
+  for (const e of serverEntries)
+    out.set(e.id, {
+      id: e.id,
+      businessDate: e.businessDate,
+      workerId: e.workerId,
+      fieldId: e.fieldId,
+      varietyId: e.varietyId ?? null,
+      crop: e.crop,
+      bags: e.bags,
+      remarks: e.remarks ?? null,
+      grossG: e.grossG,
+      tareG: e.tareG ?? 0,
+      netG: e.netG,
+      status: "accepted",
+      voided: e.status === "VOID",
+      version: e.version,
+    });
+  for (const r of localRecords) {
+    const d = r.data as {
+      workerId: string;
+      fieldId: string;
+      varietyId?: string | null;
+      crop: string;
+      bags?: number;
+      remarks?: string | null;
+      grossKg: string;
+      tareKg?: string | null;
+      status?: string;
+    };
+    if (out.has(r.entityId) && r.status === "accepted") continue;
+    let grossG: number | null = null;
+    let tareG: number | null = null;
+    let netG: number | null = null;
+    try {
+      grossG = parseKg(normalizeKg(d.grossKg));
+      tareG = d.tareKg ? parseKg(normalizeKg(d.tareKg)) : 0;
+      netG = grossG - tareG;
+    } catch {}
+    out.set(r.entityId, {
+      id: r.entityId,
+      businessDate: r.businessDate,
+      workerId: d.workerId,
+      fieldId: d.fieldId,
+      varietyId: d.varietyId ?? null,
+      crop: d.crop,
+      bags: d.bags ?? null,
+      remarks: d.remarks ?? null,
+      grossG,
+      tareG,
+      netG,
+      status: r.status,
+      voided: d.status === "VOID",
+      message: r.message,
+      version: r.nextBase,
+    });
+  }
+  return [...out.values()].reverse();
+}
 
 export function WeighIn() {
   const app = useApp();
@@ -153,64 +215,27 @@ export function WeighIn() {
     const weighed = new Set(active.map((e) => e.workerId)).size;
     return { kg: formatKg(g), entries: active.length, workers: weighed, perWorker: weighed ? formatKg(Math.round(g / weighed)) : "0.000" };
   }, [server.data]);
-  const rows = useMemo(() => {
-    const out = new Map<string, LogRow>();
-    for (const e of server.data ?? [])
-      out.set(e.id, {
-        id: e.id,
-        workerId: e.workerId,
-        fieldId: e.fieldId,
-        varietyId: e.varietyId ?? null,
-        crop: e.crop,
-        bags: e.bags,
-        remarks: e.remarks ?? null,
-        grossG: e.grossG,
-        tareG: e.tareG ?? 0,
-        netG: e.netG,
-        status: "accepted",
-        voided: e.status === "VOID",
-        version: e.version,
-      });
-    for (const r of local) {
-      const d = r.data as {
-        workerId: string;
-        fieldId: string;
-        varietyId?: string | null;
-        crop: string;
-        bags?: number;
-        remarks?: string | null;
-        grossKg: string;
-        tareKg?: string | null;
-        status?: string;
-      };
-      if (out.has(r.entityId) && r.status === "accepted") continue;
-      let grossG: number | null = null;
-      let tareG: number | null = null;
-      let netG: number | null = null;
-      try {
-        grossG = parseKg(normalizeKg(d.grossKg));
-        tareG = d.tareKg ? parseKg(normalizeKg(d.tareKg)) : 0;
-        netG = grossG - tareG;
-      } catch {}
-      out.set(r.entityId, {
-        id: r.entityId,
-        workerId: d.workerId,
-        fieldId: d.fieldId,
-        varietyId: d.varietyId ?? null,
-        crop: d.crop,
-        bags: d.bags ?? null,
-        remarks: d.remarks ?? null,
-        grossG,
-        tareG,
-        netG,
-        status: r.status,
-        voided: d.status === "VOID",
-        message: r.message,
-        version: r.nextBase,
-      });
-    }
-    return [...out.values()].reverse();
-  }, [server.data, local]);
+  const rows = useMemo(() => buildRows(server.data ?? [], local), [server.data, local]);
+
+  // The day table can show several days: From and To start at the day being recorded and follow it.
+  const [from, setFrom] = useState(date);
+  const [to, setTo] = useState(date);
+  useEffect(() => {
+    setFrom(date);
+    setTo(date);
+  }, [date, estateId]);
+  const range = useQuery({
+    queryKey: ["muster-range", estateId, from, to],
+    queryFn: () => api<ServerEntry[]>(`/estates/${estateId}/muster?from=${from}&to=${to}`),
+    enabled: app.online && !!estateId && app.can("muster.read") && from <= to,
+  });
+  const localRange = useLive(
+    () => db.records.where("[tenantId+entityType+estateId+businessDate]").between([tenantId, "muster_entry", estateId, from], [tenantId, "muster_entry", estateId, to], true, true).toArray(),
+    [tenantId, estateId, from, to],
+    [] as LocalRecord[],
+  );
+  const logRows = useMemo(() => buildRows(range.data ?? [], localRange), [range.data, localRange]);
+  const rangeProblem = range.error instanceof ApiError ? range.error.message : range.isError ? "The weigh-ins could not be loaded." : null;
 
   const weighedIds = useMemo(() => new Set(rows.filter((r) => !r.voided).map((r) => r.workerId)), [rows]);
   const weighedPluckers = pluckers.filter((w) => weighedIds.has(w.id)).length;
@@ -288,7 +313,7 @@ export function WeighIn() {
     void app.sync();
   }
 
-  async function cancelEntry(id: string, version: number, name: string) {
+  async function cancelEntry(id: string, version: number, name: string, businessDate: string) {
     const reason = window.prompt(`Why cancel this weigh-in for ${name}?`);
     if (!reason || reason.trim().length < 3) return;
     // Base the cancel on the server's current version: this phone's own copy may be older if the weigh-in was corrected since.
@@ -300,7 +325,7 @@ export function WeighIn() {
       entityType: "muster_entry",
       entityId: id,
       estateId,
-      businessDate: date,
+      businessDate,
       data: existing?.data ?? {},
       status: "accepted",
       serverVersion: version,
@@ -315,7 +340,7 @@ export function WeighIn() {
       entityType: "muster_entry",
       op: "void",
       estateId,
-      businessDate: date,
+      businessDate,
       entityId: id,
       payload: { reason: reason.trim() },
       label: `Cancel weigh-in: ${name}`,
@@ -521,25 +546,29 @@ export function WeighIn() {
       </Card>
 
       <WeighInLog
-        rows={rows}
+        rows={logRows}
         workers={workers}
         fields={fields}
         varieties={ref.varieties}
         pepper={pepper}
-        date={date}
-        onDateChange={app.setDate}
-        canEdit={(r) => !r.voided && r.status === "accepted" && app.can("muster.correct") && app.online && !!server.data?.some((e) => e.id === r.id)}
+        from={from}
+        to={to}
+        onRange={(f, t) => {
+          setFrom(f);
+          setTo(t);
+        }}
+        loading={range.isLoading}
+        problem={rangeProblem}
+        canEdit={(r) => !r.voided && r.status === "accepted" && app.can("muster.correct") && app.online && !!range.data?.some((e) => e.id === r.id)}
         canCancel={(r) => !r.voided && r.status === "accepted" && canCapture}
         onEdit={setCorrecting}
-        onCancel={(r, name) => cancelEntry(r.id, r.version, name)}
+        onCancel={(r, name) => cancelEntry(r.id, r.version, name, r.businessDate)}
       />
       {correcting &&
         (() => {
-          const entry = server.data?.find((e) => e.id === correcting);
+          const entry = range.data?.find((e) => e.id === correcting);
           if (!entry || !ref) return null;
-          return (
-            <CorrectWeighIn estateId={estateId} date={date} workerName={workers.find((w) => w.id === entry.workerId)?.name ?? "Worker"} entry={entry} ref={ref} onClose={() => setCorrecting(null)} />
-          );
+          return <CorrectWeighIn estateId={estateId} workerName={workers.find((w) => w.id === entry.workerId)?.name ?? "Worker"} entry={entry} ref={ref} onClose={() => setCorrecting(null)} />;
         })()}
     </div>
   );

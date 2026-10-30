@@ -26,21 +26,7 @@ export interface CorrectableEntry {
  * A manager's correction of one saved weigh-in. The old values stay in the history with the reason
  * and the time; the weights are worked out again on the server.
  */
-export function CorrectWeighIn({
-  estateId,
-  date,
-  workerName,
-  entry,
-  ref,
-  onClose,
-}: {
-  estateId: string;
-  date: string;
-  workerName: string;
-  entry: CorrectableEntry;
-  ref: ReferenceData;
-  onClose: () => void;
-}) {
+export function CorrectWeighIn({ estateId, workerName, entry, ref, onClose }: { estateId: string; workerName: string; entry: CorrectableEntry; ref: ReferenceData; onClose: () => void }) {
   const qc = useQueryClient();
   const fields = useMemo(() => ref.fields.filter((f) => f.estateId === estateId), [ref, estateId]);
   const [fieldId, setFieldId] = useState(entry.fieldId);
@@ -108,7 +94,8 @@ export function CorrectWeighIn({
         },
       });
       await Promise.all([
-        qc.invalidateQueries({ queryKey: ["muster", estateId, date] }),
+        qc.invalidateQueries({ queryKey: ["muster", estateId] }),
+        qc.invalidateQueries({ queryKey: ["muster-range"] }),
         qc.invalidateQueries({ queryKey: ["muster-days"] }),
         qc.invalidateQueries({ queryKey: ["dashboard"] }),
         qc.invalidateQueries({ queryKey: ["summary"] }),

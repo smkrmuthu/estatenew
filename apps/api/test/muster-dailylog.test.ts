@@ -81,6 +81,22 @@ describe("weigh-in (muster)", () => {
     expect(ref.rules.tareG).toBe(500);
   });
 
+  it("lists weigh-ins over a From and To range, refusing a backwards or very long range", async () => {
+    const s = await setupTenant();
+    const m = await mutation(s.supervisor.deviceId, s.estate.id, "muster_entry", "create", weigh(s));
+    expect((await push(s.supervisor, [m])).body.results[0].status).toBe("accepted");
+    const range = (from: string, to: string) => api(`/estates/${s.estate.id}/muster?from=${from}&to=${to}`, { token: s.supervisor.token });
+
+    const ago = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
+    const hit = await range(ago(5), today());
+    expect(hit.status).toBe(200);
+    expect((hit.body as { id: string; businessDate: string }[]).map((e) => [e.id, e.businessDate])).toEqual([[m.entityId, today()]]);
+    expect((await range(ago(60), ago(40))).body).toEqual([]);
+    expect((await range(today(), ago(5))).body).toMatchObject({ code: "RANGE_INVALID" });
+    expect((await range(ago(100), today())).body).toMatchObject({ code: "RANGE_TOO_LONG" });
+    expect((await api(`/estates/${s.estate.id}/muster?from=bad&to=${today()}`, { token: s.supervisor.token })).status).toBe(422);
+  });
+
   it("keeps Pepper off until it is switched on, and refuses pepper weigh-ins while it is off", async () => {
     const s = await setupTenant();
     const settingsOf = async () => ((await api("/admin/settings", { token: s.supervisor.token })).body as { key: string; value: unknown }[]).find((x) => x.key === "crops.enabled")?.value;

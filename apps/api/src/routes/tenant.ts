@@ -241,6 +241,11 @@ export function tenantRoutes(app: Hono<AppEnv>) {
     call("conflicts.resolve", async (c) => ({ id: p(c, "id"), body: await readJson(c) })),
   );
 
+  route(
+    app,
+    { method: "get", path: "/estates/:estateId/muster", summary: "Weigh-ins over a range of days (?from=&to=, up to 93 days)", tag: "muster", auth: "bearer", permission: "muster.read" },
+    call("muster.range", (c) => ({ estateId: p(c, "estateId"), from: c.req.query("from") ?? "", to: c.req.query("to") ?? "" })),
+  );
   route(app, { method: "get", path: "/estates/:estateId/muster/:date", summary: "Weigh-ins for a day", tag: "muster", auth: "bearer", permission: "muster.read" }, call("muster.list", day));
   route(
     app,

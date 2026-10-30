@@ -1,11 +1,12 @@
 import { formatKg } from "@cemms/domain";
 import { type ReactNode, useMemo, useState } from "react";
-import { Button, Card, FilterBar, FilterDate, FilterSearch, FilterSelect, StatusBadge } from "../components/ui";
+import { Button, Card, FilterBar, FilterDate, FilterSearch, FilterSelect, Notice, StatusBadge } from "../components/ui";
 import type { LocalRecord } from "../lib/db";
 
 /** One weigh-in as the day's table shows it: the server's copy, or this phone's copy while it waits. */
 export interface LogRow {
   id: string;
+  businessDate: string;
   workerId: string;
   fieldId: string;
   varietyId: string | null;
@@ -26,9 +27,10 @@ interface Named {
   name: string;
 }
 
-type SortKey = "worker" | "field" | "variety" | "bags" | "gross" | "tare" | "net" | "status";
+type SortKey = "date" | "worker" | "field" | "variety" | "bags" | "gross" | "tare" | "net" | "status";
 type Sort = { key: SortKey; dir: "asc" | "desc" } | null;
 
+const dayText = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 const kg = (g: number | null) => (g === null ? "?" : formatKg(g));
 const kgShort = (g: number) => `${(g / 1000).toLocaleString("en-IN", { maximumFractionDigits: 1 })} kg`;
 
@@ -60,8 +62,11 @@ export function WeighInLog({
   fields,
   varieties,
   pepper,
-  date,
-  onDateChange,
+  from,
+  to,
+  onRange,
+  loading,
+  problem,
   canEdit,
   canCancel,
   onEdit,
@@ -72,8 +77,11 @@ export function WeighInLog({
   fields: Named[];
   varieties: Named[];
   pepper: boolean;
-  date: string;
-  onDateChange: (d: string) => void;
+  from: string;
+  to: string;
+  onRange: (from: string, to: string) => void;
+  loading: boolean;
+  problem: string | null;
   canEdit: (r: LogRow) => boolean;
   canCancel: (r: LogRow) => boolean;
   onEdit: (id: string) => void;
@@ -103,9 +111,12 @@ export function WeighInLog({
       if (state === "PROBLEM") return r.status !== "accepted" && r.status !== "waiting";
       return true;
     });
-    if (!sort) return keep;
+    // Without a chosen sort, the latest day comes first and each day keeps its order (newest entry first).
+    if (!sort) return [...keep].sort((a, b) => (a.businessDate < b.businessDate ? 1 : a.businessDate > b.businessDate ? -1 : 0));
     const value = (r: LogRow): string | number => {
       switch (sort.key) {
+        case "date":
+          return r.businessDate;
         case "worker":
           return (workerOf(r.workerId)?.name ?? "").toLowerCase();
         case "field":
@@ -133,6 +144,7 @@ export function WeighInLog({
   }, [rows, q, field, variety, crop, state, sort, workers, fields, varieties]);
 
   const filtersOn = !!(q || field || variety || crop || state);
+  const manyDays = from !== to;
   // Totals and charts count only what the server has accepted; entries still on a phone are listed but not added up.
   const accepted = listed.filter((r) => r.status === "accepted" && !r.voided);
   const sum = (pick: (r: LogRow) => number | null) => accepted.reduce((s, r) => s + (pick(r) ?? 0), 0);
@@ -182,7 +194,10 @@ export function WeighInLog({
 
   return (
     <>
-      <Card title="Weigh-ins for the day" actions={<span className="hidden text-sm text-muted sm:inline">Tap a heading to sort</span>}>
+      <Card
+        title={manyDays ? "Weigh-ins" : "Weigh-ins for the day"}
+        actions={<span className="hidden text-sm text-muted sm:inline">{manyDays ? `${dayText(from)} to ${dayText(to)} · ` : ""}Tap a heading to sort</span>}
+      >
         <div className="mb-3">
           <FilterBar
             shown={listed.length}
@@ -197,7 +212,8 @@ export function WeighInLog({
               setState("");
             }}
           >
-            <FilterDate label="Date" value={date} onChange={onDateChange} />
+            <FilterDate label="From" value={from} onChange={(v) => onRange(v, v > to ? v : to)} />
+            <FilterDate label="To" value={to} onChange={(v) => onRange(v < from ? v : from, v)} />
             <FilterSearch label="Find a worker" value={q} onChange={setQ} placeholder="Name or code" />
             <FilterSelect label="Field" value={field} onChange={setField} options={[{ value: "", label: "All fields" }, ...fields.map((f) => ({ value: f.id, label: f.name }))]} />
             <FilterSelect
@@ -232,15 +248,20 @@ export function WeighInLog({
             />
           </FilterBar>
         </div>
-        {rows.length === 0 ? (
-          <p className="py-2 text-muted">No weigh-ins yet.</p>
+        {problem ? (
+          <Notice tone="bad">{problem}</Notice>
+        ) : loading && rows.length === 0 ? (
+          <p className="py-2 text-muted">Loading…</p>
+        ) : rows.length === 0 ? (
+          <p className="py-2 text-muted">{manyDays ? "No weigh-ins in these days." : "No weigh-ins yet."}</p>
         ) : listed.length === 0 ? (
           <p className="py-2 text-muted">No weigh-ins match these filters.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[56rem] text-sm">
+            <table className="w-full min-w-[60rem] text-sm">
               <thead className="border-b border-line">
                 <tr>
+                  {manyDays && head("date", "Date")}
                   {head("worker", "Worker")}
                   {head("field", "Field")}
                   {head("variety", "Variety")}
@@ -263,6 +284,7 @@ export function WeighInLog({
                   const cancelled = r.voided ? "line-through text-muted" : "";
                   return (
                     <tr key={r.id}>
+                      {manyDays && <td className={`whitespace-nowrap px-3 py-2 tabular-nums ${cancelled}`}>{dayText(r.businessDate)}</td>}
                       <td className={`px-3 py-2 ${cancelled}`}>
                         <span className="font-semibold">{w?.name ?? "Worker"}</span>
                         {w && <span className="ml-2 text-xs text-muted">{w.employeeCode}</span>}
@@ -302,7 +324,7 @@ export function WeighInLog({
               </tbody>
               <tfoot className="border-t border-line font-semibold">
                 <tr>
-                  <td className="px-3 py-2" colSpan={3}>
+                  <td className="px-3 py-2" colSpan={manyDays ? 4 : 3}>
                     Accepted total{filtersOn ? " of the rows shown" : ""} · {accepted.length} weigh-in{accepted.length === 1 ? "" : "s"}
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums">{sum((r) => r.bags)}</td>

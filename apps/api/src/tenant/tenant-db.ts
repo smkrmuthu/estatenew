@@ -99,6 +99,10 @@ const OPS = {
     run: (c: TenantContext, i: { id: string; body: z.infer<typeof conflictResolution> }) => attendance.resolveAttendanceConflict(c, i.id, i.body.keep, i.body.reason),
   },
   "muster.list": { input: day, run: (c: TenantContext, i: z.infer<typeof day>) => muster.listMuster(c, i.estateId, i.businessDate) },
+  "muster.range": {
+    input: z.object({ estateId: z.string(), from: z.string().refine(isBusinessDate), to: z.string().refine(isBusinessDate) }),
+    run: (c: TenantContext, i: { estateId: string; from: string; to: string }) => muster.listMusterRange(c, i.estateId, i.from, i.to),
+  },
   "muster.days": { input: day, run: (c: TenantContext, i: z.infer<typeof day>) => reports.musterDays(c, i.estateId, i.businessDate) },
   "muster.correct": { input: withId(musterCorrection), run: (c: TenantContext, i: { id: string; body: z.infer<typeof musterCorrection> }) => muster.correctMuster(c, i.id, i.body) },
   "dailylog.list": { input: day, run: (c: TenantContext, i: z.infer<typeof day>) => dailylog.listDailyLog(c, i.estateId, i.businessDate) },
