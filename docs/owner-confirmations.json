@@ -1,6 +1,6 @@
 {
   "generatedFrom": "Owner confirmation PDF and architecture document; edit this file, then run npm run docs:register",
-  "updated": "2026-10-29",
+  "updated": "2026-10-30",
   "items": [
     {
       "id": "OC-1",
@@ -1475,7 +1475,7 @@
       "affects": [
         "attendance.backEntry"
       ],
-      "interimBehavior": "Supervisors capture only for the current business date. Past days are changed by a correction with a reason by a user holding attendance.correct.",
+      "interimBehavior": "Today's register stays open until the day ends, even after Submit (ADR-0022); a new entry returns the day to draft until it is submitted again. A supervisor may also fill in or change as many earlier days as attendance.backEntryDays says (default 0; the project lead wants 1 on staging, 30 October 2026). Past those days a user holding attendance.correct corrects with a reason.",
       "configKeys": [
         "attendance.backEntryDays"
       ],

@@ -1,6 +1,6 @@
 # Owner Confirmation Register
 
-Generated from `docs/owner-confirmations.json` (updated 2026-10-29). Do not edit by hand; edit the JSON and run `npm run docs:register`.
+Generated from `docs/owner-confirmations.json` (updated 2026-10-30). Do not edit by hand; edit the JSON and run `npm run docs:register`.
 
 Rules: a ticked box or written comment from the owner is confirmed; a blank is open. Proposed defaults from the architecture document or the prototype are never treated as answers. Items marked **Blocks production** must be confirmed before the affected behaviour is switched on for a live tenant.
 
@@ -149,7 +149,7 @@ Rules: a ticked box or written comment from the owner is confirmed; a blank is o
 | OC-83 | When a pack has coffee from more than one harvest date, should the label show every date (Harvested 1 and 3 Oct 2026) or a date range (Harvested 1 to 3 Oct 2026)? |  | Open | 1B |  | Not used in Phase 1A. Keep configurable; do not activate proposed defaults. |
 | OC-84 | Does each worker have a fixed home field, or is the field chosen fresh each day (starting from the day before)? |  | Open | 1A |  | Each day starts from the previous day's field and job (process text, Q1). No fixed home field. |
 | OC-85 | Who keeps the lists of fields, workers and jobs up to date: the estate manager, the office, or the owner? |  | Open | 1A |  | Masters are maintained by users holding masters.write (Owner, Estate Manager). |
-| OC-86 | Can attendance for a past day be entered or corrected later? If yes, how many days back? |  | Open | 1A | Yes | Supervisors capture only for the current business date. Past days are changed by a correction with a reason by a user holding attendance.correct. |
+| OC-86 | Can attendance for a past day be entered or corrected later? If yes, how many days back? |  | Open | 1A | Yes | Today's register stays open until the day ends, even after Submit (ADR-0022); a new entry returns the day to draft until it is submitted again. A supervisor may also fill in or change as many earlier days as attendance.backEntryDays says (default 0; the project lead wants 1 on staging, 30 October 2026). Past those days a user holding attendance.correct corrects with a reason. |
 
 ## New checks and reports
 

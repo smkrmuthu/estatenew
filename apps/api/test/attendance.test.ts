@@ -1,4 +1,4 @@
-import { uuidv7 } from "@cemms/domain";
+import { addDays, uuidv7 } from "@cemms/domain";
 import { describe, expect, it } from "vitest";
 import { api, login, mutation, push, setupTenant, today } from "./helpers";
 
@@ -134,9 +134,20 @@ describe("attendance", () => {
     const submit = await mutation(s.supervisor.deviceId, s.estate.id, "attendance_sheet", "submit", { businessDate: d });
     expect((await push(s.supervisor, [submit])).body.results[0].status).toBe("accepted");
 
-    // After submission the phone can no longer change the day.
-    const late = await mutation(s.supervisor.deviceId, s.estate.id, "attendance_record", "upsert", present(s, s.w3.id), { entityId: r3.entityId, baseVersion: 1 });
-    expect((await push(s.supervisor, [late])).body.results[0]).toMatchObject({ status: "rejected", errorCode: "SHEET_LOCKED" });
+    // The day is still open, so a later entry is accepted. It sends the day back to draft until it is submitted again.
+    const late = await mutation(s.supervisor.deviceId, s.estate.id, "attendance_record", "upsert", present(s, s.w1.id, { remarks: "Added after submit" }), { entityId: r1.entityId, baseVersion: 2 });
+    expect((await push(s.supervisor, [late])).body.results[0]).toMatchObject({ status: "accepted", version: 3 });
+    const reopened = (await api(`/estates/${s.estate.id}/attendance/${d}`, { token: s.supervisor.token })).body;
+    expect(reopened).toMatchObject({ open: true, sheet: { state: "DRAFT", submittedAt: null } });
+    const again = await mutation(s.supervisor.deviceId, s.estate.id, "attendance_sheet", "submit", { businessDate: d });
+    expect((await push(s.supervisor, [again])).body.results[0].status).toBe("accepted");
+    // Submitting again with nothing new is harmless and changes nothing.
+    const sheetVersion = (await api(`/estates/${s.estate.id}/attendance/${d}`, { token: s.supervisor.token })).body.sheet.version;
+    const repeat = await mutation(s.supervisor.deviceId, s.estate.id, "attendance_sheet", "submit", { businessDate: d });
+    expect((await push(s.supervisor, [repeat])).body.results[0].status).toBe("accepted");
+    expect((await api(`/estates/${s.estate.id}/attendance/${d}`, { token: s.supervisor.token })).body.sheet).toMatchObject({ state: "SUBMITTED", version: sheetVersion });
+    const trail = (await api(`/audit?estateId=${s.estate.id}`, { token: s.owner.token })).body as { action: string; entityId: string; reason: string | null }[];
+    expect(trail.find((a) => a.action === "attendance.sheet.reopen" && a.entityId === reopened.sheet.id)?.reason).toMatch(/still open/);
 
     // A manager (owner here) approves, then corrects with a reason.
     expect((await api(`/estates/${s.estate.id}/attendance/${d}/actions`, { token: s.owner.token, body: { action: "return" } })).body.code).toBe("REASON_REQUIRED");
@@ -182,6 +193,34 @@ describe("attendance", () => {
     expect(removedHistory.map((h: { change: string }) => h.change)).toEqual(["create", "remove"]);
     expect(removedHistory[1].reason).toBe("Marked on the wrong worker");
     expect((await api(`/attendance-records/${r2.entityId}/removal`, { token: s.owner.token, body: { reason: "Again please", baseVersion: 1 } })).status).toBe(404);
+  });
+
+  it("a submitted day closes when its day is over, unless the back-entry days setting keeps it open", async () => {
+    const s = await setupTenant();
+    const yesterday = addDays(today(), -1);
+    const rec = (workerId: string) => ({ businessDate: yesterday, workerId, statusCode: "PRESENT", dayFraction: "FULL", fieldId: s.f1.id, jobTypeId: s.plk.id });
+    // A manager enters the missed day and submits it; it is approved on submit.
+    const first = await mutation(s.owner.deviceId, s.estate.id, "attendance_record", "upsert", rec(s.w1.id));
+    expect((await push(s.owner, [first])).body.results[0].status).toBe("accepted");
+    expect((await push(s.owner, [await mutation(s.owner.deviceId, s.estate.id, "attendance_sheet", "submit", { businessDate: yesterday })])).body.results[0].status).toBe("accepted");
+    const closed = (await api(`/estates/${s.estate.id}/attendance/${yesterday}`, { token: s.owner.token })).body;
+    expect(closed).toMatchObject({ open: false, sheet: { state: "APPROVED" } });
+
+    // The day is over: a new entry is refused and a repeat submit is refused too.
+    const late = await mutation(s.owner.deviceId, s.estate.id, "attendance_record", "upsert", rec(s.w2.id));
+    expect((await push(s.owner, [late])).body.results[0]).toMatchObject({ status: "rejected", errorCode: "SHEET_LOCKED" });
+    const resubmit = await mutation(s.owner.deviceId, s.estate.id, "attendance_sheet", "submit", { businessDate: yesterday });
+    expect((await push(s.owner, [resubmit])).body.results[0]).toMatchObject({ status: "rejected", errorCode: "SHEET_STATE" });
+
+    // One day back allowed (OC-86): the previous day takes entries again, and a supervisor may add them too.
+    expect((await api("/admin/settings/attendance.backEntryDays", { method: "PUT", token: s.owner.token, body: { value: 1 } })).status).toBe(200);
+    expect((await api(`/estates/${s.estate.id}/attendance/${yesterday}`, { token: s.supervisor.token })).body.open).toBe(true);
+    const lateAgain = await mutation(s.supervisor.deviceId, s.estate.id, "attendance_record", "upsert", rec(s.w2.id));
+    expect((await push(s.supervisor, [lateAgain])).body.results[0].status).toBe("accepted");
+    expect((await api(`/estates/${s.estate.id}/attendance/${yesterday}`, { token: s.owner.token })).body.sheet.state).toBe("DRAFT");
+    // Two days back is still closed to a supervisor.
+    const old = await mutation(s.supervisor.deviceId, s.estate.id, "attendance_record", "upsert", { ...rec(s.w3.id), businessDate: addDays(today(), -2) });
+    expect((await push(s.supervisor, [old])).body.results[0]).toMatchObject({ status: "rejected", errorCode: "DATE_NOT_ALLOWED" });
   });
 
   it("rejects proposed statuses, missing assignments and inactive references", async () => {

@@ -29,6 +29,8 @@ interface StatusDef {
 interface SheetResponse {
   otherShift?: { shift: "DAY" | "NIGHT"; present: { workerId: string; fieldId: string | null; jobTypeId: string | null; dayFraction: "FULL" | "HALF" | null }[] };
   sheet: { id: string | null; state: "DRAFT" | "SUBMITTED" | "APPROVED"; version: number; returnedReason?: string | null };
+  /** A submitted day still takes entries until its day is over (plus the back-entry days the estate allows). */
+  open?: boolean;
   records: ServerRecord[];
   prefill: { fromDate: string | null; assignments: { workerId: string; fieldId: string; jobTypeId: string; dayFraction: "FULL" | "HALF" | null }[] };
   statuses: StatusDef[];
@@ -119,6 +121,7 @@ export function Attendance() {
       if (stale.length) await db.records.bulkDelete(stale);
       await setMeta(`prefill:${estateId}:${date}:${shift}`, data.prefill);
       await setMeta(`sheet:${estateId}:${date}:${shift}`, data.sheet.state);
+      await setMeta(`sheetOpen:${estateId}:${date}:${shift}`, data.open ?? false);
       await setMeta(`statuses:${estateId}`, data.statuses);
     });
   }, [sheet.data, tenantId, estateId, date]);
@@ -134,7 +137,9 @@ export function Attendance() {
   const prefill = useLive(() => getMeta<Prefill>(`prefill:${estateId}:${date}:${shift}`), [estateId, date, shift], undefined);
   const cachedState = useLive(() => getMeta<SheetResponse["sheet"]["state"]>(`sheet:${estateId}:${date}:${shift}`), [estateId, date, shift], undefined);
   const cachedStatuses = useLive(() => getMeta<StatusDef[]>(`statuses:${estateId}`), [estateId], undefined);
+  const cachedOpen = useLive(() => getMeta<boolean>(`sheetOpen:${estateId}:${date}:${shift}`), [estateId, date, shift], undefined);
   const sheetState = sheet.data?.sheet.state ?? cachedState ?? "DRAFT";
+  const dayOpen = sheet.data?.open ?? cachedOpen ?? false;
   const statuses = sheet.data?.statuses ?? cachedStatuses ?? DEFAULT_STATUSES;
   const chips = CHIPS.filter((c) => c.statusCode === "PRESENT" || statuses.some((s) => s.code === c.statusCode && s.active));
 
@@ -170,9 +175,10 @@ export function Attendance() {
     [session.user.id, estateId, date, shift],
     false,
   );
-  const submitted = sheetState !== "DRAFT" || submitWaiting;
-  const locked = submitted;
+  /** Submitted and the day is over: only a manager's correction changes it. While the day is open, new entries are still taken. */
+  const locked = (sheetState !== "DRAFT" || submitWaiting) && !dayOpen;
   const canCapture = app.can("attendance.capture") && !locked;
+  const hasWaiting = local.some((r) => r.status === "waiting");
 
   /** What the register shows for a worker: the saved record, or a present mark still missing its field or job. */
   const viewOf = (workerId: string) => {
@@ -312,8 +318,13 @@ export function Attendance() {
   }
 
   async function submitDay() {
+    if (dayOpen && sheetState !== "DRAFT" && !hasWaiting) {
+      setMessage({ tone: "ok", text: "Everything marked so far is already submitted. Add more attendance, then submit again." });
+      return;
+    }
     const extra = counts.none ? ` ${counts.none} workers are not marked and will be left out.` : "";
-    if (!window.confirm(`Submit ${shift === "NIGHT" ? "night " : ""}attendance for ${date}? After this, changes need a manager.${extra}`)) return;
+    const after = dayOpen ? "You can still add more while this day is open; anything added needs a new Submit." : "After this, changes need a manager.";
+    if (!window.confirm(`Submit ${shift === "NIGHT" ? "night " : ""}attendance for ${date}? ${after}${extra}`)) return;
     await queueChange({
       tenantId,
       userId: session.user.id,
@@ -418,20 +429,22 @@ export function Attendance() {
           {app.can("attendance.submit") && (
             <Button
               onClick={submitDay}
-              disabled={submitted || counts.P + counts.H + counts.A + counts.O === 0}
-              title={submitted ? "This day is already submitted. New entries are closed." : counts.P + counts.H + counts.A + counts.O === 0 ? "Mark at least one worker first." : undefined}
+              disabled={locked || counts.P + counts.H + counts.A + counts.O === 0}
+              title={locked ? "This day is submitted and over. New entries are closed." : counts.P + counts.H + counts.A + counts.O === 0 ? "Mark at least one worker first." : undefined}
             >
-              {submitWaiting && sheetState === "DRAFT"
-                ? "Submitted (waiting to sync)"
-                : sheetState === "APPROVED"
-                  ? "Submitted and approved"
-                  : sheetState === "SUBMITTED"
-                    ? "Submitted"
-                    : counts.none && shift === "DAY"
-                      ? `Submit (${counts.none} not marked)`
-                      : app.can("attendance.approve")
-                        ? "Submit and approve"
-                        : "Submit for approval"}
+              {locked
+                ? submitWaiting && sheetState === "DRAFT"
+                  ? "Submitted (waiting to sync)"
+                  : sheetState === "APPROVED"
+                    ? "Submitted and approved"
+                    : "Submitted"
+                : dayOpen && sheetState !== "DRAFT" && !hasWaiting
+                  ? "Submit again"
+                  : counts.none && shift === "DAY"
+                    ? `Submit (${counts.none} not marked)`
+                    : app.can("attendance.approve")
+                      ? "Submit and approve"
+                      : "Submit for approval"}
             </Button>
           )}
           {app.can("attendance.approve") && app.online && sheetState === "SUBMITTED" && (
@@ -468,7 +481,12 @@ export function Attendance() {
           <p className="mt-3 text-sm text-muted">
             {sheetState === "DRAFT"
               ? "This day is submitted on this phone and waits to reach the office. No new entries can be added."
-              : `This day is ${sheetState === "SUBMITTED" ? "submitted" : "approved"}. No new entries can be added. Changes go through a manager's correction with a reason; the old entry is kept in the history.`}
+              : `This day is ${sheetState === "SUBMITTED" ? "submitted" : "approved"} and over. No new entries can be added. Changes go through a manager's correction with a reason; the old entry is kept in the history.`}
+          </p>
+        )}
+        {!locked && dayOpen && sheetState !== "DRAFT" && (
+          <p className="mt-3 text-sm text-muted">
+            This day is {sheetState === "SUBMITTED" ? "submitted" : "approved"} and still open. You can add or change entries; they send the day back to draft until you submit again.
           </p>
         )}
 

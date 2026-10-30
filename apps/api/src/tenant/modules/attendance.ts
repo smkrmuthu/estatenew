@@ -1,5 +1,16 @@
 import type { AttendanceRecordPayload } from "@cemms/contracts";
-import { type AttendanceStatusDef, DEFAULT_ATTENDANCE_STATUSES, editRequiresCorrection, normalizeAttendanceRecord, type SheetState, type Shift, transitionSheet, uuidv7 } from "@cemms/domain";
+import {
+  type AttendanceStatusDef,
+  addDays,
+  businessDateAt,
+  DEFAULT_ATTENDANCE_STATUSES,
+  editRequiresCorrection,
+  normalizeAttendanceRecord,
+  type SheetState,
+  type Shift,
+  transitionSheet,
+  uuidv7,
+} from "@cemms/domain";
 import { and, desc, eq, lt, ne } from "drizzle-orm";
 import { AppError } from "../../core/errors";
 import { assertFound, type Db, staleVersion, type TenantContext } from "../context";
@@ -23,6 +34,34 @@ function sheetFor(db: Db, ctx: TenantContext, estateId: string, businessDate: st
   const row = { id: uuidv7(), tenantId: ctx.scope.tenantId, estateId, businessDate, shift, state: "DRAFT" as SheetState, version: 1, createdAt: ctx.nowIso(), updatedAt: ctx.nowIso() };
   db.insert(attendanceSheets).values(row).run();
   return { ...row, submittedAt: null, submittedBy: null, approvedAt: null, approvedBy: null, returnedReason: null };
+}
+
+/**
+ * A submitted day still takes entries until its business day ends (estate time), and for as many earlier days as the tenant allows
+ * (`attendance.backEntryDays`, OC-86). After that only a manager's correction with a reason changes it.
+ */
+export function dayStaysOpen(ctx: TenantContext, db: Db, estate: typeof estates.$inferSelect, businessDate: string): boolean {
+  const today = businessDateAt(ctx.clock(), estate.timeZone);
+  return businessDate <= today && businessDate >= addDays(today, -setting(db, "attendance.backEntryDays"));
+}
+
+/** An entry added or changed on a submitted day that is still open sends the day back to draft, so it has to be submitted (and approved) again. */
+function reopenSheet(ctx: TenantContext, db: Db, sheet: typeof attendanceSheets.$inferSelect, mutationId: string) {
+  if (sheet.state === "DRAFT") return;
+  const now = ctx.nowIso();
+  const after = { ...sheet, state: "DRAFT" as SheetState, submittedAt: null, submittedBy: null, approvedAt: null, approvedBy: null, version: sheet.version + 1, updatedAt: now };
+  db.update(attendanceSheets).set(after).where(eq(attendanceSheets.id, sheet.id)).run();
+  ctx.audit(db, {
+    action: "attendance.sheet.reopen",
+    entityType: "attendance_sheet",
+    entityId: sheet.id,
+    estateId: sheet.estateId,
+    reason: "Entries were added or changed while the day is still open",
+    before: sheet,
+    after,
+    mutationId,
+  });
+  ctx.emit(db, "attendance.sheet.reopened", "attendance_sheet", sheet.id, { estateId: sheet.estateId, businessDate: sheet.businessDate, shift: sheet.shift });
 }
 
 function validateRecord(db: Db, estateId: string, payload: Pick<AttendanceRecordPayload, "statusCode" | "dayFraction" | "fieldId" | "jobTypeId" | "remarks">) {
@@ -81,7 +120,8 @@ export function applyAttendanceRecord(ctx: TenantContext, db: Db, meta: ApplyMet
   }
   const sheet = sheetFor(db, ctx, estate.id, payload.businessDate, shift, true);
   if (!sheet) throw new Error("sheet missing");
-  if (editRequiresCorrection(sheet.state)) throw new AppError(409, "SHEET_LOCKED", "This day's attendance has been submitted. A manager must correct it.");
+  const stillOpen = dayStaysOpen(ctx, db, estate, payload.businessDate);
+  if (editRequiresCorrection(sheet.state) && !stillOpen) throw new AppError(409, "SHEET_LOCKED", "This day's attendance has been submitted and the day is over. A manager must correct it.");
   const now = ctx.nowIso();
   const byId = db.select().from(attendanceRecords).where(eq(attendanceRecords.id, meta.entityId)).get();
   const data = { ...normalized, businessDate: payload.businessDate, shift, workerId: payload.workerId };
@@ -91,6 +131,7 @@ export function applyAttendanceRecord(ctx: TenantContext, db: Db, meta: ApplyMet
       throw new AppError(422, "ENTITY_MISMATCH", "This record belongs to another worker or day");
     }
     if (byId.version !== meta.baseVersion) return openConflict(ctx, db, meta, byId, data, "Changed on another device since this phone last synced");
+    reopenSheet(ctx, db, sheet, meta.mutationId);
     const after = { ...byId, ...normalized, capturedBy: ctx.scope.userId, deviceId: ctx.scope.deviceId, capturedAt: meta.capturedAt, receivedAt: now, version: byId.version + 1 };
     db.update(attendanceRecords).set(after).where(eq(attendanceRecords.id, byId.id)).run();
     ctx.revision(db, "attendance_record", byId.id, after.version, after, "update", null, meta.mutationId);
@@ -109,6 +150,7 @@ export function applyAttendanceRecord(ctx: TenantContext, db: Db, meta: ApplyMet
     )
     .get();
   if (sameWorker) return openConflict(ctx, db, meta, sameWorker, data, "This worker already has attendance for this day from another entry");
+  reopenSheet(ctx, db, sheet, meta.mutationId);
   const row = {
     id: meta.entityId,
     tenantId: ctx.scope.tenantId,
@@ -163,10 +205,14 @@ function openConflictsFor(db: Db, estateId: string, businessDate: string, shift:
 
 export function applySheetSubmit(ctx: TenantContext, db: Db, meta: ApplyMeta, businessDate: string, shift: Shift = "DAY"): ApplyOutcome {
   ctx.require("attendance.submit", meta.estateId);
-  getEstate(db, meta.estateId);
+  const estate = getEstate(db, meta.estateId);
   const sheet = sheetFor(db, ctx, meta.estateId, businessDate, shift, true);
   if (!sheet) throw new Error("sheet missing");
-  if (sheet.state !== "DRAFT") throw new AppError(409, "SHEET_STATE", "This day's attendance was already submitted");
+  if (sheet.state !== "DRAFT") {
+    // Submitting again while the day is open and nothing has changed since is harmless: there is nothing new to hand in.
+    if (dayStaysOpen(ctx, db, estate, businessDate)) return { kind: "accepted", entityId: sheet.id, version: sheet.version };
+    throw new AppError(409, "SHEET_STATE", "This day's attendance was already submitted");
+  }
   const count = db.select().from(attendanceRecords).where(eq(attendanceRecords.sheetId, sheet.id)).all().length;
   if (count === 0) throw new AppError(422, "SHEET_EMPTY", "Mark at least one worker before submitting");
   const now = ctx.nowIso();
@@ -205,7 +251,7 @@ export function applySheetSubmit(ctx: TenantContext, db: Db, meta: ApplyMeta, bu
 
 export function getSheet(ctx: TenantContext, estateId: string, businessDate: string, shift: Shift = "DAY") {
   ctx.require("attendance.read", estateId);
-  getEstate(ctx.db, estateId);
+  const estate = getEstate(ctx.db, estateId);
   const sheet = sheetFor(ctx.db, ctx, estateId, businessDate, shift, false);
   const records = sheet ? ctx.db.select().from(attendanceRecords).where(eq(attendanceRecords.sheetId, sheet.id)).all() : [];
   // Each day starts from the previous recorded day's field and job (process text, OC-1).
@@ -243,6 +289,8 @@ export function getSheet(ctx: TenantContext, estateId: string, businessDate: str
   return {
     otherShift: { shift: otherShift, present: other },
     sheet: sheet ?? { id: null, estateId, businessDate, shift, state: "DRAFT" as SheetState, version: 0 },
+    /** True while a submitted day still takes new entries (until the end of the day, plus the back-entry days). */
+    open: dayStaysOpen(ctx, ctx.db, estate, businessDate),
     records,
     prefill: { fromDate: previous?.businessDate ?? null, assignments: prefill },
     statuses: enabledStatuses(ctx.db),

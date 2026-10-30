@@ -180,6 +180,21 @@ function AttendanceTypes() {
   const entry = settings.data?.find((x) => x.key === "attendance.statuses.enabled");
   const enabled = (entry?.value as string[] | undefined) ?? ["PRESENT", "ABSENT"];
   const [note, setNote] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
+  const savedBack = (settings.data?.find((x) => x.key === "attendance.backEntryDays")?.value as number | undefined) ?? 0;
+  const [pickedBack, setPickedBack] = useState<number | null>(null);
+  const backDays = pickedBack ?? savedBack;
+  const setBackDays = async (n: number) => {
+    setPickedBack(n);
+    try {
+      await api("/admin/settings/attendance.backEntryDays", { method: "PUT", body: { value: n } });
+      setNote({ tone: "ok", text: n === 0 ? "Saved. Only today's register takes entries." : `Saved. A supervisor can also fill in or change the ${n === 1 ? "day before" : `${n} days before`}.` });
+      await qc.invalidateQueries({ queryKey: ["settings"] });
+      await qc.invalidateQueries({ queryKey: ["sheet"] });
+    } catch (e) {
+      setPickedBack(null);
+      setNote({ tone: "bad", text: msg(e) });
+    }
+  };
   const toggle = async (code: string, on: boolean) => {
     const next = Object.keys(TYPE_LABEL).filter((c) => (c === code ? on : enabled.includes(c)));
     try {
@@ -212,6 +227,27 @@ function AttendanceTypes() {
           </li>
         ))}
       </ul>
+      <div className="mt-3 border-t border-line pt-3">
+        <label className="flex flex-wrap items-center gap-2">
+          <span className="text-sm font-semibold">Earlier days a supervisor may still fill in or change</span>
+          <select
+            className="min-h-11 rounded-lg border border-line bg-surface px-2"
+            aria-label="Earlier days a supervisor may still fill in or change"
+            value={backDays}
+            disabled={!app.canAny("settings.configure") || !app.online}
+            onChange={(e) => setBackDays(Number(e.target.value))}
+          >
+            {[0, 1, 2, 3].map((n) => (
+              <option key={n} value={n}>
+                {n === 0 ? "Today only" : n === 1 ? "Today and the day before" : `Today and the ${n} days before`}
+              </option>
+            ))}
+          </select>
+        </label>
+        <p className="mt-1 text-sm text-muted">
+          Today's register always stays open until the day ends, even after Submit. This adds earlier days (question OC-86). The live site refuses anything above "Today only" until the owner confirms.
+        </p>
+      </div>
       {note && <Notice tone={note.tone}>{note.text}</Notice>}
     </Card>
   );
