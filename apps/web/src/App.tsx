@@ -265,6 +265,30 @@ function UpdateBanner() {
   });
   const [blocked, setBlocked] = useState(false);
 
+  /**
+   * The Update now button. The usual switch-over does nothing when this tab was loaded without the service worker (a hard
+   * reload) or another tab already took the update, so the banner just stayed. If the normal switch has not reloaded the page
+   * after two seconds, replace the stored copy of the app and load it fresh. Saved data is in IndexedDB, not in that copy.
+   * Offline the stored copy is kept, because the app could not load without it.
+   */
+  async function updateNow() {
+    const reload = () => window.location.reload();
+    navigator.serviceWorker?.addEventListener("controllerchange", reload, { once: true });
+    window.setTimeout(async () => {
+      try {
+        if (navigator.onLine) {
+          await (await navigator.serviceWorker?.getRegistration())?.unregister();
+          for (const key of await caches.keys()) await caches.delete(key);
+        }
+      } catch {}
+      reload();
+    }, 2000);
+    try {
+      await updateServiceWorker(true);
+    } catch {}
+    (await navigator.serviceWorker?.getRegistration())?.waiting?.postMessage({ type: "SKIP_WAITING" });
+  }
+
   // A new version loads by itself as soon as nobody is in the middle of typing. Saved data is on the phone, so a reload loses nothing.
   useEffect(() => {
     if (!needRefresh) return;
@@ -282,7 +306,7 @@ function UpdateBanner() {
     <div className="fixed inset-x-4 bottom-24 z-20 sm:bottom-6">
       <Notice>
         A new version is ready and will load as soon as you save or clear what you are typing.{" "}
-        <Button size="sm" onClick={() => updateServiceWorker(true)}>
+        <Button size="sm" onClick={() => void updateNow()}>
           Update now
         </Button>
       </Notice>
