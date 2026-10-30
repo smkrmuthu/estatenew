@@ -204,7 +204,9 @@ export function WeighIn() {
       }),
     [workers, dayMarks, pluckingJobs],
   );
-  const otherWorkers = useMemo(() => workers.filter((w) => !pluckers.some((p) => p.id === w.id)), [workers, pluckers]);
+  /** Only people marked present in the day register are listed; "Show all workers" is for someone whose attendance was missed. */
+  const [showAllWorkers, setShowAllWorkers] = useState(false);
+  const otherWorkers = useMemo(() => workers.filter((w) => !pluckers.some((p) => p.id === w.id) && (showAllWorkers || dayMarks.has(w.id))), [workers, pluckers, dayMarks, showAllWorkers]);
   const local = useLive(
     () => db.records.where("[tenantId+entityType+estateId+businessDate]").equals([tenantId, "muster_entry", estateId, date]).toArray(),
     [tenantId, estateId, date],
@@ -393,11 +395,11 @@ export function WeighIn() {
             label="Worker"
             htmlFor="worker"
             hint={
-              pluckers.length
-                ? "A tick means already weighed today"
-                : pluckingJobs.size
-                  ? "No one is marked present for plucking yet, so every worker is listed"
-                  : "No job is marked as plucking in Masters, so every worker is listed"
+              showAllWorkers
+                ? "Every worker is listed. A tick means already weighed today"
+                : pluckers.length + otherWorkers.length
+                  ? "Only workers marked present today. A tick means already weighed"
+                  : "No one is marked present today yet. Mark attendance first"
             }
           >
             <Select id="worker" value={workerId} onChange={(e) => (e.target.value ? pickWorker(e.target.value) : setWorkerId(""))}>
@@ -414,7 +416,7 @@ export function WeighIn() {
                 </optgroup>
               )}
               {otherWorkers.length > 0 && (
-                <optgroup label={pluckers.length ? "Other workers" : "Workers"}>
+                <optgroup label={showAllWorkers ? "Other workers" : "Present on other jobs"}>
                   {otherWorkers.map((w) => (
                     <option key={w.id} value={w.id}>
                       {w.employeeCode} · {w.name}
@@ -425,6 +427,9 @@ export function WeighIn() {
                 </optgroup>
               )}
             </Select>
+            <button type="button" className="self-start text-sm font-medium text-info underline" onClick={() => setShowAllWorkers((v) => !v)}>
+              {showAllWorkers ? "Show only present workers" : "Worker missing? Show all workers"}
+            </button>
           </Field>
           <Field label="Field" htmlFor="field" hint={fieldFromAttendance && fieldId && fieldId === (worker ? attendanceField(worker.id) : null) ? "Field from this morning's attendance" : undefined}>
             <Select
