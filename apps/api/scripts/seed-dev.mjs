@@ -31,9 +31,9 @@ const estates = flag("estates", "EST1:North Estate,EST2:South Estate")
 const usersFile = new URL(`../.secrets.staging-${tenant}-users.json`, import.meta.url);
 const randomPassword = () => Buffer.from(crypto.getRandomValues(new Uint8Array(18))).toString("base64url");
 const saved = !local && existsSync(usersFile) ? JSON.parse(readFileSync(usersFile, "utf8")) : {};
-const call = async (path, { body, token, headers = {} } = {}) => {
+const call = async (path, { body, token, headers = {}, method } = {}) => {
   const res = await fetch(`${base}/api/v1${path}`, {
-    method: body ? "POST" : "GET",
+    method: method ?? (body ? "POST" : "GET"),
     headers: { origin, ...(body ? { "content-type": "application/json" } : {}), ...(token ? { authorization: `Bearer ${token}` } : {}), ...headers },
     body: body ? JSON.stringify(body) : undefined,
   });
@@ -117,6 +117,8 @@ await call("/job-types", { token, body: { code: "PLK", name: "Plucking", countsA
   if (!String(e).includes("409")) throw e;
 });
 await imp("job_types", ["code,name", "PRN,Pruning", "WED,Weeding"]);
+// The fixtures include pepper fields, and Pepper is off by default, so switch it on for this synthetic tenant first.
+await call("/admin/settings/crops.enabled", { method: "PUT", token, body: { value: ["COFFEE", "PEPPER"] } });
 await imp("fields", [
   "estate_code,code,name,area_acres,crops,varieties",
   `${e1},N1,Block 1,10,COFFEE;PEPPER,VAR1;PEP1`,

@@ -1,6 +1,6 @@
 import { formatKg } from "@cemms/domain";
 import { type ReactNode, useMemo, useState } from "react";
-import { Button, Card, FilterBar, FilterSearch, FilterSelect, StatusBadge } from "../components/ui";
+import { Button, Card, FilterBar, FilterDate, FilterSearch, FilterSelect, StatusBadge } from "../components/ui";
 import type { LocalRecord } from "../lib/db";
 
 /** One weigh-in as the day's table shows it: the server's copy, or this phone's copy while it waits. */
@@ -60,6 +60,8 @@ export function WeighInLog({
   fields,
   varieties,
   pepper,
+  date,
+  onDateChange,
   canEdit,
   canCancel,
   onEdit,
@@ -70,6 +72,8 @@ export function WeighInLog({
   fields: Named[];
   varieties: Named[];
   pepper: boolean;
+  date: string;
+  onDateChange: (d: string) => void;
   canEdit: (r: LogRow) => boolean;
   canCancel: (r: LogRow) => boolean;
   onEdit: (id: string) => void;
@@ -193,6 +197,7 @@ export function WeighInLog({
               setState("");
             }}
           >
+            <FilterDate label="Date" value={date} onChange={onDateChange} />
             <FilterSearch label="Find a worker" value={q} onChange={setQ} placeholder="Name or code" />
             <FilterSelect label="Field" value={field} onChange={setField} options={[{ value: "", label: "All fields" }, ...fields.map((f) => ({ value: f.id, label: f.name }))]} />
             <FilterSelect

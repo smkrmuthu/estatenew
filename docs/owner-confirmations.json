@@ -273,7 +273,7 @@
       "affects": [
         "data.readiness"
       ],
-      "interimBehavior": "Worker list not yet received; CSV import is ready. Go-live needs the real list.",
+      "interimBehavior": "Glazebrooke's worker list (36 workers) was received as an Excel sheet and loaded into staging on 28 October 2026 (ADR-0012). Byson Valley's list has not been received. CSV import is ready; production gets the lists by CSV import. The owner has not answered on the form.",
       "configKeys": [],
       "source": "Coffee Estate Application - Process Confirmation for Estate Owner (23 Oct 2026), answers as exported 27 Oct 2026",
       "approver": null,

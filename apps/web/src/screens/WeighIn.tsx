@@ -355,7 +355,14 @@ export function WeighIn() {
       <Card title="Record weigh-ins" actions={<span className="text-sm text-muted">{pluckers.length ? `${weighedPluckers} of ${pluckers.length} pluckers weighed` : date}</span>}>
         {!canCapture && <Notice tone="warn">You can view weigh-ins but not record them.</Notice>}
         {saved && <Notice tone="ok">{saved}</Notice>}
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 wide:grid-cols-[minmax(12rem,1.5fr)_minmax(9rem,1fr)_minmax(9rem,1fr)_8rem_19rem_auto]">
+        <div
+          className={`grid items-start gap-3 sm:grid-cols-2 xl:grid-cols-4 ${
+            pepper ? "wide:grid-cols-[10rem_minmax(12rem,1.5fr)_minmax(9rem,1fr)_11rem_minmax(9rem,1fr)_9rem]" : "wide:grid-cols-[10rem_minmax(12rem,1.5fr)_minmax(9rem,1fr)_minmax(9rem,1fr)_9rem]"
+          }`}
+        >
+          <Field label="Date" htmlFor="entry-date" hint="Today unless you change it">
+            <Input id="entry-date" type="date" value={date} onChange={(e) => e.target.value && app.setDate(e.target.value)} />
+          </Field>
           <Field
             label="Worker"
             htmlFor="worker"
@@ -477,40 +484,38 @@ export function WeighIn() {
               onChange={(e) => KG_TEXT.test(e.target.value) && setGross(e.target.value)}
             />
           </Field>
-          <div className="grid grid-cols-2 gap-3 wide:grid-cols-[11rem_1fr]">
-            <Field label="Bags" htmlFor="bags">
-              <div className="flex items-center gap-2">
-                <Button variant="secondary" aria-label="One bag less" onClick={() => setBags(Math.max(0, bags - 1))}>
-                  −
-                </Button>
-                <Input id="bags" inputMode="numeric" className="text-center" value={bags} onChange={(e) => setBags(Math.min(100, Number(e.target.value.replace(/\D/g, "")) || 0))} />
-                <Button variant="secondary" aria-label="One bag more" onClick={() => setBags(Math.min(100, bags + 1))}>
-                  +
-                </Button>
-              </div>
-            </Field>
-            <Field
-              label="Tare (kg)"
-              htmlFor="tare"
-              error={preview.tareError ?? undefined}
-              hint={canSetTare ? "Taken off this weigh-in. Change it only if this one differs." : "Set by your manager in Masters"}
-            >
-              <Input id="tare" inputMode="decimal" placeholder="0" value={tare} readOnly={!canSetTare} onChange={(e) => KG_TEXT.test(e.target.value) && setTare(e.target.value)} />
-            </Field>
-          </div>
-          <div className="wide:order-1 wide:col-span-2">
-            <Field label="Remark (optional)" htmlFor="remarks">
-              <Input id="remarks" maxLength={500} value={remarks} onChange={(e) => setRemarks(e.target.value)} />
-            </Field>
-          </div>
-          <div className="flex items-center justify-between gap-3 sm:col-span-2 wide:col-span-1 wide:mt-[1.6rem] wide:gap-5">
-            <p className="text-lg">
-              Net: <strong className="text-2xl">{preview.net ?? "–"}</strong> kg
-            </p>
-            <Button size="lg" disabled={!canCapture || !worker || !field || !preview.net || ((needsVariety || varietyRequired) && !varietyId)} onClick={save}>
-              Save and next worker
-            </Button>
-          </div>
+        </div>
+        <div className="mt-3 grid items-start gap-3 sm:grid-cols-2 wide:grid-cols-[11rem_9rem_9rem_minmax(14rem,28rem)]">
+          <Field label="Bags" htmlFor="bags">
+            <div className="flex items-center gap-2">
+              <Button variant="secondary" aria-label="One bag less" onClick={() => setBags(Math.max(0, bags - 1))}>
+                −
+              </Button>
+              <Input id="bags" inputMode="numeric" className="text-center" value={bags} onChange={(e) => setBags(Math.min(100, Number(e.target.value.replace(/\D/g, "")) || 0))} />
+              <Button variant="secondary" aria-label="One bag more" onClick={() => setBags(Math.min(100, bags + 1))}>
+                +
+              </Button>
+            </div>
+          </Field>
+          <Field
+            label="Bag wt (kg)"
+            htmlFor="tare"
+            error={preview.tareError ?? undefined}
+            hint={canSetTare ? "Taken off this weigh-in. Change it only if this one differs." : "Set by your manager in Masters"}
+          >
+            <Input id="tare" inputMode="decimal" placeholder="0" value={tare} readOnly={!canSetTare} onChange={(e) => KG_TEXT.test(e.target.value) && setTare(e.target.value)} />
+          </Field>
+          <Field label="Nett wt (kg)" htmlFor="nett" hint="Gross weight minus bag wt">
+            <Input id="nett" readOnly aria-live="polite" className="font-semibold tabular-nums" value={preview.net ?? "–"} />
+          </Field>
+          <Field label="Remark (optional)" htmlFor="remarks">
+            <Input id="remarks" maxLength={500} value={remarks} onChange={(e) => setRemarks(e.target.value)} />
+          </Field>
+        </div>
+        <div className="mt-4 flex justify-end">
+          <Button size="lg" disabled={!canCapture || !worker || !field || !preview.net || ((needsVariety || varietyRequired) && !varietyId)} onClick={save}>
+            Save and next worker
+          </Button>
         </div>
         {worker && field && preview.net && (needsVariety || varietyRequired) && !varietyId && <p className="mt-3 text-sm text-bad">Pick the variety before saving.</p>}
       </Card>
@@ -521,6 +526,8 @@ export function WeighIn() {
         fields={fields}
         varieties={ref.varieties}
         pepper={pepper}
+        date={date}
+        onDateChange={app.setDate}
         canEdit={(r) => !r.voided && r.status === "accepted" && app.can("muster.correct") && app.online && !!server.data?.some((e) => e.id === r.id)}
         canCancel={(r) => !r.voided && r.status === "accepted" && canCapture}
         onEdit={setCorrecting}

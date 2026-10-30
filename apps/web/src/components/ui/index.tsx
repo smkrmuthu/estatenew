@@ -226,6 +226,19 @@ export function FilterSearch({ label, value, onChange, placeholder }: { label: s
   );
 }
 
+/** A labelled date box used in a filter bar. */
+export function FilterDate({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  const id = useId();
+  return (
+    <div className="flex min-w-36 flex-col gap-1">
+      <label htmlFor={id} className="text-xs font-semibold text-muted">
+        {label}
+      </label>
+      <Input id={id} type="date" value={value} onChange={(e) => e.target.value && onChange(e.target.value)} />
+    </div>
+  );
+}
+
 /** A row of filters with a count of what is shown and a way to clear them. */
 export function FilterBar({ children, shown, total, noun, active, onClear }: { children: ReactNode; shown: number; total: number; noun: string; active: boolean; onClear: () => void }) {
   return (
