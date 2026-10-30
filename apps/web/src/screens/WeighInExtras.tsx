@@ -63,8 +63,10 @@ function ChangeHistory({ estateId, entryId, ref }: { estateId: string; entryId: 
   });
   const timeZone = ref.estates.find((e) => e.id === estateId)?.timeZone ?? "Asia/Kolkata";
   const versions = [...(q.data ?? [])].sort((a, b) => a.version - b.version);
+  const when = (at: string) => new Date(at).toLocaleString("en-IN", { timeZone, day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  const newestFirst = versions.map((v, i) => ({ v, changes: describeChange(v, versions[i - 1], ref) })).reverse();
   return (
-    <section aria-label="Change history" className="rounded-xl border border-line bg-bg p-3">
+    <section aria-label="Change history">
       <h3 className="text-sm font-semibold">
         Change history
         {versions.length > 0 && (
@@ -76,26 +78,51 @@ function ChangeHistory({ estateId, entryId, ref }: { estateId: string; entryId: 
       {q.isLoading && <p className="mt-2 text-sm text-muted">Loading…</p>}
       {q.isError && <p className="mt-2 text-sm text-bad">The history could not be loaded.</p>}
       {q.data && versions.length === 0 && <p className="mt-2 text-sm text-muted">No earlier versions.</p>}
-      <ol className="mt-2 flex max-h-56 flex-col gap-2 overflow-y-auto text-sm">
-        {versions
-          .map((v, i) => ({ v, changes: describeChange(v, versions[i - 1], ref) }))
-          .reverse()
-          .map(({ v, changes }) => (
-            <li key={v.id} className="border-b border-line pb-2 last:border-b-0 last:pb-0">
-              <p>
-                <span className="font-semibold">
-                  Version {v.version} · {CHANGE_LABEL[v.change] ?? v.change}
-                </span>
-                <span className="text-muted">
-                  {" "}
-                  · {new Date(v.at).toLocaleString("en-IN", { timeZone, day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })} · {v.actorName ?? "A user"}
-                </span>
-              </p>
-              {changes.length > 0 && <p className="text-muted">{changes.join(" · ")}</p>}
-              {v.reason && <p>Reason: {v.reason}</p>}
-            </li>
-          ))}
-      </ol>
+      {versions.length > 0 && (
+        <div className="mt-2 overflow-x-auto rounded-xl border border-line">
+          <table className="w-full min-w-[30rem] text-left text-sm">
+            <thead className="border-b border-line bg-bg text-[0.8rem] text-muted">
+              <tr>
+                <th scope="col" className="px-3 py-2 font-medium">
+                  Version
+                </th>
+                <th scope="col" className="px-3 py-2 font-medium">
+                  When
+                </th>
+                <th scope="col" className="px-3 py-2 font-medium">
+                  By
+                </th>
+                <th scope="col" className="px-3 py-2 font-medium">
+                  What changed
+                </th>
+                <th scope="col" className="px-3 py-2 font-medium">
+                  Reason
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-line align-top">
+              {newestFirst.map(({ v, changes }) => (
+                <tr key={v.id}>
+                  <td className="whitespace-nowrap px-3 py-2">
+                    <span className="font-semibold tabular-nums">{v.version}</span>
+                    <span className="block text-xs text-muted">{CHANGE_LABEL[v.change] ?? v.change}</span>
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2">{when(v.at)}</td>
+                  <td className="px-3 py-2">{v.actorName ?? "A user"}</td>
+                  <td className="px-3 py-2">
+                    {changes.map((c) => (
+                      <span key={c} className="block">
+                        {c}
+                      </span>
+                    ))}
+                  </td>
+                  <td className="px-3 py-2">{v.reason ?? <span className="text-muted">–</span>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </section>
   );
 }
@@ -190,7 +217,6 @@ export function CorrectWeighIn({ estateId, workerName, entry, ref, onClose }: { 
   return (
     <Drawer title={workerName} subtitle="Correct weigh-in" onClose={onClose}>
       <p className="text-sm text-muted">The old weigh-in stays in the history with your reason and the time of the correction. The net weight is worked out again.</p>
-      <ChangeHistory estateId={estateId} entryId={entry.id} ref={ref} />
       <form
         className="flex flex-col gap-4"
         onSubmit={(e) => {
@@ -274,6 +300,7 @@ export function CorrectWeighIn({ estateId, workerName, entry, ref, onClose }: { 
           </Button>
         </div>
       </form>
+      <ChangeHistory estateId={estateId} entryId={entry.id} ref={ref} />
     </Drawer>
   );
 }
