@@ -46,6 +46,10 @@ const withIdVersion = <T extends z.ZodTypeAny>(body: T) => z.object({ id: z.stri
 const OPS = {
   "org.reference": { input: z.object({ includeInactive: z.boolean().default(false) }), run: (c: TenantContext, i: { includeInactive: boolean }) => org.referenceData(c, i.includeInactive) },
   "org.createEstate": { input: estateInput, run: org.createEstate },
+  "org.updateEstate": {
+    input: withIdVersion(estateInput),
+    run: (c: TenantContext, i: { id?: string; baseVersion?: number; body: z.infer<typeof estateInput> }) => org.updateEstate(c, i.body, i.id ?? "", i.baseVersion),
+  },
   "org.upsertField": {
     input: withIdVersion(fieldInput),
     run: (c: TenantContext, i: { id?: string; baseVersion?: number; body: z.infer<typeof fieldInput> }) => org.upsertField(c, i.body, i.id, i.baseVersion),

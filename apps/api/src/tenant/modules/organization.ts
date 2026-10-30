@@ -51,6 +51,25 @@ export function createEstate(ctx: TenantContext, input: z.infer<typeof estateInp
   }
 }
 
+/** Rename an estate or change its code. Workers and fields keep the codes they already have; only the next one allocated follows the new code. */
+export function updateEstate(ctx: TenantContext, input: z.infer<typeof estateInput>, id: string, baseVersion?: number) {
+  ctx.require("masters.write", null);
+  const { now, by } = audited(ctx);
+  try {
+    return ctx.tx((db) => {
+      const before = getEstate(db, id);
+      if (baseVersion !== undefined && before.version !== baseVersion) throw staleVersion();
+      const after = { ...before, code: input.code, name: input.name, timeZone: input.timeZone ?? before.timeZone, version: before.version + 1, updatedAt: now, updatedBy: by };
+      db.update(estates).set(after).where(eq(estates.id, id)).run();
+      ctx.audit(db, { action: "estate.update", entityType: "estate", entityId: id, estateId: id, before, after });
+      return after;
+    });
+  } catch (e) {
+    if (uniqueViolation(e)) throw new AppError(409, "CODE_TAKEN", "An estate with this code already exists", { code: "Already used" });
+    throw e;
+  }
+}
+
 export interface ReferenceData {
   estates: (typeof estates.$inferSelect)[];
   fields: (Omit<typeof fields.$inferSelect, "cropsJson" | "expectedCherryG"> & {
@@ -120,7 +139,7 @@ export function referenceData(ctx: TenantContext, includeInactive = false): Refe
   };
 }
 
-/** The next free field code for an estate, like GLZ-07, allocated inside the insert's transaction. */
+/** The next free field code for an estate, like GB-07, allocated inside the insert's transaction. */
 function nextFieldCode(db: Db, estateId: string): string {
   const estate = assertFound(db.select().from(estates).where(eq(estates.id, estateId)).get(), "Estate");
   const prefix = `${estate.code.toUpperCase().replace(/[^A-Z0-9]/g, "")}-`;
@@ -301,10 +320,10 @@ function setVarietyFields(ctx: TenantContext, db: Db, varietyId: string, crop: s
 
 export const upsertJobType = (ctx: TenantContext, input: z.infer<typeof jobTypeInput>, id?: string, v?: number) => upsertSimple(ctx, jobTypes, "job_type", input, id, v);
 
-/** The next free code for an estate, like GLZ-007, allocated inside the same transaction as the insert. */
+/** The next free code for an estate, like GB007, allocated inside the same transaction as the insert. */
 function nextEmployeeCode(db: Db, estateId: string): string {
   const estate = assertFound(db.select().from(estates).where(eq(estates.id, estateId)).get(), "Estate");
-  const prefix = `${estate.code.toUpperCase().replace(/[^A-Z0-9]/g, "")}-`;
+  const prefix = estate.code.toUpperCase().replace(/[^A-Z0-9]/g, "");
   const used = db
     .select({ code: workers.employeeCode })
     .from(workers)

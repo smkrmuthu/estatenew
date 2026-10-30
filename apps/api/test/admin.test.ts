@@ -253,15 +253,36 @@ describe("passwords", () => {
   });
 });
 
+describe("estate code change", () => {
+  it("renames an estate; new employee codes follow the new code and old ones stay", async () => {
+    const s = await setupTenant();
+    const old = await api("/workers", { token: s.owner.token, body: { estateId: s.estate.id, name: "Before" } });
+    expect(old.body.employeeCode).toBe("GLZ001");
+    const put = (id: string, body: Record<string, unknown>, token = s.owner.token, version = "1") => api(`/estates/${id}`, { method: "PUT", token, headers: { "if-match": version }, body });
+    const done = await put(s.estate.id, { code: "GB", name: "Glazebrooke" });
+    expect(done.status, JSON.stringify(done.body)).toBe(200);
+    expect(done.body).toMatchObject({ code: "GB", version: 2 });
+    const fresh = await api("/workers", { token: s.owner.token, body: { estateId: s.estate.id, name: "After" } });
+    expect(fresh.body.employeeCode).toBe("GB001");
+    const ref = (await api("/reference?inactive=1", { token: s.owner.token })).body.workers as { name: string; employeeCode: string }[];
+    expect(ref.find((w) => w.name === "Before")?.employeeCode).toBe("GLZ001");
+    // A stale version, a code another estate uses, and a supervisor are all refused.
+    expect((await put(s.estate.id, { code: "GB", name: "Glazebrooke" })).status).toBe(409);
+    const clash = await put(s.estate.id, { code: s.estate2.code, name: "Glazebrooke" }, s.owner.token, "2");
+    expect(clash.status).toBe(409);
+    expect((await put(s.estate.id, { code: "GB", name: "X" }, s.supervisor.token, "2")).status).toBe(403);
+  });
+});
+
 describe("masters forms", () => {
   it("creates a worker with gender and type, allocates the next code, and edits it", async () => {
     const s = await setupTenant();
     const mk = (body: Record<string, unknown>) => api("/workers", { token: s.owner.token, body: { estateId: s.estate.id, ...body } });
     const a = await mk({ name: "Asha", gender: "FEMALE", employmentType: "PERMANENT" });
     expect(a.status, JSON.stringify(a.body)).toBe(201);
-    expect(a.body).toMatchObject({ employeeCode: "GLZ-001", gender: "FEMALE", employmentType: "PERMANENT", active: true });
+    expect(a.body).toMatchObject({ employeeCode: "GLZ001", gender: "FEMALE", employmentType: "PERMANENT", active: true });
     const b = await mk({ name: "Babu", gender: null, employmentType: "CASUAL" });
-    expect(b.body).toMatchObject({ employeeCode: "GLZ-002", gender: null, employmentType: "CASUAL" });
+    expect(b.body).toMatchObject({ employeeCode: "GLZ002", gender: null, employmentType: "CASUAL" });
     const bad = await mk({ name: "X", gender: "OTHER" });
     expect(bad.status).toBe(422);
 
@@ -271,11 +292,11 @@ describe("masters forms", () => {
       headers: { "if-match": "1" },
       body: { estateId: s.estate.id, name: "Babu K", gender: "MALE", employmentType: "CONTRACT", active: false },
     });
-    expect(edit.body).toMatchObject({ name: "Babu K", gender: "MALE", employmentType: "CONTRACT", active: false, version: 2, employeeCode: "GLZ-002" });
+    expect(edit.body).toMatchObject({ name: "Babu K", gender: "MALE", employmentType: "CONTRACT", active: false, version: 2, employeeCode: "GLZ002" });
     // Inactive workers are left out of the device list but come back for the Masters screen.
     const codes = async (q = "") => ((await api(`/reference${q}`, { token: s.owner.token })).body.workers as { employeeCode: string }[]).map((w) => w.employeeCode);
-    expect(await codes()).not.toContain("GLZ-002");
-    expect(await codes("?inactive=1")).toContain("GLZ-002");
+    expect(await codes()).not.toContain("GLZ002");
+    expect(await codes("?inactive=1")).toContain("GLZ002");
     // A supervisor cannot add workers.
     const sup = await api("/workers", { token: s.supervisor.token, body: { estateId: s.estate.id, name: "Nope" } });
     expect(sup.status).toBe(403);

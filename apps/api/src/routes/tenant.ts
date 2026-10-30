@@ -56,6 +56,11 @@ export function tenantRoutes(app: Hono<AppEnv>) {
   );
   route(
     app,
+    { method: "put", path: "/estates/:id", summary: "Rename an estate or change its code", tag: "masters", auth: "bearer", permission: "masters.write", body: estateInput },
+    call("org.updateEstate", async (c) => ({ id: p(c, "id"), baseVersion: version(c), body: await readJson(c) })),
+  );
+  route(
+    app,
     { method: "post", path: "/fields", summary: "Create a field", tag: "masters", auth: "bearer", permission: "masters.write", body: fieldInput },
     call("org.upsertField", async (c) => ({ body: await readJson(c) }), 201),
   );
